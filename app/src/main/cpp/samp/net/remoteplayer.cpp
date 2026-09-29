@@ -1,0 +1,1550 @@
+#include "../main.h"
+#include "../game/game.h"
+#include "netgame.h"
+#include "remoteplayer.h"
+#include "../gui/gui.h"
+#include "../game/Timer.h"
+#include "../vendor/encoding/encoding.h"
+
+extern UI* pUI;
+extern CGame *pGame;
+extern CNetGame *pNetGame;
+//extern CVoice* pVoice;
+
+CRemotePlayer::CRemotePlayer()
+{
+	ResetAllSyncAttributes();
+
+	m_VehicleID = 0;
+	m_byteState = PLAYER_STATE_NONE;
+	m_PlayerID = INVALID_PLAYER_ID;
+	m_pPlayerPed = nullptr;
+	m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
+	m_bShowNameTag = true;
+	// field_C = 0;
+	// field_14 = 0;
+	m_dwMarker = 0;
+	m_byteSpecialAction = SPECIAL_ACTION_NONE;
+	m_bIsNPC = false;
+	m_bAppliedAnimation = false;
+	// field_1E1 = CTimer::m_snTimeInMillisecondsNonClipped;
+	// field_1E5 = CTimer::m_snTimeInMillisecondsNonClipped;
+	m_dwLastRecvTick = CTimer::m_snTimeInMillisecondsNonClipped;
+	m_bWasAnimSettedFlag = false;
+	m_dwPlayingAnimIndex = 0;
+}
+
+CRemotePlayer::~CRemotePlayer()
+{
+	if (m_dwMarker)
+	{
+		pGame->DisableMarker(m_dwMarker);
+		m_dwMarker = 0;
+	}
+
+	// field_1E9 = 0;
+
+	if (m_pPlayerPed) {
+		pGame->RemovePlayer(m_pPlayerPed);
+		m_pPlayerPed = nullptr;
+	}
+}
+
+void CRemotePlayer::Process()
+{
+	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
+	CQuaternion quat;
+	CVector vecMoveSpeed;
+	RwMatrix matPlayer;
+	RwMatrix matVehicle;
+
+	if (m_pPlayerPed) {
+		m_pPlayerPed->ProcessAttach();
+	}
+	
+	if (IsActive())
+	{
+		// ---- ONFOOT NETWORK PROCESSING ----
+		if (GetState() == PLAYER_STATE_ONFOOT &&
+			m_byteUpdateFromNetwork == UPDATE_TYPE_ONFOOT &&
+			!m_pPlayerPed->IsInVehicle())
+		{
+			UpdateOnFootPositionAndSpeed(&m_LastSendOnFootSync.vecPos, &m_LastSendOnFootSync.vecMoveSpeed);
+			UpdateOnFootTargetPosition();
+			
+			// UPDATE CURRENT WEAPON
+			uint8_t byteCurrentWeapon = m_LastSendOnFootSync.byteCurrentWeapon & 0x3F;
+			if (m_pPlayerPed->m_pPed->IsAdded() && m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon) {
+				//m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, false);
+
+				// double check
+				if (m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon) {
+					m_pPlayerPed->GiveWeapon(byteCurrentWeapon, 9999);
+					//m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, false);
+				}
+			}
+
+			if(IS_TARGETING(m_pPlayerPed->m_pPed) &&
+				(m_pPlayerPed->GetCurrentWeapon() == 34 ||
+				m_pPlayerPed->GetCurrentWeapon() == 35 ||
+				m_pPlayerPed->GetCurrentWeapon() == 36))
+			{
+				m_pPlayerPed->SetActionTrigger(ACTION_SCOPE);
+			}
+			else
+			{
+				//ProcessAnimation();
+				m_pPlayerPed->SetActionTrigger(ACTION_NORMAL);
+			}
+
+			m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
+		}
+			
+		// ---- DRIVER NETWORK PROCESSING ----
+		else if (GetState() == PLAYER_STATE_DRIVER &&
+			m_byteUpdateFromNetwork == UPDATE_TYPE_INCAR &&
+			m_pPlayerPed->IsInVehicle())
+		{
+			if (!m_pCurrentVehicle || !m_pCurrentVehicle->VerifyInstance()) {
+				return;
+			}
+
+			m_InCarData.quat.Normalize();
+			m_InCarData.quat.GetMatrix(&matVehicle);
+			matVehicle.pos.x = m_InCarData.vecPos.x;
+			matVehicle.pos.y = m_InCarData.vecPos.y;
+			matVehicle.pos.z = m_InCarData.vecPos.z;
+
+			if (m_pCurrentVehicle->m_pVehicle->GetModelId() == 538 ||
+				m_pCurrentVehicle->m_pVehicle->GetModelId() == 537 ||
+				m_pCurrentVehicle->m_pVehicle->GetModelId() == 449)
+			{
+				//UpdateTrainDriverMatrixAndSpeed(&matVehicle, &m_InCarData.vecMoveSpeed, m_InCarData.fTrainSpeed);
+			}
+			else
+			{
+				UpdateInCarMatrixAndSpeed(&matVehicle, &m_InCarData.vecPos, &m_InCarData.vecMoveSpeed);
+				UpdateInCarTargetPosition();
+			}
+
+			if(m_InCarData.byteSirenOn) m_pCurrentVehicle->EnableSiren(true);
+			else m_pCurrentVehicle->EnableSiren(false);
+
+			//if (m_pCurrentVehicle->m_pVehicle->GetModelId() == HYDRA)
+				//m_pCurrentVehicle->m_pVehicle->wHydraThrusters = m_InCarData.fTrainSpeed;
+
+			if (m_pCurrentVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_BIKE ||
+				m_pCurrentVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_PUSHBIKE)
+			{
+				//sub_100B7A40(_this->m_pCurrentVehicle, m_InCarData.fTrainSpeed);
+			}
+
+			m_pCurrentVehicle->EnableSiren(m_InCarData.byteSirenOn);
+			//m_pCurrentVehicle->SetLandingGearState(m_InCarData.byteLandingGearState);
+			m_pCurrentVehicle->SetHealth(m_InCarData.fCarHealth);
+
+			PLAYERID TrailerID = m_InCarData.TrailerID;
+			if((TrailerID == 0 || TrailerID >= MAX_VEHICLES) && m_pCurrentVehicle->GetTrailer())
+			{
+				m_pCurrentVehicle->DetachTrailer();
+				m_pCurrentVehicle->SetTrailer(0);
+			}
+
+			uint8_t byteCurWeapon = m_InCarData.byteCurrentWeapon & 0x3F;
+			if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
+			{
+				m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
+				if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
+				{
+					m_pPlayerPed->GiveWeapon(byteCurWeapon, 9999);
+					m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
+				}
+			}
+
+			m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
+		}
+		// ---- PASSENGER NETWORK PROCESSING ----
+		else if (GetState() == PLAYER_STATE_PASSENGER &&
+			m_byteUpdateFromNetwork == UPDATE_TYPE_PASSENGER)
+		{
+			if (!m_pCurrentVehicle || !m_pCurrentVehicle->VerifyInstance()) {
+				return;
+			}
+
+			uint8_t byteCurrentWeapon = m_PassengerData.byteCurrentWeapon & 0x3F;
+			if(m_pPlayerPed->m_pPed->IsAdded() && m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon)
+			{
+				m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, 0);
+				if(m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon)
+				{
+					m_pPlayerPed->GiveWeapon(byteCurrentWeapon, 9999);
+					m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, 0);
+				}
+			}
+
+			m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
+		}
+
+		// ------ PROCESSED FOR ALL FRAMES ----- 
+		if (GetState() == PLAYER_STATE_ONFOOT && !m_pPlayerPed->IsInVehicle())
+		{
+			InterpolateAndRotate();
+			//SyncHead();
+			m_bPassengerDriveByMode = false;
+			//ProcessSpecialActions(m_LastSendOnFootSync.byteSpecialAction);
+
+            if (m_byteWeaponShotID != 0xFF)
+            {
+                //weapon sync
+                //RwMatrix localMat;
+                //pPool->GetLocalPlayer()->GetPlayerPed()->GetMatrix(&localMat);
+
+                m_LastSendOnFootSync.byteCurrentWeapon = m_byteWeaponShotID;
+                m_pPlayerPed->SetCurrentWeapon(m_byteWeaponShotID);
+                //ScriptCommand(&task_shoot_at_coord, m_pPlayerPed->m_dwGTAId, localMat.pos.x, localMat.pos.y, localMat.pos.z, 10);
+                m_pPlayerPed->SetCurrentAim(pGame->FindPlayerPed()->GetCurrentAim());
+                m_pPlayerPed->SetKeys(m_LastSendOnFootSync.lrAnalog, m_LastSendOnFootSync.udAnalog, (uint16_t)4);
+
+                //unknown weapon
+                m_byteWeaponShotID = 0xFF;
+            }
+            else
+                m_pPlayerPed->SetKeys(m_LastSendOnFootSync.lrAnalog, m_LastSendOnFootSync.udAnalog, m_LastSendOnFootSync.wKeys);
+
+			if (m_LastSendOnFootSync.vecMoveSpeed.x == 0.0f &&
+				m_LastSendOnFootSync.vecMoveSpeed.y == 0.0f &&
+				m_LastSendOnFootSync.vecMoveSpeed.z == 0.0f)
+			{
+				m_pPlayerPed->m_pPed->SetVelocity(m_LastSendOnFootSync.vecMoveSpeed);
+			}
+
+			if ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 1500) {
+				m_bIsAFK = true;
+			}
+
+			if (m_bIsAFK && ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 3000))
+			{
+				m_LastSendOnFootSync.lrAnalog = 0;
+				m_LastSendOnFootSync.udAnalog = 0;
+
+				vecMoveSpeed.x = 0.0f;
+				vecMoveSpeed.y = 0.0f;
+				vecMoveSpeed.z = 0.0f;
+				m_pPlayerPed->m_pPed->SetVelocity(vecMoveSpeed);
+
+                matPlayer = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+				matPlayer.pos.x = m_LastSendOnFootSync.vecPos.x;
+				matPlayer.pos.y = m_LastSendOnFootSync.vecPos.y;
+				matPlayer.pos.z = m_LastSendOnFootSync.vecPos.z;
+				m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+			}
+
+			if (SurfingOnObject() || SurfingOnVehicle())
+			{
+				ProcessSurfing();
+				//m_pPlayerPed->m_pPed->SetGravityProcessing(false);
+				m_pPlayerPed->m_pPed->SetCollisionChecking(false);
+			}
+			else
+			{
+				if(m_byteSpecialAction == SPECIAL_ACTION_ENTER_VEHICLE)
+				{
+					//m_pPlayerPed->m_pPed->SetGravityProcessing(0);
+					m_pPlayerPed->m_pPed->SetCollisionChecking(0);
+				}
+				else
+				{
+					//m_pPlayerPed->SetGravityProcessing(1);
+					m_pPlayerPed->m_pPed->SetCollisionChecking(1);
+				}
+			}
+		}
+		else if (GetState() == PLAYER_STATE_DRIVER && m_pPlayerPed->IsInVehicle())
+		{
+			if (!m_pCurrentVehicle)
+			{
+				return;
+			}
+			if (!GamePool_Vehicle_GetAt(m_pCurrentVehicle->m_dwGTAId))
+			{
+				return;
+			}
+
+			m_bPassengerDriveByMode = false;
+
+			if (m_pCurrentVehicle &&
+				m_pCurrentVehicle->m_pVehicle->GetModelId() != 538 &&
+				m_pCurrentVehicle->m_pVehicle->GetModelId() != 537 &&
+				m_pCurrentVehicle->m_pVehicle->GetModelId() != 449)
+			{
+				UpdateVehicleRotation();
+			}
+
+			m_pPlayerPed->CheckVehicleParachute();
+
+			if (m_pCurrentVehicle && m_pCurrentVehicle->IsRCVehicle()) {
+				m_pPlayerPed->m_pPed->Remove();
+			}
+
+			if (m_bIsNPC)
+			{
+				if (m_InCarData.vecMoveSpeed.x == 0.0f &&
+					m_InCarData.vecMoveSpeed.y == 0.0f &&
+					m_InCarData.vecMoveSpeed.z == 0.0f)
+				{
+					if (m_pCurrentVehicle)
+					{
+						m_pCurrentVehicle->m_pVehicle->SetVelocity(m_InCarData.vecMoveSpeed);
+					}
+				}
+			}
+
+			m_pPlayerPed->SetKeys(m_InCarData.lrAnalog, m_InCarData.udAnalog, m_InCarData.wKeys);
+			m_pPlayerPed->ProcessVehicleHorn();
+
+			if (m_InCarData.vecMoveSpeed.x != 0.0f ||
+				m_InCarData.vecMoveSpeed.y != 0.0f ||
+				m_InCarData.vecMoveSpeed.z != 0.0f)
+			{
+				if (!m_bIsAFK)
+				{
+					if ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 1500)
+						m_bIsAFK = true;
+				}
+			}
+			else if (!m_bIsAFK)
+			{
+				if ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 3000)
+					m_bIsAFK = true;
+			}
+		}
+		else if (GetState() == PLAYER_STATE_PASSENGER && m_pPlayerPed->IsInVehicle())
+		{
+			if((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 3000)
+				m_bIsAFK = true;
+
+			m_pPlayerPed->SetKeys(m_PassengerData.wKeys,0,0);
+		}
+		else
+		{
+			m_pPlayerPed->SetKeys(0, 0, 0);
+			vecMoveSpeed.x = 0.0f;
+			vecMoveSpeed.y = 0.0f;
+			vecMoveSpeed.z = 0.0f;
+			m_pPlayerPed->m_pPed->SetVelocity(vecMoveSpeed);
+			m_bPassengerDriveByMode = false;
+		}
+
+		if (GetState() != PLAYER_STATE_WASTED) {
+			m_pPlayerPed->SetHealth(1000.0f);
+		}
+
+		if ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) < 3000) {
+			m_bIsAFK = false;
+		}
+	}
+	else
+	{
+		if (m_pPlayerPed) {
+			ResetAllSyncAttributes();
+			pGame->RemovePlayer(m_pPlayerPed);
+			m_pPlayerPed = nullptr;
+		}
+	}
+}
+
+void CRemotePlayer::InterpolateAndRotate()
+{
+	if(m_pPlayerPed)
+	{
+		RwMatrix matPlayer = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+
+		CQuaternion quatPlayer;
+		quatPlayer.SetFromMatrix(&matPlayer);
+
+		CQuaternion quatResult;
+		quatResult.Slerp(&m_LastSendOnFootSync.quat, &quatPlayer, 0.75f);
+		quatResult.GetMatrix(&matPlayer);
+
+		m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+
+		float fZ = atan2(-matPlayer.up.x, matPlayer.up.y) * 57.295776f; /* rad to deg */
+		if(fZ > 360.0f) fZ -= 360.0f;
+		else if(fZ < 0.0f) fZ += 360.0f;
+
+		m_pPlayerPed->SetRotation(fZ);
+	}
+}
+
+void CRemotePlayer::UpdateOnFootTargetPosition()
+{
+	if(!m_pPlayerPed) return;
+
+	RwMatrix matPlayer = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+
+	if(m_pPlayerPed->m_pPed->IsAdded())
+	{
+		m_vecPosOffset.x = FloatOffset(m_vecOnFootTargetPos.x, matPlayer.pos.x);
+		m_vecPosOffset.y = FloatOffset(m_vecOnFootTargetPos.y, matPlayer.pos.y);
+		m_vecPosOffset.z = FloatOffset(m_vecOnFootTargetPos.z, matPlayer.pos.z);
+
+		if(m_vecPosOffset.x > 0.00001f || m_vecPosOffset.y > 0.00001f || m_vecPosOffset.z > 0.00001f)
+		{
+			if(m_vecPosOffset.x > 2.0f || m_vecPosOffset.y > 2.0f || m_vecPosOffset.z > 1.0f)
+			{
+				matPlayer.pos.x = m_vecOnFootTargetPos.x;
+				matPlayer.pos.y = m_vecOnFootTargetPos.y;
+				matPlayer.pos.z = m_vecOnFootTargetPos.z;
+
+				m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+			}
+			else
+			{
+				CVector vecMoveSpeed = m_pPlayerPed->m_pPed->GetMoveSpeed();
+				if(m_vecPosOffset.x > 0.00001f)
+					vecMoveSpeed.x += (m_vecOnFootTargetPos.x - matPlayer.pos.x) * 0.1f;
+				if(m_vecPosOffset.y > 0.00001f)
+					vecMoveSpeed.y += (m_vecOnFootTargetPos.y - matPlayer.pos.y) * 0.1f;
+				if(m_vecPosOffset.z > 0.00001f)
+					vecMoveSpeed.z += (m_vecOnFootTargetPos.z - matPlayer.pos.z) * 0.1f;
+
+				m_pPlayerPed->m_pPed->SetVelocity(vecMoveSpeed);
+			}
+		}
+	}
+	else
+	{
+		matPlayer.pos.x = m_vecOnFootTargetPos.x;
+		matPlayer.pos.y = m_vecOnFootTargetPos.y;
+		matPlayer.pos.z = m_vecOnFootTargetPos.z;
+
+		m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+	}
+}
+
+void CRemotePlayer::UpdateOnFootPositionAndSpeed(CVector* vecPos, CVector* vecMove)
+{
+	m_vecOnFootTargetPos.x = vecPos->x;
+	m_vecOnFootTargetPos.y = vecPos->y;
+	m_vecOnFootTargetPos.z = vecPos->z;
+
+	m_vecOnFootTargetSpeed.x = vecMove->x;
+	m_vecOnFootTargetSpeed.y = vecMove->y;
+	m_vecOnFootTargetSpeed.z = vecMove->z;
+
+	m_pPlayerPed->m_pPed->SetVelocity(m_vecOnFootTargetSpeed);
+}
+
+bool CRemotePlayer::SurfingOnVehicle()
+{
+	if(GetState() == PLAYER_STATE_ONFOOT) 
+	{
+		if(m_LastSendOnFootSync.wSurfInfo != -1 && m_LastSendOnFootSync.wSurfInfo < MAX_VEHICLES) // its an vehicle
+			return true;
+	}
+	return false;
+}
+
+bool CRemotePlayer::SurfingOnObject()
+{
+	if(GetState() == PLAYER_STATE_ONFOOT) 
+	{
+		if(m_LastSendOnFootSync.wSurfInfo != -1 && m_LastSendOnFootSync.wSurfInfo >= MAX_VEHICLES &&
+			m_LastSendOnFootSync.wSurfInfo < MAX_VEHICLES + MAX_OBJECTS) // its an object
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void CRemotePlayer::ResetAllSyncAttributes()
+{
+	m_VehicleID = 0;
+	m_fReportedHealth = 0.0f;
+	m_fReportedArmour = 0.0f;
+	m_pCurrentVehicle = nullptr;
+	m_byteSeatID = 0;
+    m_byteWeaponShotID = 0xFF;
+	m_bPassengerDriveByMode = false;
+	// field_1ED = 0;
+	// field_1F1 = 0;
+	// field_1F5 = 0;
+	m_byteSpecialAction = SPECIAL_ACTION_NONE;
+	m_dwAnimation = 0;
+	m_bIsAFK = true;
+	memset(&m_LastSendOnFootSync, 0, sizeof(ONFOOT_SYNC_DATA));
+	memset(&m_InCarData, 0, sizeof(INCAR_SYNC_DATA));
+	memset(&m_PassengerData, 0, sizeof(PASSENGER_SYNC_DATA));
+	// memset(&field_8E
+	// memset(&field_1D5
+
+	if (m_dwMarker)
+	{
+		pGame->DisableMarker(m_dwMarker);
+		m_dwMarker = 0;
+	}
+
+	// field_1E9 = 0;
+
+	if (pNetGame) {
+		m_dwLastStoredSyncDataTime = CTimer::m_snTimeInMillisecondsNonClipped;
+	}
+}
+
+void CRemotePlayer::SetPlayerColor(uint32_t dwColor)
+{
+	SetRadarColor(m_PlayerID, dwColor);
+}
+
+uint32_t CRemotePlayer::GetPlayerColor()
+{
+	return TranslateColorCodeToRGBA(m_PlayerID);
+}
+
+
+void CRemotePlayer::Say(char *szMessage)
+{
+	char* szPlayerName = pNetGame->GetPlayerPool()->GetPlayerName(m_PlayerID);
+	uint32_t dwColor = TranslateColorCodeToRGBA(m_PlayerID);
+	if (pUI) pUI->chat()->addChatMessage(Encoding::cp2utf(szMessage), szPlayerName, UI::fixcolor(dwColor));
+}
+
+bool CRemotePlayer::Spawn(uint8_t byteTeam, int iSkin, CVector *vecPos, float fRotation,
+	uint32_t dwColor, uint8_t byteFightingStyle)
+{
+	if (!pGame->IsGameLoaded()) return false;
+
+	if (m_pPlayerPed)
+	{
+		pGame->RemovePlayer(m_pPlayerPed);
+		m_pPlayerPed = nullptr;
+	}
+
+	CPlayerPed* pPlayerPed = pGame->NewPlayer(iSkin, vecPos->x, vecPos->y, vecPos->z, fRotation, true, m_bIsNPC);
+	if (pPlayerPed)
+	{
+        FLog("CRemotePlayer::Spawn 1");
+		if (dwColor) {
+			SetRadarColor(m_PlayerID, dwColor);
+		}
+
+        FLog("CRemotePlayer::Spawn 2");
+		if (m_dwMarker) {
+			pGame->DisableMarker(m_dwMarker);
+			m_dwMarker = 0;
+		}
+
+		if (pNetGame->m_pNetSet->iShowPlayerMarkers/*bShowNameTags*/) {
+			pPlayerPed->ShowMarker(m_PlayerID);
+		}
+
+		SetTeam(byteTeam);
+
+		m_pPlayerPed = pPlayerPed;
+		m_fReportedHealth = 100.0f;
+		pPlayerPed->SetKeys(0, 0, 0);
+		if (byteFightingStyle != 4) {
+			pPlayerPed->SetFightingStyle(byteFightingStyle);
+		}
+
+        FLog("CRemotePlayer::Spawn 3");
+
+		SetState(PLAYER_STATE_SPAWNED);
+        FLog("CRemotePlayer::Spawn 4");
+		return true;
+	}
+	else
+	{
+        FLog("CRemotePlayer::Spawn no spawn");
+		SetState(PLAYER_STATE_NONE);
+		return false;
+	}
+}
+
+void CRemotePlayer::Remove()
+{
+	if (m_pPlayerPed)
+	{
+		ResetAllSyncAttributes();
+		pGame->RemovePlayer(m_pPlayerPed);
+		m_pPlayerPed = nullptr;
+	}
+
+	SetState(PLAYER_STATE_NONE);
+	m_bShowNameTag = true;
+}
+
+void CRemotePlayer::HandleDeath()
+{
+    if (GetPlayerPed())
+    {
+        GetPlayerPed()->SetKeys(0, 0, 0);
+        GetPlayerPed()->SetDead();
+    }
+
+	SetState(PLAYER_STATE_WASTED);
+	ResetAllSyncAttributes();
+}
+
+void CRemotePlayer::StoreOnFootFullSyncData(ONFOOT_SYNC_DATA *ofSync, uint32_t dwTime)
+{
+    if (dwTime == 0 || dwTime - m_dwLastStoredSyncDataTime >= 0)
+    {
+        m_dwLastStoredSyncDataTime = dwTime;
+        memcpy(&m_LastSendOnFootSync, ofSync, sizeof(ONFOOT_SYNC_DATA));
+        m_fReportedHealth = ofSync->byteHealth;
+        m_fReportedArmour = ofSync->byteArmour;
+        m_byteUpdateFromNetwork = UPDATE_TYPE_ONFOOT;
+		m_dwLastRecvTick = CTimer::m_snTimeInMillisecondsNonClipped;
+        m_byteSpecialAction = ofSync->byteSpecialAction;
+
+        if (m_pPlayerPed && m_pPlayerPed->IsInVehicle())
+        {
+            if (m_byteSpecialAction != SPECIAL_ACTION_ENTER_VEHICLE &&
+                m_byteSpecialAction != SPECIAL_ACTION_EXIT_VEHICLE )//&&
+                //!m_pPlayerPed->sub_100ABDB0())
+            {
+                RemoveFromVehicle();
+            }
+        }
+    }
+
+    SetState(PLAYER_STATE_ONFOOT);
+}
+
+void CRemotePlayer::StoreInCarFullSyncData(INCAR_SYNC_DATA* picSync, uint32_t dwTime)
+{
+	if (!dwTime || dwTime - m_dwLastStoredSyncDataTime >= 0) {
+		m_dwLastStoredSyncDataTime = dwTime;
+		memcpy(&m_InCarData, picSync, sizeof(INCAR_SYNC_DATA));
+		m_VehicleID = picSync->VehicleID;
+
+		CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+		if (!pVehiclePool) return;
+		if (!pVehiclePool->GetSlotState(m_VehicleID)) return;
+
+		m_pCurrentVehicle = pVehiclePool->GetAt(m_VehicleID);
+		if (!m_pCurrentVehicle)return;
+
+		m_byteSeatID = 0;
+		m_fReportedHealth = picSync->bytePlayerHealth;
+		m_fReportedArmour = picSync->bytePlayerArmour;
+		m_pCurrentVehicle->SetHealth(picSync->fCarHealth);
+		m_byteUpdateFromNetwork = UPDATE_TYPE_INCAR;
+		m_dwLastRecvTick = CTimer::m_snTimeInMillisecondsNonClipped;
+		m_byteSpecialAction = 0;
+
+        if(!m_pPlayerPed->m_pPed->IsInVehicle())
+        {
+            ScriptCommand(&put_actor_in_car, m_pPlayerPed->m_dwGTAId, m_pCurrentVehicle->m_dwGTAId);
+        }
+        if (m_pPlayerPed->GetCurrentVehicle() != m_pCurrentVehicle) {
+            m_pPlayerPed->RemoveFromVehicleAndPutAt(picSync->vecPos.x, picSync->vecPos.y, picSync->vecPos.z);
+        }
+
+		SetState(PLAYER_STATE_DRIVER);
+	}
+}
+
+float DecompressCameraExtZoom(unsigned char v)
+{
+	return (v & 63) / 63.0f;
+}
+
+float DecompressAspectRatio(char v)
+{
+	return v / 255.0f;
+}
+
+
+void CRemotePlayer::StoreAimFullSyncData(AIM_SYNC_DATA* paimSync)
+{
+	if (!m_pPlayerPed) return;
+	m_pPlayerPed->SetCameraMode(paimSync->byteCamMode);
+
+	CAMERA_AIM Aim;
+	Aim.f1x = paimSync->vecAimf.x;
+	Aim.f1y = paimSync->vecAimf.y;
+	Aim.f1z = paimSync->vecAimf.z;
+
+	CVector vec1, vec2;
+	vec1.x = Aim.f1x;
+	vec1.y = Aim.f1y;
+	vec1.z = Aim.f1z;
+	vec2.x = 0.0f;
+	vec2.y = 0.0f;
+	vec2.z = 0.0f;
+	calculateAimVector(&vec1, &vec2);
+	Aim.f2x = vec2.x;
+	Aim.f2y = vec2.y;
+	Aim.f2z = vec2.z;
+
+	Aim.pos1x = paimSync->vecAimPos.x;
+	Aim.pos1y = paimSync->vecAimPos.y;
+	Aim.pos1z = paimSync->vecAimPos.z;
+	Aim.pos2x = Aim.pos1x;
+	Aim.pos2y = Aim.pos1y;
+	Aim.pos2z = Aim.pos1z;
+	m_pPlayerPed->SetCurrentAim(&Aim);
+
+	m_pPlayerPed->SetAimZ(paimSync->fAimZ);
+
+	float fExtZoom = DecompressCameraExtZoom(paimSync->byteCamExtZoom);
+	float fAspect = DecompressAspectRatio(paimSync->aspect_ratio);
+
+	m_pPlayerPed->SetCameraZoomAndAspect(fExtZoom, fAspect);
+
+    CWeapon* pwstWeapon = m_pPlayerPed->GetCurrentWeaponSlot();
+	if (paimSync->byteWeaponState == WEAPONSTATE_RELOADING)
+		pwstWeapon->dwState = (eWeaponState)2;		// Reloading
+	else
+		if (paimSync->byteWeaponState != WEAPONSTATE_FIRING)
+			pwstWeapon->dwAmmoInClip = (uint32_t)paimSync->byteWeaponState;
+		else
+			if (pwstWeapon->dwAmmoInClip < 2)
+				pwstWeapon->dwAmmoInClip = 2;
+}
+
+void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
+{
+	memcpy(&m_PassengerData, psSync, sizeof(PASSENGER_SYNC_DATA));
+	m_VehicleID = psSync->VehicleID;
+
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+	if (!pVehiclePool->GetSlotState(m_VehicleID))
+		return;
+
+	CVehicle* pVehicle = pVehiclePool->GetAt(m_VehicleID);
+
+	m_pCurrentVehicle = pVehicle;
+
+	if(!m_pCurrentVehicle)return;
+
+	m_byteSeatID = psSync->byteSeatFlags & 0x3F;
+	m_fReportedHealth = psSync->bytePlayerHealth;
+	m_fReportedArmour = psSync->bytePlayerArmour;
+	m_byteUpdateFromNetwork = UPDATE_TYPE_PASSENGER;
+	m_dwLastRecvTick = CTimer::m_snTimeInMillisecondsNonClipped;
+	m_byteSpecialAction = 0;
+
+    if (m_pPlayerPed->GetCurrentVehicle() != m_pCurrentVehicle) {
+        m_pPlayerPed->RemoveFromVehicleAndPutAt(m_PassengerData.vecPos.x, m_PassengerData.vecPos.y, m_PassengerData.vecPos.z);
+    }
+
+    if(!m_pPlayerPed->m_pPed->IsInVehicle()){
+        m_byteSeatID--;
+        ScriptCommand(&put_actor_in_car2, m_pPlayerPed->m_dwGTAId, m_pCurrentVehicle->m_dwGTAId, m_byteSeatID);
+//		m_byteSeatID = CCarEnterExit::ComputeTargetDoorToEnterAsPassenger(m_pCurrentVehicle->m_pVehicle, m_byteSeatID);
+//		CCarEnterExit::SetPedInCarDirect(m_pPlayerPed->m_pPed, m_pCurrentVehicle->m_pVehicle, m_byteSeatID);
+    }
+
+	SetState(PLAYER_STATE_PASSENGER);
+}
+
+void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
+{
+	if (!m_pPlayerPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+
+	BULLET_DATA btData;
+	memset(&btData, 0, sizeof(BULLET_DATA));
+
+	btData.vecOrigin.x = btSync->vecOrigin.x;
+	btData.vecOrigin.y = btSync->vecOrigin.y;
+	btData.vecOrigin.z = btSync->vecOrigin.z;
+
+	btData.vecPos.x = btSync->vecPos.x;
+	btData.vecPos.y = btSync->vecPos.y;
+	btData.vecPos.z = btSync->vecPos.z;
+
+	btData.vecOffset.x = btSync->vecOffset.x;
+	btData.vecOffset.y = btSync->vecOffset.y;
+	btData.vecOffset.z = btSync->vecOffset.z;
+
+	if (btSync->byteHitType != BULLET_HIT_TYPE_NONE)
+	{
+		if (btData.vecOffset.x > 300.0f ||
+			btData.vecOffset.x < -300.0f ||
+			btData.vecOffset.y > 300.0f ||
+			btData.vecOffset.y < -300.0f ||
+			btData.vecOffset.z > 300.0f ||
+			btData.vecOffset.z < -300.0f)
+		{
+			return;
+		}
+
+        CEntityGTA* pEntity = nullptr;
+
+		if (btSync->byteHitType == BULLET_HIT_TYPE_PLAYER)
+		{
+			CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+			if (pPlayerPool)
+			{
+				if (btSync->PlayerID == pPlayerPool->GetLocalPlayerID())
+				{
+					pEntity = reinterpret_cast<CEntityGTA *>(&pGame->FindPlayerPed()->m_pPed);
+				}
+				else if (btSync->PlayerID == m_PlayerID)
+				{
+					return;
+				}
+				else if (pPlayerPool->GetSlotState(btSync->PlayerID))
+				{
+					CPlayerPed* pPlayerPed = pPlayerPool->GetAt(btSync->PlayerID)->GetPlayerPed();
+					if (pPlayerPed) {
+						pEntity = reinterpret_cast<CEntityGTA *>(&pPlayerPed->m_pPed);
+					}
+				}
+			}
+		}
+		else if (btSync->byteHitType == BULLET_HIT_TYPE_VEHICLE)
+		{
+			CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+			if (pVehiclePool)
+			{
+				if (pVehiclePool->GetSlotState(btSync->PlayerID))
+				{
+					pEntity = reinterpret_cast<CEntityGTA *>(&pVehiclePool->GetAt(
+                            btSync->PlayerID)->m_pVehicle);
+				}
+			}
+		}
+
+		btData.pEntity = pEntity;
+	}
+
+	if (m_pPlayerPed->m_pPed->IsAdded())
+	{
+		if (m_pPlayerPed->GetCurrentWeapon() != btSync->byteWeaponID)
+		{
+			m_pPlayerPed->SetArmedWeapon(btSync->byteWeaponID, true);
+
+			if (m_pPlayerPed->GetCurrentWeapon() != btSync->byteWeaponID)
+			{
+				m_pPlayerPed->GiveWeapon(btSync->byteWeaponID, 9999);
+				m_pPlayerPed->SetArmedWeapon(btSync->byteWeaponID, true);
+			}
+		}
+	}
+
+	//m_byteWeaponShotID = btSync->byteWeaponID;
+
+	m_pPlayerPed->ProcessBulletData(&btData);
+	m_pPlayerPed->FireInstant();
+}
+
+void CRemotePlayer::RemoveFromVehicle()
+{
+	RwMatrix mat;
+
+	if (m_pPlayerPed)
+	{
+		if (m_pPlayerPed->IsInVehicle())
+		{
+			mat = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+			m_pPlayerPed->RemoveFromVehicleAndPutAt(mat.pos.x, mat.pos.y, mat.pos.z+1.0f);
+		}
+	}
+}
+
+void CRemotePlayer::UpdateInCarMatrixAndSpeed(RwMatrix* pMatrix, CVector* pVecPos, CVector* pVecMoveSpeed)
+{
+	m_quat.SetFromMatrix(*&pMatrix);
+	m_vecInCarTargetPos.x = pVecPos->x;
+	m_vecInCarTargetPos.y = pVecPos->y;
+	m_vecInCarTargetPos.z = pVecPos->z;
+
+	m_vecInCarTargetSpeed.x = pVecMoveSpeed->x;
+	m_vecInCarTargetSpeed.y = pVecMoveSpeed->y;
+	m_vecInCarTargetSpeed.z = pVecMoveSpeed->z;
+
+	m_pCurrentVehicle->m_pVehicle->SetVelocity(m_vecInCarTargetSpeed);
+}
+
+void CRemotePlayer::UpdateInCarTargetPosition()
+{
+	if (!m_pCurrentVehicle) return;
+
+	RwMatrix matEnt = m_pCurrentVehicle->m_pVehicle->GetMatrix().ToRwMatrix();
+
+	if (m_pCurrentVehicle->m_pVehicle->IsAdded())
+	{
+		m_vecPositionInaccuracy.x = FloatOffset(m_vecInCarTargetPos.x, matEnt.pos.x);
+		m_vecPositionInaccuracy.y = FloatOffset(m_vecInCarTargetPos.y, matEnt.pos.y);
+		m_vecPositionInaccuracy.z = FloatOffset(m_vecInCarTargetPos.z, matEnt.pos.z);
+
+		if (m_vecPositionInaccuracy.x > 0.05f ||
+			m_vecPositionInaccuracy.y > 0.05f ||
+			m_vecPositionInaccuracy.z > 0.05f)
+		{
+			float fTestZInaccuracy = 0.5f;
+			if (m_pCurrentVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_BOAT ||
+				m_pCurrentVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_PLANE ||
+				m_pCurrentVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_HELI)
+			{
+				fTestZInaccuracy = 2.0f;
+			}
+
+			if (m_vecPositionInaccuracy.x > 8.0f ||
+				m_vecPositionInaccuracy.y > 8.0f ||
+				m_vecPositionInaccuracy.z > fTestZInaccuracy)
+			{
+				matEnt.pos.x = m_vecInCarTargetPos.x;
+				matEnt.pos.y = m_vecInCarTargetPos.y;
+				matEnt.pos.z = m_vecInCarTargetPos.z;
+				m_pCurrentVehicle->m_pVehicle->SetMatrix((CMatrix&)matEnt);
+				m_pCurrentVehicle->m_pVehicle->SetVelocity(m_vecInCarTargetSpeed);
+			}
+			else
+			{
+				CVector vecMoveSpeed = m_pCurrentVehicle->m_pVehicle->GetMoveSpeed();
+
+				if (vecMoveSpeed.x > 0.05f) {
+					vecMoveSpeed.x += (m_vecInCarTargetPos.x - matEnt.pos.x) * 0.05f;
+				}
+
+				if (vecMoveSpeed.y > 0.05f) {
+					vecMoveSpeed.y += (m_vecInCarTargetPos.y - matEnt.pos.y) * 0.05f;
+				}
+
+				if (vecMoveSpeed.z > 0.05f) {
+					vecMoveSpeed.z += (m_vecInCarTargetPos.z - matEnt.pos.z) * 0.05f;
+				}
+
+				m_pCurrentVehicle->m_pVehicle->SetVelocity(vecMoveSpeed);
+			}
+		}
+	}
+	else
+	{
+		matEnt.pos.x = m_vecInCarTargetPos.x;
+		matEnt.pos.y = m_vecInCarTargetPos.y;
+		matEnt.pos.z = m_vecInCarTargetPos.z;
+		m_pCurrentVehicle->m_pVehicle->SetMatrix((CMatrix&)matEnt);
+	}
+}
+
+void CRemotePlayer::UpdateVehicleRotation()
+{
+	CQuaternion quat, qresult;
+	RwMatrix matEnt;
+	CVector vec = { 0.0f, 0.0f, 0.0f };
+
+
+	if (!m_pCurrentVehicle) return;
+
+	vec = m_pCurrentVehicle->m_pVehicle->GetTurnSpeed();
+	if (vec.x <= 0.02f)
+	{
+		if (vec.x < -0.02f) vec.x = -0.02f;
+	}
+	else vec.x = 0.02f;
+
+	if (vec.y <= 0.02f)
+	{
+		if (vec.y < -0.02f) vec.y = -0.02f;
+	}
+	else vec.y = 0.02f;
+
+	if (vec.z <= 0.02f)
+	{
+		if (vec.z < -0.02f) vec.z = -0.02f;
+	}
+	else vec.z = 0.02f;
+
+	m_pCurrentVehicle->m_pVehicle->SetTurnSpeed(vec);
+
+	matEnt = m_pCurrentVehicle->m_pVehicle->GetMatrix().ToRwMatrix();
+	quat.SetFromMatrix(&matEnt);
+	qresult.Slerp(&m_quat, &quat, 0.75f);
+	qresult.Normalize();
+	qresult.GetMatrix(&matEnt);
+	m_pCurrentVehicle->m_pVehicle->SetMatrix((CMatrix&)matEnt);
+}
+
+void CRemotePlayer::PutInCurrentVehicle()
+{
+	FLog("PutInCurrentVehicle");
+
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+
+	if (m_pPlayerPed && !m_pPlayerPed->IsInVehicle())
+	{
+		CVehicle* pVehicle = pVehiclePool->GetAt(m_VehicleID);
+
+		if (pVehicle)
+		{
+			uint8_t byteCurWeapon;
+			if (m_byteSeatID != 0) {
+				byteCurWeapon = m_PassengerData.byteCurrentWeapon;
+			}
+			else {
+				byteCurWeapon = m_InCarData.byteCurrentWeapon;
+			}
+
+			byteCurWeapon = byteCurWeapon & 0x3F;
+			if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
+			{
+				m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
+				if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
+				{
+					m_pPlayerPed->GiveWeapon(byteCurWeapon, 9999);
+					m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
+				}
+			}
+
+			uint32_t dwGTAId = pVehiclePool->FindGtaIDFromID(m_VehicleID);
+			m_pPlayerPed->PutDirectlyInVehicle(dwGTAId, m_byteSeatID);
+		}
+	}
+}
+
+float CRemotePlayer::GetDistanceFromLocalPlayer()
+{
+	if (!m_pPlayerPed) return 10000.0f;
+
+	if (GetState() == PLAYER_STATE_DRIVER && m_pCurrentVehicle && m_pPlayerPed->IsInVehicle()) {
+		return m_pCurrentVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed();
+	}
+	else {
+		return m_pPlayerPed->m_pPed->GetDistanceFromLocalPlayerPed();
+	}
+}
+
+void CRemotePlayer::EnterVehicle(VEHICLEID VehicleID, bool bPassenger)
+{
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+	CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
+
+	if (m_pPlayerPed && pVehicle)
+	{
+		if (!m_pPlayerPed->IsInVehicle())
+		{
+			uint32_t dwGTAId = pVehiclePool->FindGtaIDFromID(VehicleID);
+			if (dwGTAId && dwGTAId != INVALID_VEHICLE_ID) {
+				m_pPlayerPed->SetKeys(0, 0, 0);
+				m_pPlayerPed->EnterVehicle(dwGTAId, bPassenger);
+			}
+		}
+	}
+}
+
+void CRemotePlayer::ExitVehicle()
+{
+	if (m_pPlayerPed && m_pPlayerPed->IsInVehicle())
+	{
+		m_pPlayerPed->SetKeys(0, 0, 0);
+		m_pPlayerPed->ExitCurrentVehicle();
+	}
+}
+
+
+void CRemotePlayer::ShowGlobalMarker(short sPosX, short sPosY, short sPosZ)
+{
+	m_bGlobalMarkerShown = true;
+
+	if (m_dwMarker)
+	{
+		pGame->DisableMarker(m_dwMarker);
+		m_dwMarker = 0;
+	}
+
+	if (m_pPlayerPed)
+	{
+		uint32_t dwMarker = pGame->CreateRadarMarkerIcon(0, sPosX, sPosY, sPosZ, m_PlayerID, 0);
+		m_vecGlobalMarkerPos.x = sPosX;
+		m_vecGlobalMarkerPos.y = sPosY;
+		m_vecGlobalMarkerPos.z = sPosZ;
+		m_dwMarker = dwMarker;
+	}
+}
+
+void CRemotePlayer::HideGlobalMarker()
+{
+	if (m_dwMarker)
+	{
+		pGame->DisableMarker(m_dwMarker);
+		m_dwMarker = 0;
+	}
+
+	m_bGlobalMarkerShown = false;
+}
+
+
+void CRemotePlayer::StateChange(uint8_t byteNewState, uint8_t byteOldState)
+{
+	if (byteNewState == PLAYER_STATE_DRIVER && byteOldState == PLAYER_STATE_ONFOOT)
+	{
+		CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
+
+		if (pPlayerPed)
+		{
+			if (pPlayerPed->IsInVehicle() && !pPlayerPed->IsAPassenger())
+			{
+				CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+                CVehicleGTA* pGtaVehicle = pPlayerPed->GetGtaVehicle();
+
+				if (pVehiclePool->FindIDFromGtaPtr(pGtaVehicle) == m_VehicleID)
+				{
+					RwMatrix mat = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+					pPlayerPed->RemoveFromVehicleAndPutAt(mat.pos.x, mat.pos.y, mat.pos.z + 1.0f);
+					pGame->DisplayGameText("~r~Car Jacked~w~!", 1000, 5);
+				}
+			}
+		}
+	}
+}
+
+/*
+bool CRemotePlayer::IsVoiceActive()
+{
+	return pVoice->IsPlayerVoiceActive(m_PlayerID);
+} 	
+*/
+
+void CRemotePlayer::ProcessSurfing()
+{
+	if(!m_pPlayerPed || GetState() != PLAYER_STATE_ONFOOT || m_LastSendOnFootSync.wSurfInfo == INVALID_VEHICLE_ID)
+		return;
+
+	CVehicle *pVehicleSurfing = 0;
+	CObject* pObjectSurfing = 0;
+	
+	if(SurfingOnVehicle())
+	{
+		CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+		if(pVehiclePool)
+		{
+			CVehicle *pVehicle = pVehiclePool->GetAt(m_LastSendOnFootSync.wSurfInfo);
+			if(pVehicle) 
+				pVehicleSurfing = pVehicle;
+		}
+	}
+	else if(SurfingOnObject())
+	{
+		m_LastSendOnFootSync.wSurfInfo -= MAX_VEHICLES; // derive proper object id
+		CObjectPool *pObjectPool = pNetGame->GetObjectPool();
+		if(pObjectPool)
+		{
+			CObject *pObject = pObjectPool->GetAt((uint16_t)m_LastSendOnFootSync.wSurfInfo);
+			if(pObject)
+				pObjectSurfing = pObject;
+		}
+	}
+
+	if(pVehicleSurfing )
+	{
+		RwMatrix matEntity, matPlayer;
+		CVector vecMoveSpeed, vecTurnSpeed;
+
+        matEntity = pVehicleSurfing->m_pVehicle->GetMatrix().ToRwMatrix();
+
+		/* unused ? */
+		vecMoveSpeed = m_pCurrentVehicle->m_pVehicle->GetMoveSpeed();
+		vecTurnSpeed = m_pCurrentVehicle->m_pVehicle->GetTurnSpeed();
+		/* unused ? */
+
+        matPlayer = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+
+		ProjectMatrix((CVector*)&matPlayer.pos, (CMatrix*)&matEntity, (CVector*)&m_LastSendOnFootSync.vecSurfOffsets);
+
+		/*matPlayer.pos.x = matEntity.pos.x + m_LastSendOnFootSync.vecSurfOffsets.x;
+		matPlayer.pos.y = matEntity.pos.y + m_LastSendOnFootSync.vecSurfOffsets.y;
+		matPlayer.pos.z = matEntity.pos.z + m_LastSendOnFootSync.vecSurfOffsets.z;*/
+
+		m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+		//m_pPlayerPed->SetVelocity(vecMoveSpeed);
+		//m_pPlayerPed->SetTurnSpeedVector(vecTurnSpeed);
+	}
+	else if(pObjectSurfing)
+	{
+		RwMatrix matEntity, matPlayer;
+		CVector vecMoveSpeed, vecTurnSpeed;
+
+        matEntity = pObjectSurfing->m_pEntity->GetMatrix().ToRwMatrix();
+
+		/* unused ? */
+		vecMoveSpeed = m_pCurrentVehicle->m_pVehicle->GetMoveSpeed();
+		vecTurnSpeed = m_pCurrentVehicle->m_pVehicle->GetTurnSpeed();
+		/* unused ? */
+
+		matPlayer = m_pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
+
+		ProjectMatrix((CVector*)&matPlayer.pos, (CMatrix*)&matEntity, (CVector*)&m_LastSendOnFootSync.vecSurfOffsets);
+
+		/*matPlayer.pos.x = matEntity.pos.x + m_LastSendOnFootSync.vecSurfOffsets.x;
+		matPlayer.pos.y = matEntity.pos.y + m_LastSendOnFootSync.vecSurfOffsets.y;
+		matPlayer.pos.z = matEntity.pos.z + m_LastSendOnFootSync.vecSurfOffsets.z;*/
+
+		m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+		//m_pPlayerPed->SetVelocity(vecMoveSpeed);
+		//m_pPlayerPed->SetTurnSpeedVector(vecTurnSpeed);
+	}
+}
+
+void CRemotePlayer::StoreTrailerFullSyncData(TRAILER_SYNC_DATA *trSync)
+{
+	CVector 	m_vecPosOffset;
+
+	VEHICLEID trailerId = m_InCarData.TrailerID;
+	if(trailerId < 0 || trailerId >= MAX_VEHICLES) 
+		return;
+
+	CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+	if(pVehiclePool) 
+	{
+		CVehicle *pTrailer = pVehiclePool->GetAt(trailerId);
+		if(pTrailer && (pTrailer->IsATrailer() || pTrailer->IsATowTruck()))
+		{
+			if(m_pCurrentVehicle->GetTrailer() != pTrailer)
+			{
+				m_pCurrentVehicle->SetTrailer(pTrailer);
+				m_pCurrentVehicle->AttachTrailer();
+			}
+
+			RwMatrix matTrailer = pTrailer->m_pVehicle->GetMatrix().ToRwMatrix();
+			trSync->quat.GetMatrix(&matTrailer);
+
+			m_vecPosOffset.x = FloatOffset(trSync->vecPos.x, matTrailer.pos.x);
+			m_vecPosOffset.y = FloatOffset(trSync->vecPos.y, matTrailer.pos.y);
+			m_vecPosOffset.z = FloatOffset(trSync->vecPos.z, matTrailer.pos.z);
+
+			if(m_vecPosOffset.x > 0.5f || m_vecPosOffset.y > 0.5f || m_vecPosOffset.z > 0.5f)
+			{
+				if(m_vecPosOffset.x > 6.0f || m_vecPosOffset.y > 6.0f || m_vecPosOffset.z > 3.0f)
+				{
+					matTrailer.pos.x = trSync->vecPos.x;
+					matTrailer.pos.y = trSync->vecPos.y;
+					matTrailer.pos.z = trSync->vecPos.z;
+
+					pTrailer->m_pVehicle->SetMatrix((CMatrix&)matTrailer);
+					pTrailer->m_pVehicle->SetVelocity(trSync->vecMoveSpeed);
+					pTrailer->m_pVehicle->SetTurnSpeed(trSync->vecTurnSpeed);
+				}
+				else
+				{
+					pTrailer->m_pVehicle->SetMatrix((CMatrix&)matTrailer);
+					pTrailer->m_pVehicle->SetTurnSpeed(trSync->vecTurnSpeed);
+
+					CVector vecMoveSpeed = pTrailer->m_pVehicle->GetMoveSpeed();
+
+					if(m_vecPosOffset.x > 0.050000001f)
+						vecMoveSpeed.x += (trSync->vecPos.x - matTrailer.pos.x) * 0.025f;
+					if(m_vecPosOffset.y > 0.050000001f)
+						vecMoveSpeed.y += (trSync->vecPos.y - matTrailer.pos.y) * 0.025f;
+					if(m_vecPosOffset.z > 0.050000001f)
+						vecMoveSpeed.z += (trSync->vecPos.z - matTrailer.pos.z) * 0.025f;
+
+					pTrailer->m_pVehicle->SetVelocity(vecMoveSpeed);
+				}
+			}
+		}
+	}
+}
+
+static void CompressNormalVector(CVector *vecOut, CVector vecIn)
+{
+    vecOut->x = (short)(vecIn.x * 10000.0f);
+    vecOut->y = (short)(vecIn.y * 10000.0f);
+    vecOut->z = (short)(vecIn.z * 10000.0f);
+}
+
+static void DecompressNormalVector(RwV3d *vecOut, CVector vecIn)
+{
+    vecOut->x = (float)(vecIn.x / 10000.0f);
+    vecOut->y = (float)(vecIn.y / 10000.0f);
+    vecOut->z = (float)(vecIn.z / 10000.0f);
+}
+
+void CRemotePlayer::StoreUnoccupiedSyncData(UNOCCUPIED_SYNC_DATA *unocSync)
+{
+    VEHICLEID UnocID = unocSync->vehicleId;
+    if (!UnocID || UnocID == INVALID_VEHICLE_ID) return;
+
+    CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+    CVehicle *pVehicle = NULL;
+    if (pVehiclePool) {
+        pVehicle = pVehiclePool->GetAt(UnocID);
+        // pVehiclePool->SetLastUndrivenID(UnocID, m_PlayerID); // ถ้ามีฟังก์ชันนี้ให้เปิดใช้
+    }
+
+    if(pVehicle && !pVehicle->HasADriver() && !pVehicle->GetTractor())
+    {
+        // เตรียม Matrix เป้าหมาย
+        RwMatrix matTarget = pVehicle->m_pVehicle->GetMatrix().ToRwMatrix();
+        
+        // Decompress ทิศทาง (Rotation)
+        DecompressNormalVector(&matTarget.up, unocSync->vecDirection);
+        DecompressNormalVector(&matTarget.right, unocSync->vecRoll);
+        
+        // ตำแหน่งเป้าหมาย vs ปัจจุบัน
+        CVector vecCurrentPos = pVehicle->m_pVehicle->GetPosition();
+        float fOffX = unocSync->vecPos.x - vecCurrentPos.x;
+        float fOffY = unocSync->vecPos.y - vecCurrentPos.y;
+        float fOffZ = unocSync->vecPos.z - vecCurrentPos.z;
+
+        // 1. Deadzone Check: ถ้าระยะห่างน้อยมากๆ (< 0.1) ไม่ต้องทำอะไร (กันสั่น)
+        if(fabs(fOffX) < 0.1f && fabs(fOffY) < 0.1f && fabs(fOffZ) < 0.1f) 
+        {
+            pVehicle->m_pVehicle->SetTurnSpeed(unocSync->vecTurnSpeed);
+            return;
+        }
+
+        // 2. Teleport Check: ถ้าห่างเกิน 8 เมตร ให้วาร์ปเลย (กันบัค/ตกแมพ)
+        if(!pVehicle->m_pVehicle->IsAdded() || 
+           fabs(fOffX) > 8.0f || fabs(fOffY) > 8.0f || fabs(fOffZ) > 8.0f)
+        {
+            matTarget.pos.x = unocSync->vecPos.x;
+            matTarget.pos.y = unocSync->vecPos.y;
+            matTarget.pos.z = unocSync->vecPos.z;
+
+            pVehicle->m_pVehicle->SetMatrix((CMatrix&)matTarget);
+            pVehicle->m_pVehicle->SetVelocity(unocSync->vecMoveSpeed);
+            pVehicle->m_pVehicle->SetTurnSpeed(unocSync->vecTurnSpeed);
+        }
+        else 
+        {
+            // 3. Hybrid Smoothing: ใช้ความเร็ว "ดึง" รถไปหาเป้าหมาย แทนการวาร์ป
+            
+            // ตั้งค่าหัวรถให้หันถูกทางทันที (Rotation) แต่คงตำแหน่งเดิมไว้ก่อน
+            matTarget.pos.x = vecCurrentPos.x;
+            matTarget.pos.y = vecCurrentPos.y;
+            matTarget.pos.z = vecCurrentPos.z;
+            pVehicle->m_pVehicle->SetMatrix((CMatrix&)matTarget); 
+
+            // คำนวณแรงส่ง (Velocity Correction)
+            // สูตร: ความเร็วจาก Packet + (ระยะห่าง * 0.05)
+            CVector vecNewSpeed = unocSync->vecMoveSpeed;
+            float fAlpha = 0.05f; 
+
+            if(fabs(fOffX) > 0.05f) vecNewSpeed.x += fOffX * fAlpha;
+            if(fabs(fOffY) > 0.05f) vecNewSpeed.y += fOffY * fAlpha;
+            if(fabs(fOffZ) > 0.05f) vecNewSpeed.z += fOffZ * fAlpha;
+
+            pVehicle->m_pVehicle->SetVelocity(vecNewSpeed);
+            pVehicle->m_pVehicle->SetTurnSpeed(unocSync->vecTurnSpeed);
+        }
+    }
+}
+
+void CRemotePlayer::ProcessSpecialActions(uint8_t byteSpecialAction)
+{
+	if(!m_pPlayerPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+
+	if(GetState() != PLAYER_STATE_ONFOOT) 
+	{
+		byteSpecialAction = SPECIAL_ACTION_NONE;
+		m_LastSendOnFootSync.byteSpecialAction = SPECIAL_ACTION_NONE;
+	}
+
+	// duck:start
+	if(byteSpecialAction == SPECIAL_ACTION_DUCK && !m_pPlayerPed->IsCrouching())
+	{
+		if (!m_pPlayerPed->IsCrouching()) {
+			m_pPlayerPed->ApplyCrouch();
+		}
+		return;
+	}
+
+	// duck:stop
+	if(byteSpecialAction != SPECIAL_ACTION_DUCK && m_pPlayerPed->IsCrouching()) 
+	{
+		if (m_pPlayerPed->IsCrouching())
+		{
+			m_pPlayerPed->ResetCrouch();
+		}
+		return;
+	}
+
+	// cellphone:start
+	if(byteSpecialAction == SPECIAL_ACTION_USECELLPHONE && !m_pPlayerPed->IsCellphoneEnabled()) 
+	{
+		m_pPlayerPed->ToggleCellphone(1);
+		return;
+	}
+
+	// cellphone:stop
+	if(byteSpecialAction != SPECIAL_ACTION_USECELLPHONE && m_pPlayerPed->IsCellphoneEnabled()) 
+	{
+		m_pPlayerPed->ToggleCellphone(0);
+		return;
+	}
+
+	// jetpack:start
+	if(byteSpecialAction == SPECIAL_ACTION_USEJETPACK && !m_pPlayerPed->IsInJetpackMode()) 
+	{
+		m_pPlayerPed->StartJetpack();
+		return;
+	}
+
+	// jetpack:stop
+	if(byteSpecialAction != SPECIAL_ACTION_USEJETPACK && m_pPlayerPed->IsInJetpackMode()) 
+	{
+		m_pPlayerPed->StopJetpack();
+		return;
+	}
+
+	if(byteSpecialAction == SPECIAL_ACTION_CARRY && !m_pPlayerPed->IsCarry())
+	{
+		m_pPlayerPed->m_iCarryState = 1;
+		m_pPlayerPed->ApplyAnimation("CRRY_PRTIAL", "CARRY", 4.1, 0, 0, 0, 1, 1);
+		return;
+	}
+
+	if(byteSpecialAction != SPECIAL_ACTION_CARRY && m_pPlayerPed->IsCarry())
+	{
+		m_pPlayerPed->ApplyAnimation("crry_prtial", "CARRY", 4.00, false, false, false, false, 1);
+		m_pPlayerPed->m_iCarryState = 0;
+		return;
+	}
+
+	if(byteSpecialAction == SPECIAL_ACTION_CUFFED && !m_pPlayerPed->IsCuffed())
+	{
+		m_pPlayerPed->m_iCuffedState = 1;
+		return;
+	}
+
+	if(byteSpecialAction != SPECIAL_ACTION_CUFFED && m_pPlayerPed->IsCuffed())
+	{
+		m_pPlayerPed->m_iCuffedState = 0;
+		return;
+	}
+
+	// handsup:start
+	if(byteSpecialAction == SPECIAL_ACTION_HANDSUP && !m_pPlayerPed->HasHandsUp())
+		m_pPlayerPed->HandsUp();
+
+	// handsup:stop
+	if(byteSpecialAction != SPECIAL_ACTION_HANDSUP && m_pPlayerPed->HasHandsUp())
+		m_pPlayerPed->TogglePlayerControllable(true);
+
+	// urinating:start
+	if(byteSpecialAction == SPECIAL_ACTION_PISSING && !m_pPlayerPed->IsPissing())
+		m_pPlayerPed->StartPissing();
+
+	// urinating:start
+	if(byteSpecialAction != SPECIAL_ACTION_PISSING && m_pPlayerPed->IsPissing())
+		m_pPlayerPed->StopPissing();
+
+	// dancing:start
+	if(!m_pPlayerPed->GetDanceStyle() == -1)
+	{
+		if(byteSpecialAction == SPECIAL_ACTION_DANCE1)
+			m_pPlayerPed->StartDancing(0);
+		if(byteSpecialAction == SPECIAL_ACTION_DANCE2)
+			m_pPlayerPed->StartDancing(1);
+		if(byteSpecialAction == SPECIAL_ACTION_DANCE3)
+			m_pPlayerPed->StartDancing(2);
+		if(byteSpecialAction == SPECIAL_ACTION_DANCE4)
+			m_pPlayerPed->StartDancing(3);
+	}
+
+	// dancing:stop
+	if(m_pPlayerPed->GetDanceStyle() != -1)
+	{
+		if(byteSpecialAction != SPECIAL_ACTION_DANCE1 && 
+			byteSpecialAction != SPECIAL_ACTION_DANCE2 && 
+			byteSpecialAction != SPECIAL_ACTION_DANCE3 && 
+			byteSpecialAction != SPECIAL_ACTION_DANCE4)
+		{
+			m_pPlayerPed->StopDancing();
+		}
+	}
+
+	// stuff:start
+	if(m_pPlayerPed->GetStuff() == eStuffType::STUFF_TYPE_NONE)
+	{
+		if(byteSpecialAction == SPECIAL_ACTION_DRINK_BEER)
+			m_pPlayerPed->GiveStuff(eStuffType::STUFF_TYPE_BEER);
+		
+		if(byteSpecialAction == SPECIAL_ACTION_SMOKE_CIGGY)
+			m_pPlayerPed->GiveStuff(eStuffType::STUFF_TYPE_CIGGI);
+		
+		if(byteSpecialAction == SPECIAL_ACTION_DRINK_WINE)
+			m_pPlayerPed->GiveStuff(eStuffType::STUFF_TYPE_DYN_BEER);
+		
+		if(byteSpecialAction == SPECIAL_ACTION_DRINK_SPRUNK)
+			m_pPlayerPed->GiveStuff(eStuffType::STUFF_TYPE_PINT_GLASS);
+	}
+
+	// stuff:process and stop
+	if(m_pPlayerPed->GetStuff() != eStuffType::STUFF_TYPE_NONE) 
+	{
+		if(byteSpecialAction != SPECIAL_ACTION_DRINK_BEER ||
+			byteSpecialAction != SPECIAL_ACTION_SMOKE_CIGGY ||
+			byteSpecialAction != SPECIAL_ACTION_DRINK_WINE ||
+			byteSpecialAction != SPECIAL_ACTION_DRINK_SPRUNK)
+		{
+			m_pPlayerPed->DropStuff();
+		}
+	}
+
+	// parachutes:we don't have any network indicators for this yet
+	//m_pPlayerPed->ProcessParachutes();
+}
+
+void CRemotePlayer::ProcessAnimation()
+{
+	if(m_pPlayerPed)
+  	{
+		ANIMATION_DATA animationData;
+		animationData.iValue = m_LastSendOnFootSync.dwAnimation;
+		int flag = m_LastSendOnFootSync.dwAnimation >> 31;
+		if(!flag) {
+			if(animationData.sId < 0)
+			{
+				if(m_bWasAnimSettedFlag)
+				{
+					m_dwPlayingAnimIndex = 0;
+					m_pPlayerPed->PlayAnimationFromIndex(0, animationData.cFrameDelta);
+					m_bWasAnimSettedFlag = false;
+				}
+			}
+			else
+			{
+				if(m_dwPlayingAnimIndex != animationData.sId)
+				{
+					m_dwPlayingAnimIndex = animationData.sId;
+					m_pPlayerPed->PlayAnimationFromIndex(animationData.sId, animationData.cFrameDelta);
+				}
+
+				if(m_dwPlayingAnimIndex)
+				{
+					if(!m_pPlayerPed->IsPlayingAnimation(m_dwPlayingAnimIndex))
+						m_pPlayerPed->PlayAnimationFromIndex(animationData.sId, animationData.cFrameDelta);
+				}
+
+				m_bWasAnimSettedFlag = true;
+			}
+		}
+		if (flag && m_bWasAnimSettedFlag)
+		{
+			m_dwPlayingAnimIndex = 0;
+			// we have to reset anim
+			m_pPlayerPed->PlayAnimationFromIndex(0, 4.0f);
+			m_bWasAnimSettedFlag = false;
+		}
+	}
+}
+
+void CRemotePlayer::HandleVehicleEntryExit()
+{
+	if(!m_pPlayerPed) return;
+
+	CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+	if(pVehiclePool)
+	{
+		if(!m_pPlayerPed->IsInVehicle())
+		{
+			// if they're onfoot, put them in the vehicle.
+			CVehicle *pVehicle = pVehiclePool->GetAt(m_VehicleID);
+			if(pVehicle)
+			{
+				int iCarID = pVehiclePool->FindGtaIDFromID(m_VehicleID);
+				m_pPlayerPed->PutDirectlyInVehicle(iCarID, m_byteSeatID);
+			}
+		}
+	}
+}

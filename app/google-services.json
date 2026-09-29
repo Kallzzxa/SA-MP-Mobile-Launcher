@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "714690716890",
+    "project_id": "gokyo-d27cd",
+    "storage_bucket": "gokyo-d27cd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:714690716890:android:e8f9d6b1f9c434cfb3b1e3",
+        "android_client_info": {
+          "package_name": "com.rstarx.hexrays"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyClHf6D3kSLjxQ4WO_XHeELKICjZ6AitDw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

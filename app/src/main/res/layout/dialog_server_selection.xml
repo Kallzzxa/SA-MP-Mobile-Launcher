@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_round"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="24dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        android:id="@+id/dialogTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_bold"
+        android:letterSpacing="0.02"
+        android:text="SERVER YANG TERSEDIA"
+        android:textColor="#FF3355"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageView
+        android:id="@+id/btn_add_server"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:padding="4dp"
+        android:src="@drawable/ic_add"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Add Server"
+        app:layout_constraintTop_toTopOf="@id/dialogTitle"
+        app:layout_constraintBottom_toBottomOf="@id/dialogTitle"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <View
+        android:id="@+id/dialogDivider"
+        android:layout_width="80dp"
+        android:layout_height="3dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/divider_gradient"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/dialogTitle" />
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/serverListCard"
+        android:layout_width="0dp"
+        android:layout_height="220dp"
+        android:layout_marginTop="18dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="#1A1A1A"
+        app:layout_constraintTop_toBottomOf="@id/dialogDivider"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_servers"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingVertical="4dp"
+            android:scrollbars="vertical" />
+
+    </androidx.cardview.widget.CardView>
+
+    <Button
+        android:id="@+id/btn_close_dialog"
+        android:layout_width="0dp"
+        android:layout_height="46dp"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/bg_button_close"
+        android:fontFamily="@font/montserrat_bold"
+        android:letterSpacing="0.05"
+        android:stateListAnimator="@null"
+        android:text="SELECT"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/serverListCard" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
