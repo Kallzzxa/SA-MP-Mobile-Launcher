@@ -1,0 +1,4 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+*.so filter=lfs diff=lfs merge=lfs -text
+*.so.id0 filter=lfs diff=lfs merge=lfs -text
