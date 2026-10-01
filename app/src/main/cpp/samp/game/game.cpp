@@ -118,19 +118,18 @@ void CGame::ToggleThePassingOfTime(bool bOnOff)
 
 void CGame::EnableClock(bool bEnable)
 {
-	/*char byteClockData[] = { '%', '0', '2', 'd', ':', '%', '0', '2', 'd', 0 };
-	CHook::UnFuck(g_libGTASA + 0x2BD618);
+    static constexpr char clockFormat[] = "%02d:%02d";
+    uintptr_t clockAddress = g_libGTASA + (VER_x32 ? 0x2BD618 : 0x73E1DA);
+    CHook::UnFuck(clockAddress);
 
-	if (bEnable)
-	{
-		ToggleThePassingOfTime(true);
-		memcpy((void*)(g_libGTASA + 0x2BD618), byteClockData, 10);
-	}
-	else
-	{
-		ToggleThePassingOfTime(false);
-		memset((void*)(g_libGTASA + 0x2BD618), 0, 10);
-	}*/
+    if (bEnable)
+    {
+        memcpy(reinterpret_cast<void*>(clockAddress), clockFormat, sizeof(clockFormat));
+    }
+    else
+    {
+        memset(reinterpret_cast<void*>(clockAddress), 0, sizeof(clockFormat));
+    }
 }
 
 void CGame::EnableZoneNames(bool bEnable)
