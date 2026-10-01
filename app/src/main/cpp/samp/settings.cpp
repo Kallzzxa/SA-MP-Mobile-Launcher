@@ -91,6 +91,12 @@ CSettings::CSettings()
 	m_Settings.fVoiceChatSize = reader.GetReal("gui", "VoiceChatSize", 30.0f);
 	m_Settings.fVoiceChatPosX = reader.GetReal("gui", "VoiceChatPosX", 1520.0f);
 	m_Settings.fVoiceChatPosY = reader.GetReal("gui", "VoiceChatPosY", 480.0f);
+	m_Settings.fDefenseButtonPosX = reader.GetReal("gui", "DefenseButtonPosX", -1.0f);
+	m_Settings.fDefenseButtonPosY = reader.GetReal("gui", "DefenseButtonPosY", -1.0f);
+	m_Settings.fDefenseButtonScale = reader.GetReal("gui", "DefenseButtonScale", 1.0f);
+	m_Settings.fDefenseButtonPosX = reader.GetReal("gui", "DefenseButtonPosX", -1.0f);
+	m_Settings.fDefenseButtonPosY = reader.GetReal("gui", "DefenseButtonPosY", -1.0f);
+	m_Settings.fDefenseButtonScale = reader.GetReal("gui", "DefenseButtonScale", 1.0f);
 
 	m_Settings.iAndroidKeyboard = reader.GetBoolean("gui", "androidkeyboard", false);
 	m_Settings.iFirstPerson = reader.GetBoolean("gui", "firstperson", true);
@@ -104,4 +110,24 @@ CSettings::CSettings()
 	m_Settings.iSkyBox = reader.GetBoolean("gui", "skybox", false);
 	m_Settings.iSnow = reader.GetBoolean("gui", "snow", false);
 	FLog("Settings loaded.");
+}
+
+void CSettings::SaveDefenseButtonSettings()
+{
+	char path[0x7F];
+	snprintf(path, sizeof(path), "%sSAMP/settings.ini", g_pszStorage);
+
+	CSimpleIniA ini;
+	ini.SetUnicode(false);
+	if (ini.LoadFile(path) < 0)
+		return;
+
+	char value[32];
+	snprintf(value, sizeof(value), "%.6f", m_Settings.fDefenseButtonPosX);
+	ini.SetValue("gui", "DefenseButtonPosX", value);
+	snprintf(value, sizeof(value), "%.6f", m_Settings.fDefenseButtonPosY);
+	ini.SetValue("gui", "DefenseButtonPosY", value);
+	snprintf(value, sizeof(value), "%.3f", m_Settings.fDefenseButtonScale);
+	ini.SetValue("gui", "DefenseButtonScale", value);
+	ini.SaveFile(path);
 }

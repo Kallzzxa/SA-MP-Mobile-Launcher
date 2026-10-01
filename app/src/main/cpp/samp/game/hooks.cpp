@@ -377,6 +377,8 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
 	if (pUI != nullptr)
 	{
+        pUI->HandleDefenseTouchEvent(type, num, posX, posY);
+
 		switch (type)
 		{
 			case 2: // push
@@ -732,10 +734,10 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 		{
 			PLAYERID ActorID = FindActorIDFromGtaPtr(pPed);
 			if (ActorID != INVALID_PLAYER_ID) {
-				pLocalPlayer->SendGiveDamageEvent(ActorID,
-												  calculator->m_fDamageFactor,
-												  calculator->m_weaponType,
-												  calculator->m_pedPieceType);
+                pLocalPlayer->SendGiveDamageActorEvent(ActorID,
+                                                     calculator->m_fDamageFactor,
+                                                     calculator->m_weaponType,
+                                                     calculator->m_pedPieceType);
 				return true;
 			}
 		}

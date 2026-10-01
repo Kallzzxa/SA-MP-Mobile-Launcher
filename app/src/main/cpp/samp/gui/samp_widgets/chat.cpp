@@ -104,7 +104,11 @@ void Chat::keyboardEvent(const std::string& input)
 {
 	if (input.length() > 0 && pNetGame)
 	{
-		if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
+		if (input == "/editdefbutton")
+		{
+			if (pUI) pUI->ToggleDefenseButtonEditor();
+		}
+		else if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
 		else pNetGame->SendChatMessage(input.c_str());
 	}
 }

@@ -21,6 +21,7 @@ CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 
     ForceTargetRotation(fAngle);
     m_pPed->SetPosn(fX, fY, fZ);
+    ScriptCommand(&lock_actor, m_dwGTAId, 1);
 
     ScriptCommand(&set_actor_can_be_decapitated, m_dwGTAId, 0);
 }

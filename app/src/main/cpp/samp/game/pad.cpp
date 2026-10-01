@@ -230,7 +230,7 @@ uint32_t CPad__GetBlock_hook(uintptr_t thiz)
 	}
 	else
 	{
-		return CPad__GetBlock(thiz);
+		return LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] || CPad__GetBlock(thiz);
 	}
 }
 

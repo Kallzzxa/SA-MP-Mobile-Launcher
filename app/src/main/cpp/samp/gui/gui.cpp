@@ -1,5 +1,6 @@
 #include "../main.h"
 #include "../game/game.h"
+#include "../settings.h"
 #include "../net/netgame.h"
 #include "gui.h"
 #include "../playertags.h"
@@ -15,10 +16,57 @@
 #include "game/Textures/TextureDatabaseRuntime.h"
 #include "game/Streaming.h"
 #include "game/Pools.h"
+#include "game/Widgets/TouchInterface.h"
+#include "game/Widgets/WidgetButton.h"
+#include "game/pad.h"
+#include <algorithm>
 
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
+extern CGame* pGame;
 extern UI* pUI;
+extern CSettings* pSettings;
+
+class DefenseButton final : public Widget
+{
+public:
+	void setNativeSource(CWidgetGta* source)
+	{
+		if (!source) return;
+		auto* button = reinterpret_cast<CWidgetButton*>(source);
+		m_fill = button->m_SpriteFill.m_pTexture ? button->m_SpriteFill.m_pTexture->raster : nullptr;
+		m_icon = button->m_Sprite.m_pTexture ? button->m_Sprite.m_pTexture->raster : nullptr;
+	}
+
+	void draw(ImGuiRenderer* renderer) override
+	{
+		const ImVec2 topLeft = absolutePosition();
+		const ImVec2 bottomRight = topLeft + size();
+		renderer->drawRect(topLeft, bottomRight,
+			focused() ? ImColor(120, 180, 230, 210) : ImColor(24, 28, 32, 175), true);
+		if (m_fill)
+			renderer->drawImage(topLeft, bottomRight, (ImTextureID)m_fill);
+
+		if (m_icon)
+		{
+			const float iconWidth = size().x * 0.62f;
+			const float iconHeight = size().y * 0.62f;
+			const ImVec2 iconMin(topLeft.x + (size().x - iconWidth) * 0.5f,
+				topLeft.y + size().y * 0.06f);
+			renderer->drawImage(iconMin, iconMin + ImVec2(iconWidth, iconHeight), (ImTextureID)m_icon);
+		}
+
+		const float fontSize = std::min(size().y * 0.22f, UISettings::fontSize() / 3.5f);
+		const ImVec2 textSize = renderer->calculateTextSize("DEF", fontSize);
+		renderer->drawText(ImVec2(topLeft.x + (size().x - textSize.x) * 0.5f,
+			topLeft.y + size().y * 0.73f), ImColor(255, 255, 255), "DEF", true, fontSize);
+		Widget::draw(renderer);
+	}
+
+private:
+	RwRaster* m_fill = nullptr;
+	RwRaster* m_icon = nullptr;
+};
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
     : Widget(), ImGuiWrapper(display_size, font_path)
@@ -56,6 +104,42 @@ bool UI::initialize()
 	m_buttonPanel->setFixedSize(UISettings::buttonPanelSize());
 	m_buttonPanel->setPosition(UISettings::buttonPanelPos());
 	m_buttonPanel->setVisible(false);
+
+	m_defenseButton = new DefenseButton();
+	this->addChild(m_defenseButton);
+	m_defenseButton->setVisible(false);
+
+	m_defenseEditorHelp = new Label("Drag DEF to move | Resize | Save or cancel",
+		ImColor(255, 255, 255), true, UISettings::fontSize() / 2.5f);
+	this->addChild(m_defenseEditorHelp);
+	m_defenseEditorHelp->setVisible(false);
+
+	auto makeEditorButton = [this](const char* caption, const ImVec2& position,
+		const std::function<void()>& callback) {
+		auto* button = new Button(caption, UISettings::fontSize() / 2.5f);
+		button->performLayout();
+		button->setFixedSize(ImVec2(UISettings::fontSize() * 2.4f, UISettings::fontSize() * 1.5f));
+		Widget* buttonLabel = button->childAt(0);
+		if (buttonLabel)
+			buttonLabel->setPosition((button->size() - buttonLabel->size()) / 2.0f);
+		button->setPosition(position);
+		button->setCallback(callback);
+		button->setVisible(false);
+		this->addChild(button);
+		return button;
+	};
+	m_defenseScaleDown = makeEditorButton("SIZE -", ImVec2(0.0f, 0.0f), [this]() {
+		m_defenseEditScale = std::max(0.5f, m_defenseEditScale - 0.1f);
+	});
+	m_defenseScaleUp = makeEditorButton("SIZE +", ImVec2(0.0f, 0.0f), [this]() {
+		m_defenseEditScale = std::min(1.8f, m_defenseEditScale + 0.1f);
+	});
+	m_defenseSave = makeEditorButton("SAVE", ImVec2(0.0f, 0.0f), [this]() {
+		FinishDefenseButtonEditor(true);
+	});
+	m_defenseCancel = makeEditorButton("CANCEL", ImVec2(0.0f, 0.0f), [this]() {
+		FinishDefenseButtonEditor(false);
+	});
 
 	m_voiceButton = new VoiceButton();
 	this->addChild(m_voiceButton);
@@ -147,6 +231,97 @@ void UI::drawList()
 	if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());
 	if (pNetGame && pNetGame->GetPlayerBubblePool()) pNetGame->GetPlayerBubblePool()->Render(renderer());
 
+	CWidgetGta* attackWidget = CTouchInterface::m_pWidgets
+		? CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ATTACK]
+		: nullptr;
+	if (pNetGame && attackWidget &&
+		RsGlobal->maximumWidth > 0 && RsGlobal->maximumHeight > 0)
+	{
+		const CRect& attackRect = attackWidget->m_RectScreen;
+		if (attackRect.right > attackRect.left && attackRect.top > attackRect.bottom)
+		{
+			const float scaleX = displaySize().x / RsGlobal->maximumWidth;
+			const float scaleY = displaySize().y / RsGlobal->maximumHeight;
+			const float buttonScale = m_defenseEditorActive
+				? m_defenseEditScale
+				: std::clamp(pSettings->Get().fDefenseButtonScale, 0.5f, 1.8f);
+			const float buttonWidth = (attackRect.right - attackRect.left) * scaleX * 0.72f * buttonScale;
+			const float buttonHeight = (attackRect.top - attackRect.bottom) * scaleY * 0.62f * buttonScale;
+			const float centerX = (attackRect.left + attackRect.right) * scaleX * 0.5f;
+			const float attackTop = (RsGlobal->maximumHeight - attackRect.top) * scaleY;
+			const float top = attackTop - buttonHeight - 8.0f * scaleY;
+			m_defenseDefaultPosition = ImVec2(centerX - buttonWidth * 0.5f, std::max(0.0f, top));
+
+			ImVec2 buttonPosition = m_defenseDefaultPosition;
+			if (m_defenseEditorActive)
+			{
+				buttonPosition = m_defenseEditPosition;
+			}
+			else if (pSettings->Get().fDefenseButtonPosX >= 0.0f &&
+				pSettings->Get().fDefenseButtonPosY >= 0.0f)
+			{
+				buttonPosition = ImVec2(
+					pSettings->Get().fDefenseButtonPosX * displaySize().x,
+					pSettings->Get().fDefenseButtonPosY * displaySize().y);
+			}
+			buttonPosition.x = std::clamp(buttonPosition.x, 0.0f,
+				std::max(0.0f, displaySize().x - buttonWidth));
+			buttonPosition.y = std::clamp(buttonPosition.y, 0.0f,
+				std::max(0.0f, displaySize().y - buttonHeight));
+
+			m_defenseButton->setFixedSize(ImVec2(buttonWidth, buttonHeight));
+			m_defenseButton->setPosition(buttonPosition);
+			m_defenseButton->setNativeSource(attackWidget);
+
+			CPlayerPed* localPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+			bool canDefend = false;
+			if (localPlayer && localPlayer->m_pPed)
+			{
+				const uint8_t weapon = localPlayer->GetCurrentWeapon();
+				const bool supportedWeapon = weapon == WEAPON_UNARMED ||
+					(weapon >= WEAPON_BRASSKNUCKLE && weapon <= WEAPON_KATANA);
+				const bool running = localPlayer->m_pPed->m_nMoveState >= PEDMOVE_RUN ||
+					LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
+				canDefend = !localPlayer->IsInVehicle() && supportedWeapon && !running;
+			}
+			m_defenseButton->setVisible(m_defenseEditorActive ||
+				(attackWidget->m_bEnabled && canDefend && top >= 0.0f));
+		}
+		else
+		{
+			m_defenseButton->setVisible(false);
+		}
+	}
+	else
+	{
+		m_defenseButton->setVisible(false);
+	}
+
+	const float editorX = UISettings::padding();
+	const float editorY = UISettings::padding();
+	const float editorGap = UISettings::padding() * 0.5f;
+	if (m_defenseEditorHelp)
+	{
+		m_defenseEditorHelp->setVisible(m_defenseEditorActive);
+		m_defenseEditorHelp->setPosition(ImVec2(editorX, editorY));
+	}
+	Button* editorButtons[] = { m_defenseScaleDown, m_defenseScaleUp, m_defenseSave, m_defenseCancel };
+	for (int i = 0; i < 4; ++i)
+	{
+		Button* button = editorButtons[i];
+		if (!button) continue;
+		button->setVisible(m_defenseEditorActive);
+		button->setPosition(ImVec2(editorX + i * (button->width() + editorGap),
+			editorY + (m_defenseEditorHelp ? m_defenseEditorHelp->height() + editorGap : 0.0f)));
+	}
+
+	if (!m_defenseButton->visible())
+	{
+		m_defenseTouchIds.clear();
+		m_defenseDragPointer = -1;
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = false;
+	}
+
 	draw(renderer());
 }
 
@@ -172,6 +347,109 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
 	}
 
 	Widget::touchEvent(pos, type);
+}
+
+void UI::ToggleDefenseButtonEditor()
+{
+	if (m_defenseEditorActive)
+	{
+		FinishDefenseButtonEditor(false);
+		return;
+	}
+	if (!m_defenseButton || !pSettings)
+		return;
+
+	m_defenseEditScale = std::clamp(pSettings->Get().fDefenseButtonScale, 0.5f, 1.8f);
+	if (pSettings->Get().fDefenseButtonPosX >= 0.0f && pSettings->Get().fDefenseButtonPosY >= 0.0f)
+	{
+		m_defenseEditPosition = ImVec2(
+			pSettings->Get().fDefenseButtonPosX * displaySize().x,
+			pSettings->Get().fDefenseButtonPosY * displaySize().y);
+	}
+	else
+	{
+		m_defenseEditPosition = m_defenseDefaultPosition;
+		if (m_defenseEditPosition.x == 0.0f && m_defenseEditPosition.y == 0.0f)
+			m_defenseEditPosition = ImVec2(displaySize().x * 0.78f, displaySize().y * 0.55f);
+	}
+
+	m_defenseEditorActive = true;
+	m_defenseDragPointer = -1;
+	m_defenseTouchIds.clear();
+	LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = false;
+	if (m_chat)
+		m_chat->addInfoMessage("Drag DEF to move, adjust size, then save.");
+}
+
+void UI::FinishDefenseButtonEditor(bool save)
+{
+	if (save && pSettings && displaySize().x > 0.0f && displaySize().y > 0.0f)
+	{
+		pSettings->Get().fDefenseButtonPosX = m_defenseEditPosition.x / displaySize().x;
+		pSettings->Get().fDefenseButtonPosY = m_defenseEditPosition.y / displaySize().y;
+		pSettings->Get().fDefenseButtonScale = m_defenseEditScale;
+		pSettings->SaveDefenseButtonSettings();
+		if (m_chat)
+			m_chat->addInfoMessage("DEF button layout saved.");
+	}
+	else if (m_chat)
+	{
+		m_chat->addInfoMessage("DEF button edit cancelled.");
+	}
+
+	m_defenseEditorActive = false;
+	m_defenseDragPointer = -1;
+	m_defenseTouchIds.clear();
+	LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = false;
+}
+
+void UI::HandleDefenseTouchEvent(int type, int pointerId, int x, int y)
+{
+	if (m_defenseEditorActive)
+	{
+		if (!m_defenseButton || !m_defenseButton->visible())
+			return;
+
+		const ImVec2 touchPosition((float)x, (float)y);
+		if (type == 2 && m_defenseDragPointer == -1 && m_defenseButton->contains(touchPosition))
+		{
+			m_defenseDragPointer = pointerId;
+			m_defenseLastTouch = touchPosition;
+		}
+		else if (type == 3 && m_defenseDragPointer == pointerId)
+		{
+			m_defenseEditPosition.x += touchPosition.x - m_defenseLastTouch.x;
+			m_defenseEditPosition.y += touchPosition.y - m_defenseLastTouch.y;
+			m_defenseLastTouch = touchPosition;
+			m_defenseEditPosition.x = std::clamp(m_defenseEditPosition.x, 0.0f,
+				std::max(0.0f, displaySize().x - m_defenseButton->width()));
+			m_defenseEditPosition.y = std::clamp(m_defenseEditPosition.y, 0.0f,
+				std::max(0.0f, displaySize().y - m_defenseButton->height()));
+			m_defenseButton->setPosition(m_defenseEditPosition);
+		}
+		else if (type == 1 && m_defenseDragPointer == pointerId)
+		{
+			m_defenseDragPointer = -1;
+		}
+
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = false;
+		return;
+	}
+
+	if (!m_defenseButton || !m_defenseButton->visible())
+	{
+		m_defenseTouchIds.clear();
+	}
+	else if (type == 2 && m_defenseButton->contains(ImVec2(x, y)))
+	{
+		m_defenseTouchIds.insert(pointerId);
+	}
+	else if (type == 1)
+	{
+		m_defenseTouchIds.erase(pointerId);
+	}
+
+	LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = !m_defenseTouchIds.empty();
 }
 
 enum eTouchType

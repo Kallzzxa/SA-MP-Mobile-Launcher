@@ -402,15 +402,11 @@ void CRemotePlayer::UpdateOnFootTargetPosition()
 			}
 			else
 			{
-				CVector vecMoveSpeed = m_pPlayerPed->m_pPed->GetMoveSpeed();
-				if(m_vecPosOffset.x > 0.00001f)
-					vecMoveSpeed.x += (m_vecOnFootTargetPos.x - matPlayer.pos.x) * 0.1f;
-				if(m_vecPosOffset.y > 0.00001f)
-					vecMoveSpeed.y += (m_vecOnFootTargetPos.y - matPlayer.pos.y) * 0.1f;
-				if(m_vecPosOffset.z > 0.00001f)
-					vecMoveSpeed.z += (m_vecOnFootTargetPos.z - matPlayer.pos.z) * 0.1f;
-
-				m_pPlayerPed->m_pPed->SetVelocity(vecMoveSpeed);
+				matPlayer.pos.x += (m_vecOnFootTargetPos.x - matPlayer.pos.x) * 0.1f;
+				matPlayer.pos.y += (m_vecOnFootTargetPos.y - matPlayer.pos.y) * 0.1f;
+				matPlayer.pos.z += (m_vecOnFootTargetPos.z - matPlayer.pos.z) * 0.1f;
+				m_pPlayerPed->m_pPed->SetMatrix((CMatrix&)matPlayer);
+				m_pPlayerPed->m_pPed->SetVelocity(m_vecOnFootTargetSpeed);
 			}
 		}
 	}
