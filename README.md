@@ -26,8 +26,6 @@ An Android launcher for browsing multiplayer servers and starting the SA-MP mobi
 
 ## Contribute
 - Xyvern/Kallzzxa
-- JohnPeriaX
-- kethrnensm
 ## Build
 
 Open the project in Android Studio, allow Gradle sync to finish, then run:
@@ -77,8 +75,6 @@ Launcher Android untuk melihat server multiplayer dan menjalankan client game SA
 
 ## Kontribusi
 - Xyvern/Kallzzxa
-- JohnPeriaX
-- kethrnensm
 ### Build
 
 Buka proyek di Android Studio dan tunggu Gradle sync selesai, lalu jalankan:
