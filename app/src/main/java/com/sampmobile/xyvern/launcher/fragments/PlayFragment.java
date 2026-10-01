@@ -315,6 +315,21 @@ public class PlayFragment extends Fragment {
         return servers;
     }
 
+    private boolean serverAlreadyExists(String ip, int port) {
+        String normalizedIp = ip.trim();
+        for (SAMPServerInfo server : loadCustomServers()) {
+            if (server.getPort() == port && server.getAddress().trim().equalsIgnoreCase(normalizedIp)) {
+                return true;
+            }
+        }
+        for (SAMPServerInfo server : hostedServers) {
+            if (server.getPort() == port && server.getAddress().trim().equalsIgnoreCase(normalizedIp)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void showAddServerDialog() {
         Dialog addDialog = new Dialog(getContext());
         addDialog.setContentView(R.layout.alertdialog_addserver);
@@ -336,7 +351,11 @@ public class PlayFragment extends Fragment {
             String ip;
             int port = 7777;
             if (input.contains(":")) {
-                String[] parts = input.split(":");
+                String[] parts = input.split(":", -1);
+                if (parts.length != 2 || parts[0].trim().isEmpty()) {
+                    Toast.makeText(getContext(), "Format IP:Port tidak valid", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 ip = parts[0];
                 try {
                     port = Integer.parseInt(parts[1]);
@@ -346,6 +365,16 @@ public class PlayFragment extends Fragment {
                 }
             } else {
                 ip = input;
+            }
+
+            ip = ip.trim();
+            if (port < 1 || port > 65535) {
+                Toast.makeText(getContext(), "Port harus antara 1 dan 65535", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (serverAlreadyExists(ip, port)) {
+                Toast.makeText(getContext(), "Server tersebut sudah ada", Toast.LENGTH_SHORT).show();
+                return;
             }
 
             final String finalIp = ip;
@@ -368,6 +397,11 @@ public class PlayFragment extends Fragment {
 
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
+                        if (serverAlreadyExists(finalIp, finalPort)) {
+                            Toast.makeText(getContext(), "Server tersebut sudah ada", Toast.LENGTH_SHORT).show();
+                            addDialog.dismiss();
+                            return;
+                        }
                         ArrayList<SAMPServerInfo> customServers = loadCustomServers();
                         customServers.add(newServer);
                         saveCustomServers(customServers);

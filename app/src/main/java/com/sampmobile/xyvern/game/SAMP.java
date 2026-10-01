@@ -133,6 +133,19 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             return;
         }
 
+        try {
+            boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
+                    .getBoolean("aml_enabled", true);
+            if (amlEnabled) {
+                System.loadLibrary("AML");
+                Log.i(TAG, "AndroidModLoader loaded");
+            } else {
+                Log.i(TAG, "AndroidModLoader disabled in settings");
+            }
+        } catch (UnsatisfiedLinkError error) {
+            Log.e(TAG, "Failed to load AndroidModLoader", error);
+        }
+
         mKeyboard = new CustomKeyboard(this);
         mDialog = new DialogManager(this);
         mAttachEdit = new AttachEdit(this);
@@ -147,13 +160,12 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         try {
             initAssetManager(getAssets());
             
-            // Đưa thanh trạng thái của LoadingScreen về 0% khi bắt đầu vào game
+
             runOnUiThread(() -> mLoadingScreen.setProgress(0));
 
             final String finalIp = ip;
             final int finalPort = port;
 
-            // Jalankan thread loading agar Engine Native tidak dipanggil terlalu cepat (mencegah SIGSEGV)
             new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -161,17 +173,15 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                         final int currentProgress = i;
                         runOnUiThread(() -> mLoadingScreen.setProgress(currentProgress));
                         try {
-                            Thread.sleep(40); // Sekitar 4 detik total
+                            Thread.sleep(40);
                         } catch (InterruptedException ignored) {}
                     }
 
-                    // Setelah loading selesai, siapkan file dan jalankan engine
                     runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) return;
                         try {
                             updateSettingsIni(finalIp, finalPort);
-                            
-                            // Pastikan path storage bersih (tanpa double slash)
+
                             String storagePath = getExternalFilesDir(null).getAbsolutePath();
                             if (!storagePath.endsWith("/")) {
                                 storagePath += "/";
@@ -217,7 +227,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             int vIdx = spCore.getInt(ctx, "VERSION", 0);
             String version = (vIdx >= 0 && vIdx < versions.length) ? versions[vIdx] : "0.3.7";
 
-            // Gunakan format penulisan yang sangat bersih
             StringBuilder sb = new StringBuilder();
             sb.append("[client]\n");
             sb.append("name=").append(nickname).append("\n");

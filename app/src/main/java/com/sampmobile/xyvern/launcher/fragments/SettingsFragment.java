@@ -16,6 +16,7 @@ import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.fragment.app.Fragment;
@@ -38,6 +39,7 @@ public class SettingsFragment extends Fragment {
     SwitchCompat mKeyboardSwitch;
     SwitchCompat mVoiceSwitch;
     SwitchCompat mModifySwitch;
+    SwitchCompat mAMLSwitch;
     SwitchCompat mFPSSwitch;
     SeekBar mMessagesSeekBar;
     TextView mMessagesText;
@@ -65,6 +67,10 @@ public class SettingsFragment extends Fragment {
         mFPSSwitch = view.findViewById(R.id.fps_switch);
         mVoiceSwitch = view.findViewById(R.id.voice_switch);
         mModifySwitch = view.findViewById(R.id.modify_switch);
+        mAMLSwitch = view.findViewById(R.id.aml_switch);
+        mAMLSwitch.setChecked(requireContext()
+            .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+            .getBoolean("aml_enabled", true));
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -152,6 +158,14 @@ public class SettingsFragment extends Fragment {
             public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
                 new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA", b);
             }
+        });
+
+        mAMLSwitch.setOnCheckedChangeListener((buttonView, enabled) -> {
+            requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("aml_enabled", enabled)
+                .apply();
+            Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
         });
 
         mKeyboardSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -266,6 +280,8 @@ public class SettingsFragment extends Fragment {
         mVoiceSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "VOICE_CHAT"));
         mFPSSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "FPS_DISPLAY"));
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
+        mAMLSwitch.setChecked(requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+            .getBoolean("aml_enabled", true));
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");
