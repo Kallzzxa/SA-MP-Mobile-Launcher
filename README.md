@@ -20,6 +20,12 @@ An Android launcher for browsing multiplayer servers and starting the SA-MP mobi
 - Launch the game client from the launcher.
 - Access settings and in-game controls.
 
+## Source From
+- https://github.com/kethrnensm/concac
+- JohnPeriaX
+
+## Contribute
+- Xyvern/Kallzzxa
 ## Build
 
 Open the project in Android Studio, allow Gradle sync to finish, then run:
@@ -62,6 +68,13 @@ Launcher Android untuk melihat server multiplayer dan menjalankan client game SA
 - Menjalankan client game dari launcher.
 - Mengakses pengaturan dan kontrol dalam game.
 
+
+## Kode Sumber
+- https://github.com/kethrnensm/concac
+- JohnPeriaX
+
+## Kontribusi
+- Xyvern/Kallzzxa
 ### Build
 
 Buka proyek di Android Studio dan tunggu Gradle sync selesai, lalu jalankan:
