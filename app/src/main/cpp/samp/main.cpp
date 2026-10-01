@@ -279,7 +279,7 @@ void DoInitStuff()
 }
 
 extern "C" {
-	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
+	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
 	{
 		const char *str = pEnv->GetStringUTFChars(path, NULL);
 		if (str != NULL) {
@@ -292,14 +292,14 @@ extern "C" {
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
 
 	}
-	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{
 		if(pUI)
 		{
 			pUI->keyboard()->sendForGB(pEnv, thiz, str);
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
 		if(pSettings)
 		{
@@ -307,7 +307,7 @@ extern "C" {
 				pJavaWrapper->HideKeyboard();
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
 		jboolean isCopy = true;
 
@@ -636,6 +636,6 @@ AAssetManager* g_pAssetManager = nullptr;
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_rstarx_hexrays_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
+Java_com_sampmobile_xyvern_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
     g_pAssetManager = AAssetManager_fromJava(env, assetManager);
 }

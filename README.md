@@ -1,73 +1,83 @@
----
-title: "GTA SA Reversed Android"
-description: "Project Discontinued due to unauthorized commercial use"
-version: "2.10 (FINAL)"
-author: "JohnPeria"
-license: "MIT"
----
+# SA-MP Mobile Launcher
 
-<p align="center">
-  <img src="https://i.ibb.co/XN7Q9Tm/image-removebg-preview.png" width="200" alt="Project Logo">
-</p>
+An Android launcher for browsing multiplayer servers and starting the SA-MP mobile game client.
 
-<h1 align="center">GTA SA Reversed Android</h1>
+**English** · [Bahasa Indonesia](#bahasa-indonesia)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Status-Discontinued-red?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Version-2.10-blue?style=for-the-badge">
-</p>
+## Preview
 
----
+| Home | Server Browser |
+|:---:|:---:|
+| ![Home screen](preview/home.jpg) | ![Server browser](preview/selectserver.jpg) |
 
-### ⚠️ ประกาศสำคัญจากผม (28 ธ.ค. 2025)
+| In-game | Settings |
+|:---:|:---:|
+| ![In-game screen](preview/ingame.jpg) | ![Settings screen](preview/settings.jpg) |
 
-> **[TH]** ผมตัดสินใจหยุดพัฒนาโปรเจกต์นี้ถาวรนะครับ เพราะเสียความรู้สึกที่มีคนแอบอ้างเอาผลงานที่ผมตั้งใจทำแจกฟรีไปเดินเร่ขายหาเงินเข้าตัวเอง หลังจากนี้ผมจะไม่มีการอัปเดตหรือตามแก้บัคใดๆ ให้อีกแล้ว ขอบคุณพวกคุณทุกคนที่คอยสนับสนุนและใช้งานกันอย่างถูกต้องมาตลอดครับ
->
-> **[EN]** Project closed. It saddens me that my free work was stolen and sold by others for profit. Therefore, I’m stopping all updates and fixes right here. Massive thanks to the community members who actually supported this project honestly.
+## Features
 
----
+- Browse and select multiplayer servers.
+- Launch the game client from the launcher.
+- Access settings and in-game controls.
 
-## 📖 ภาพรวม (Overview)
+## Build
 
-### 🇹🇭 ไทย
-โปรเจกต์นี้เป็นการ **รีเวิร์สเอนจิเนียร์ GTA: San Andreas (Android)** เพื่อศึกษาการทำงานข้างในเกม ปรับปรุงความเข้ากันได้ และช่วยให้คนอื่นๆ เอาไปต่อยอดม็อดหรือเซิร์ฟเวอร์ได้ง่ายขึ้น
+Open the project in Android Studio, allow Gradle sync to finish, then run:
 
-### 🇬🇧 English
-This project focuses on **reverse engineering GTA: San Andreas for Android** to understand internal systems, improve compatibility, and help the community expand modding possibilities.
+```powershell
+.\gradlew.bat :app:assembleDebug
+```
 
----
+Debug APKs are generated in `app/build/outputs/apk/debug/`, split for `arm64-v8a` and `armeabi-v7a`.
 
-## 🔓 Open-Source 2.10
+## Requirements
 
-### 🇹🇭 ไทย
-ผมเปิดซอร์ส 100% ไว้เพื่อให้ทุกคนได้เรียนรู้และพัฒนาต่อกันเองได้อิสระครับ (ถึงแม้ผมจะหยุดอัปเดตไปแล้ว)
+- Android Studio with Android SDK and NDK `26.2.11394342`.
+- A configured Firebase Android app for package `com.sampmobile.xyvern` if Firebase services are needed.
+- A legally obtained copy of the game files required by the client.
 
-### 🇬🇧 English
-The project remains 100% open-source, allowing anyone to study and build upon it freely, even though I've stopped maintenance.
+## Disclaimer
+
+This project is an independent community launcher and is not affiliated with or endorsed by Rockstar Games.
 
 ---
 
-## 👥  Contribute
----
-John Periax
+## Bahasa Indonesia
 
----
+Launcher Android untuk melihat server multiplayer dan menjalankan client game SA-MP Mobile.
 
-Yujang
+### Pratinjau
 
----
-kethrnensm
+| Beranda | Pilih Server |
+|:---:|:---:|
+| ![Tampilan beranda](preview/home.jpg) | ![Daftar server](preview/selectserver.jpg) |
 
----
-# Github
-https://github.com/kethrnensm/concac
+| Dalam Game | Pengaturan |
+|:---:|:---:|
+| ![Tampilan dalam game](preview/ingame.jpg) | ![Tampilan pengaturan](preview/settings.jpg) |
 
----
+### Fitur
 
-https://github.com/JohnPeriaX/KotlinJava-DSL-SampMobile-2.10
+- Melihat dan memilih server multiplayer.
+- Menjalankan client game dari launcher.
+- Mengakses pengaturan dan kontrol dalam game.
 
----
+### Build
 
----
+Buka proyek di Android Studio dan tunggu Gradle sync selesai, lalu jalankan:
 
+```powershell
+.\gradlew.bat :app:assembleDebug
+```
 
+APK debug tersedia di `app/build/outputs/apk/debug/`, terpisah untuk `arm64-v8a` dan `armeabi-v7a`.
+
+### Persyaratan
+
+- Android Studio dengan Android SDK dan NDK `26.2.11394342`.
+- Aplikasi Android Firebase dengan package `com.sampmobile.xyvern` jika ingin memakai layanan Firebase.
+- Salinan file game yang diperoleh secara legal dan dibutuhkan oleh client.
+
+### Penafian
+
+Proyek ini adalah launcher komunitas independen dan tidak berafiliasi dengan atau didukung oleh Rockstar Games.

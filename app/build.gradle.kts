@@ -4,13 +4,25 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
+val stageGlossHookJniLibs = tasks.register<Sync>("stageGlossHookJniLibs") {
+    from("src/main/cpp/samp/vendor/GlossHook/libs/ARM64") {
+        include("libGlossHook.so")
+        into("arm64-v8a")
+    }
+    from("src/main/cpp/samp/vendor/GlossHook/libs/ARM") {
+        include("libGlossHook.so")
+        into("armeabi-v7a")
+    }
+    into(layout.buildDirectory.dir("generated/glosshook-jniLibs"))
+}
+
 android {
-    namespace = "com.rstarx.hexrays"
+    namespace = "com.sampmobile.xyvern"
     //noinspection GradleDependency
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.rstarx.hexrays"
+        applicationId = "com.sampmobile.xyvern"
         minSdk = 26
         targetSdk = 36
         versionCode = 130
@@ -81,6 +93,13 @@ android {
         }
     }
 
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir("src/main/cpp/samp/vendor/bass/libs")
+            jniLibs.srcDir(layout.buildDirectory.dir("generated/glosshook-jniLibs"))
+        }
+    }
+
     ndkVersion = "26.2.11394342"
 
     lint {
@@ -100,6 +119,13 @@ android {
         resources {
             excludes += "META-INF/*"
         }
+    }
+}
+
+tasks.configureEach {
+    if (name.startsWith("merge") &&
+        (name.endsWith("JniLibFolders") || name.endsWith("NativeLibs"))) {
+        dependsOn(stageGlossHookJniLibs)
     }
 }
 

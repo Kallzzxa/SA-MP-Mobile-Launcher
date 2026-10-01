@@ -23,7 +23,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <com.rstarx.hexrays.launcher.util.ViewPagerWithoutSwipe
+    <com.sampmobile.xyvern.launcher.util.ViewPagerWithoutSwipe
         android:id="@+id/viewPager_servers"
         android:layout_width="0dp"
         android:layout_height="0dp"

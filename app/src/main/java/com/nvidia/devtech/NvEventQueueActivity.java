@@ -53,7 +53,7 @@ import android.widget.FrameLayout;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.joom.paranoid.Obfuscate;
-import com.rstarx.hexrays.R;
+import com.sampmobile.xyvern.R;
 
 import java.io.FileInputStream;
 import java.io.IOException;

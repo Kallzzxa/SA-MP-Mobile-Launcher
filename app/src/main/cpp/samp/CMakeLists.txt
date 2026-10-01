@@ -41,6 +41,11 @@ include_directories(
 #set_target_properties(libopus PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/vendor/opus/libopus.a)
 
 add_library(samp SHARED ${SOURCES})
+add_library(glosshook SHARED IMPORTED)
+set_target_properties(glosshook PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GlossHook/libs/${GLOSSHOOK_ABI}/libGlossHook.so
+)
+
 target_link_libraries(samp 
         log 
         android
@@ -51,7 +56,7 @@ target_link_libraries(samp
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/bass/libs/${ANDROID_ABI}/libbass.so
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/bass/libs/${ANDROID_ABI}/libbass_ssl.so
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GlossHook/libs/${GLOSSHOOK_ABI}/libGlossHook.a
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GlossHook/libs/${GLOSSHOOK_ABI}/libGlossHook.so
+        glosshook
         )
 
 # Set compilation flags
