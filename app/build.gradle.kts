@@ -160,8 +160,9 @@ dependencies {
     implementation(libs.shadowhook)
 }
 
-// Chỉ đăng ký task Laragon nếu đang chạy ở máy cá nhân (Không chạy trên GitHub Actions)
-if (System.getenv("GITHUB_ACTIONS") == null) {
+// Optional Laragon deployment on local Windows development machine only
+val laragonDir = file("C:\\laragon\\www")
+if (System.getenv("GITHUB_ACTIONS") == null && laragonDir.exists()) {
     afterEvaluate {
         android.applicationVariants.all {
             val variant = this
@@ -170,7 +171,7 @@ if (System.getenv("GITHUB_ACTIONS") == null) {
             tasks.register<Copy>(taskName) {
                 doNotTrackState("Destination directory contains unreadable content")
                 description = "Copies ${variant.name} APKs to Laragon www directory"
-                into("C:\\laragon\\www")
+                into(laragonDir)
                 
                 variant.outputs.all {
                     @Suppress("DEPRECATION")

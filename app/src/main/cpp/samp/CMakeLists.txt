@@ -13,16 +13,9 @@ endif()
 
 # Add source files
 file(GLOB_RECURSE SOURCES
-        ${CMAKE_CURRENT_LIST_DIR}/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/**/**/**/*.c*
-        ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/**/**/**/**/*.c*
+        ${CMAKE_CURRENT_LIST_DIR}/*.c
+        ${CMAKE_CURRENT_LIST_DIR}/*.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/*.cc
         )
 
 # Add include directories

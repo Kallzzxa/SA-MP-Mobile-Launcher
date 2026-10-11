@@ -68,18 +68,15 @@ public:
         lib = dlopen("libGTASA.so", RTLD_LAZY);
     }
 
-    static void UnFuck(uintptr_t ptr, uint64_t len = PAGE_SIZE) {
-#if VER_x32
-        if(mprotect((void*)(ptr & 0xFFFFF000), len, PROT_READ | PROT_WRITE | PROT_EXEC) == 0)
-            return;
-
-        mprotect((void*)(ptr & 0xFFFFF000), len, PROT_READ | PROT_WRITE);
-#else
-        if(mprotect((void*)(ptr & 0xFFFFFFFFFFFFF000), len, PROT_READ | PROT_WRITE | PROT_EXEC) == 0)
-            return;
-
-        mprotect((void*)(ptr & 0xFFFFFFFFFFFFF000), len, PROT_READ | PROT_WRITE);
-#endif
+    static void UnFuck(uintptr_t ptr, size_t len = 4096) {
+        long pagesize = sysconf(_SC_PAGESIZE);
+        if (pagesize <= 0) pagesize = 4096;
+        uintptr_t start = ptr & ~(pagesize - 1);
+        uintptr_t end = (ptr + len + pagesize - 1) & ~(pagesize - 1);
+        size_t total_len = end - start;
+        if (mprotect((void*)start, total_len, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+            mprotect((void*)start, total_len, PROT_READ | PROT_WRITE);
+        }
     }
 
     static uintptr_t GetAddrBaseXDL(uintptr_t addr)
@@ -138,7 +135,7 @@ public:
 
     static void RET(uintptr addr)
     {
-        // fully check
+        if (!addr) return;
         #if VER_x32
         if(THUMBMODE(addr))
         {

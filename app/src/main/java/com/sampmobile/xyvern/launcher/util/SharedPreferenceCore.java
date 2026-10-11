@@ -5,90 +5,64 @@ import android.content.SharedPreferences;
 
 public class SharedPreferenceCore {
     public static final String APP_PREFERENCES = "configlauncher";
-    private static SharedPreferences.Editor editor;
-    private static SharedPreferences mSharedPreference;
+    private static volatile SharedPreferences sPrefs;
+
+    private static SharedPreferences getPrefs(Context context) {
+        if (sPrefs == null) {
+            synchronized (SharedPreferenceCore.class) {
+                if (sPrefs == null) {
+                    sPrefs = context.getApplicationContext().getSharedPreferences(APP_PREFERENCES, Context.MODE_PRIVATE);
+                }
+            }
+        }
+        return sPrefs;
+    }
 
     public static void main(Context context) {
-        SharedPreferences sharedPreferences = context.getSharedPreferences(APP_PREFERENCES, 0);
-        mSharedPreference = sharedPreferences;
-        editor = sharedPreferences.edit();
+        getPrefs(context);
     }
 
-    public void setString(Context context, String str, String str2) {
-        main(context);
-        editor.putString(str, str2);
-        editor.apply();
+    public void setString(Context context, String key, String value) {
+        getPrefs(context).edit().putString(key, value).apply();
     }
 
-    public void setInt(Context context, String str, int i) {
-        main(context);
-        editor.putInt(str, i);
-        editor.apply();
+    public void setInt(Context context, String key, int value) {
+        getPrefs(context).edit().putInt(key, value).apply();
     }
 
-    public void setBoolean(Context context, String str, boolean z) {
-        main(context);
-        editor.putBoolean(str, z);
-        editor.apply();
+    public void setBoolean(Context context, String key, boolean value) {
+        getPrefs(context).edit().putBoolean(key, value).apply();
     }
 
-    public void setLong(Context context, String str, long j) {
-        main(context);
-        editor.putLong(str, j);
-        editor.apply();
+    public void setLong(Context context, String key, long value) {
+        getPrefs(context).edit().putLong(key, value).apply();
     }
 
-    public void setFloat(Context context, String str, float f) {
-        main(context);
-        editor.putFloat(str, f);
-        editor.apply();
+    public void setFloat(Context context, String key, float value) {
+        getPrefs(context).edit().putFloat(key, value).apply();
     }
 
-    public String getString(Context context, String str) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getString(str, "");
-        }
-        return null;
+    public String getString(Context context, String key) {
+        return getPrefs(context).getString(key, "");
     }
 
-    public int getInt(Context context, String str) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getInt(str, 0);
-        }
-        return 0;
+    public int getInt(Context context, String key) {
+        return getPrefs(context).getInt(key, 0);
     }
 
-    public int getInt(Context context, String str, int defaultValue) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getInt(str, defaultValue);
-        }
-        return 0;
+    public int getInt(Context context, String key, int defaultValue) {
+        return getPrefs(context).getInt(key, defaultValue);
     }
 
-    public boolean getBoolean(Context context, String str) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getBoolean(str, false);
-        }
-        return false;
+    public boolean getBoolean(Context context, String key) {
+        return getPrefs(context).getBoolean(key, false);
     }
 
-    public long getLong(Context context, String str) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getLong(str, 0);
-        }
-        return 0;
+    public long getLong(Context context, String key) {
+        return getPrefs(context).getLong(key, 0);
     }
 
-    public float getFloat(Context context, String str) {
-        main(context);
-        if (mSharedPreference.contains(str)) {
-            return mSharedPreference.getFloat(str, 0.0f);
-        }
-        return 0.0f;
+    public float getFloat(Context context, String key) {
+        return getPrefs(context).getFloat(key, 0.0f);
     }
 }

@@ -159,44 +159,23 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         try {
             initAssetManager(getAssets());
-            
 
-            runOnUiThread(() -> mLoadingScreen.setProgress(0));
+            runOnUiThread(() -> mLoadingScreen.setProgress(50));
 
-            final String finalIp = ip;
-            final int finalPort = port;
+            updateSettingsIni(ip, port);
 
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    for (int i = 0; i <= 100; i++) {
-                        final int currentProgress = i;
-                        runOnUiThread(() -> mLoadingScreen.setProgress(currentProgress));
-                        try {
-                            Thread.sleep(40);
-                        } catch (InterruptedException ignored) {}
-                    }
+            String storagePath = getExternalFilesDir(null).getAbsolutePath();
+            if (!storagePath.endsWith("/")) {
+                storagePath += "/";
+            }
 
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        try {
-                            updateSettingsIni(finalIp, finalPort);
+            runOnUiThread(() -> mLoadingScreen.setProgress(100));
 
-                            String storagePath = getExternalFilesDir(null).getAbsolutePath();
-                            if (!storagePath.endsWith("/")) {
-                                storagePath += "/";
-                            }
-                            
-                            initializeSAMP(storagePath);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Gagal inisialisasi game: " + e.getMessage());
-                        }
-                    });
-                }
-            }).start();
-
+            initializeSAMP(storagePath);
         } catch (UnsatisfiedLinkError e5) {
             Log.e(TAG, e5.getMessage());
+        } catch (Exception e) {
+            Log.e(TAG, "Gagal inisialisasi game: " + e.getMessage());
         }
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -300,6 +279,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
         super.onDestroy();
+        instance = null;
         // Mematikan paksa proses game saat keluar untuk menghindari crash "destroyed mutex" 
         // yang sering terjadi di thread native saat activity dihancurkan.
         android.os.Process.killProcess(android.os.Process.myPid());

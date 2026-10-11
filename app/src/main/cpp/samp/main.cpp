@@ -463,18 +463,16 @@ uint32_t GetTickCount()
 
 void FLog(const char* fmt, ...)
 {
-	char buffer[0xFF];
+	char buffer[1024];
 	static FILE* flLog = nullptr;
 	const char* pszStorage = g_pszStorage;
 
-
 	if (flLog == nullptr && pszStorage != nullptr)
 	{
-		sprintf(buffer, "%s/samp_log.txt", pszStorage);
-		flLog = fopen(buffer, "a");
+		char path[512];
+		snprintf(path, sizeof(path), "%s/samp_log.txt", pszStorage);
+		flLog = fopen(path, "a");
 	}
-
-	memset(buffer, 0, sizeof(buffer));
 
 	va_list arg;
 	va_start(arg, fmt);
@@ -483,27 +481,24 @@ void FLog(const char* fmt, ...)
 
 	LOGI("%s", buffer);
 
-	if (flLog == nullptr) return;
-	fprintf(flLog, "%s\n", buffer);
-	fflush(flLog);
-
-	return;
+	if (flLog != nullptr) {
+		fprintf(flLog, "%s\n", buffer);
+		fflush(flLog);
+	}
 }
 
 void crashlyticsLog(const char* fmt, ...)
 {
-	char buffer[0xFF];
+	char buffer[1024];
 	static FILE* flLog = nullptr;
 	const char* pszStorage = g_pszStorage;
 
-
 	if (flLog == nullptr && pszStorage != nullptr)
 	{
-		sprintf(buffer, "%s/crashlytics_log.txt", pszStorage);
-		flLog = fopen(buffer, "a");
+		char path[512];
+		snprintf(path, sizeof(path), "%s/crashlytics_log.txt", pszStorage);
+		flLog = fopen(path, "a");
 	}
-
-	memset(buffer, 0, sizeof(buffer));
 
 	va_list arg;
 	va_start(arg, fmt);
@@ -513,38 +508,34 @@ void crashlyticsLog(const char* fmt, ...)
 	LOGI("%s", buffer);
 	firebase::crashlytics::Log(buffer);
 
-	if (flLog == nullptr) return;
-	fprintf(flLog, "%s\n", buffer);
-	fflush(flLog);
-
-	return;
+	if (flLog != nullptr) {
+		fprintf(flLog, "%s\n", buffer);
+		fflush(flLog);
+	}
 }
 
 void ChatLog(const char* fmt, ...)
 {
-	char buffer[0xFF];
+	char buffer[1024];
 	static FILE* flLog = nullptr;
 	const char* pszStorage = g_pszStorage;
 
-
 	if (flLog == nullptr && pszStorage != nullptr)
 	{
-		sprintf(buffer, "%s/chat_log.txt", pszStorage);
-		flLog = fopen(buffer, "a");
+		char path[512];
+		snprintf(path, sizeof(path), "%s/chat_log.txt", pszStorage);
+		flLog = fopen(path, "a");
 	}
-
-	memset(buffer, 0, sizeof(buffer));
 
 	va_list arg;
 	va_start(arg, fmt);
 	vsnprintf(buffer, sizeof(buffer), fmt, arg);
 	va_end(arg);
 
-	if (flLog == nullptr) return;
-	fprintf(flLog, "%s\n", buffer);
-	fflush(flLog);
-
-	return;
+	if (flLog != nullptr) {
+		fprintf(flLog, "%s\n", buffer);
+		fflush(flLog);
+	}
 }
 
 void MyLog(const char* fmt, ...)

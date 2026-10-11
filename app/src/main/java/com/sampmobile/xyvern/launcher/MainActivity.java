@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Config.currentContext = this;
+        // ConfigValidator ensures config files exist
         ConfigValidator.validateConfigFiles(this);
 
         checkFirstRun();

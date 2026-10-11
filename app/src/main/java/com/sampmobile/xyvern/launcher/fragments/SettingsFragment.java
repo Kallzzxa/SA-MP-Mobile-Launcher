@@ -123,29 +123,9 @@ public class SettingsFragment extends Fragment {
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 String text = charSequence.toString();
-                File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
-                
-                try {
-                    if (!file.getParentFile().exists()) {
-                        file.getParentFile().mkdirs();
-                    }
-                    if (!file.exists()) {
-                        file.createNewFile();
-                        mWini = new Wini(file);
-                    }
-                    
-                    if (mWini == null) {
-                        mWini = new Wini(file);
-                    }
-                    
-                    mWini.put("client", "name", text);
-                    mWini.store();
-
-                    // Simpan juga ke SharedPreferences agar bisa dibaca SAMP.java
+                if (getActivity() != null) {
                     android.content.SharedPreferences sp = getActivity().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE);
                     sp.edit().putString("nickname", text).apply();
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
             }
 

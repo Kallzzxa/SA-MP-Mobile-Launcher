@@ -9,6 +9,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,6 +20,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -26,7 +28,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.joom.paranoid.Obfuscate;
 import com.sampmobile.xyvern.R;
 import com.sampmobile.xyvern.game.SAMP;
-import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.util.SAMPServerInfo;
 import com.sampmobile.xyvern.launcher.util.SampQueryAPI;
 
@@ -40,6 +41,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Obfuscate
 public class PlayFragment extends Fragment {
@@ -51,20 +54,27 @@ public class PlayFragment extends Fragment {
     private static final String HOSTED_URL = "https://kethrnensm.github.io/web/hosted.json";
     private RecyclerView rvServers;
     private ServerAdapter adapter;
-    private ArrayList<SAMPServerInfo> hostedServers = new ArrayList<>();
-    private ArrayList<SAMPServerInfo> currentServers = new ArrayList<>();
+    private final ArrayList<SAMPServerInfo> hostedServers = new ArrayList<>();
+    private final ArrayList<SAMPServerInfo> currentServers = new ArrayList<>();
     private TextView tabFavorites, tabHosted;
     private boolean showingFavorites = true;
 
     private Handler pingHandler;
     private Runnable pingRunnable;
 
+    // Thread pool to prevent thread starvation and unbounded thread creation
+    private final ExecutorService queryExecutor = Executors.newFixedThreadPool(4);
+
+    // Cache query results (100 servers) to make scrolling instant and save network
+    private final LruCache<String, String[]> queryCache = new LruCache<>(100);
+
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_play, container, false);
 
         rvServers = view.findViewById(R.id.rv_servers);
         rvServers.setLayoutManager(new LinearLayoutManager(getContext()));
+        rvServers.setHasFixedSize(true);
 
         tabFavorites = view.findViewById(R.id.tab_favorites);
         tabHosted = view.findViewById(R.id.tab_hosted);
@@ -80,6 +90,13 @@ public class PlayFragment extends Fragment {
         return view;
     }
 
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        stopPingTask();
+        queryExecutor.shutdownNow();
+    }
+
     private void switchTab(boolean favorites) {
         showingFavorites = favorites;
         tabFavorites.setBackgroundResource(favorites ? R.drawable.bg_nav_active : 0);
@@ -88,7 +105,7 @@ public class PlayFragment extends Fragment {
     }
 
     private void loadData() {
-        new Thread(() -> {
+        queryExecutor.execute(() -> {
             try {
                 URL url = new URL(HOSTED_URL);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -108,28 +125,32 @@ public class PlayFragment extends Fragment {
                     JSONObject jsonObject = new JSONObject(response.toString());
                     JSONArray jsonArray = jsonObject.getJSONArray("query");
 
-                    hostedServers.clear();
+                    ArrayList<SAMPServerInfo> fetched = new ArrayList<>();
                     for (int i = 0; i < jsonArray.length(); i++) {
                         JSONObject obj = jsonArray.getJSONObject(i);
                         SAMPServerInfo server = new SAMPServerInfo();
-                        server.setServerName(obj.getString("name"));
-                        server.setAddress(obj.getString("ip"));
-                        server.setPort(obj.getInt("port"));
-                        server.setCurrentPlayerCount(obj.getInt("online"));
-                        server.setMaxPlayerCount(obj.getInt("maxplayers"));
+                        server.setServerName(obj.optString("name", "Unknown Server"));
+                        server.setAddress(obj.optString("ip", ""));
+                        server.setPort(obj.optInt("port", 7777));
+                        server.setCurrentPlayerCount(obj.optInt("online", 0));
+                        server.setMaxPlayerCount(obj.optInt("maxplayers", 0));
                         server.setType(SAMPServerInfo.Official.HOSTED);
-                        hostedServers.add(server);
+                        fetched.add(server);
+                    }
+
+                    if (getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            hostedServers.clear();
+                            hostedServers.addAll(fetched);
+                            updateList();
+                        });
                     }
                 }
                 connection.disconnect();
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
-            if (getActivity() != null) {
-                getActivity().runOnUiThread(this::updateList);
-            }
-        }).start();
+        });
     }
 
     private void updateList() {
@@ -149,6 +170,7 @@ public class PlayFragment extends Fragment {
     }
 
     private void showServerDetailDialog(final SAMPServerInfo server) {
+        if (getContext() == null) return;
         Dialog detailDialog = new Dialog(getContext());
         detailDialog.setContentView(R.layout.alertdialog_server);
         if (detailDialog.getWindow() != null) {
@@ -173,7 +195,7 @@ public class PlayFragment extends Fragment {
         tvMode.setText(server.getServerMode() != null ? server.getServerMode() : "Loading...");
         tvLanguage.setText(server.getLanguage() != null ? server.getLanguage() : "Loading...");
 
-        SharedPreferences sp = getContext().getSharedPreferences("com.sampmobile.xyvern", Context.MODE_PRIVATE);
+        SharedPreferences sp = requireContext().getSharedPreferences("com.sampmobile.xyvern", Context.MODE_PRIVATE);
         String currentNick = sp.getString("nickname", "");
         etUsername.setText(currentNick);
         etUsername.setHint("Username");
@@ -182,30 +204,26 @@ public class PlayFragment extends Fragment {
         pingRunnable = new Runnable() {
             @Override
             public void run() {
-                new Thread(() -> {
-                    SampQueryAPI query = new SampQueryAPI(server.getAddress(), server.getPort());
-                    String[] info = query.mo7164b();
-                    if (query.f7277a != null) {
-                        query.f7277a.close();
+                queryExecutor.execute(() -> {
+                    try (SampQueryAPI query = new SampQueryAPI(server.getAddress(), server.getPort())) {
+                        String[] info = query.mo7164b();
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> {
+                                if (info != null) {
+                                    tvName.setText(info[3]);
+                                    tvOnline.setText(info[1] + " / " + info[2]);
+                                    tvMode.setText(info[4]);
+                                    tvLanguage.setText(info[5]);
+                                } else {
+                                    tvOnline.setText("OFFLINE");
+                                    tvMode.setText("-");
+                                    tvLanguage.setText("-");
+                                }
+                            });
+                        }
+                    } catch (Exception ignored) {
                     }
-
-                    final String[] finalInfo = info;
-
-                    if (getActivity() != null) {
-                        getActivity().runOnUiThread(() -> {
-                            if (finalInfo != null) {
-                                tvName.setText(finalInfo[3]);
-                                tvOnline.setText(finalInfo[1] + " / " + finalInfo[2]);
-                                tvMode.setText(finalInfo[4]);
-                                tvLanguage.setText(finalInfo[5]);
-                            } else {
-                                tvOnline.setText("OFFLINE");
-                                tvMode.setText("-");
-                                tvLanguage.setText("-");
-                            }
-                        });
-                    }
-                }).start();
+                });
                 if (pingHandler != null) {
                     pingHandler.postDelayed(this, 3000);
                 }
@@ -229,7 +247,7 @@ public class PlayFragment extends Fragment {
                     }
                 }
                 saveCustomServers(customServers);
-                Toast.makeText(getContext(), "Đã xóa server!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Server berhasil dihapus!", Toast.LENGTH_SHORT).show();
                 detailDialog.dismiss();
                 updateList();
             });
@@ -245,7 +263,7 @@ public class PlayFragment extends Fragment {
         btnConnect.setOnClickListener(v -> {
             String newNick = etUsername.getText().toString().trim();
             if (newNick.isEmpty()) {
-                Toast.makeText(getContext(), "Vui lòng nhập Username", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Silakan masukkan username!", Toast.LENGTH_SHORT).show();
                 return;
             }
             sp.edit().putString("nickname", newNick).apply();
@@ -270,6 +288,7 @@ public class PlayFragment extends Fragment {
     private void stopPingTask() {
         if (pingHandler != null && pingRunnable != null) {
             pingHandler.removeCallbacks(pingRunnable);
+            pingRunnable = null;
         }
     }
 
@@ -301,9 +320,9 @@ public class PlayFragment extends Fragment {
             for (int i = 0; i < jsonArray.length(); i++) {
                 JSONObject obj = jsonArray.getJSONObject(i);
                 SAMPServerInfo server = new SAMPServerInfo();
-                server.setServerName(obj.getString("name"));
-                server.setAddress(obj.getString("ip"));
-                server.setPort(obj.getInt("port"));
+                server.setServerName(obj.optString("name", "Custom Server"));
+                server.setAddress(obj.optString("ip", ""));
+                server.setPort(obj.optInt("port", 7777));
                 server.setType(SAMPServerInfo.Official.CUSTOM);
                 server.setCurrentPlayerCount(0);
                 server.setMaxPlayerCount(0);
@@ -331,6 +350,7 @@ public class PlayFragment extends Fragment {
     }
 
     private void showAddServerDialog() {
+        if (getContext() == null) return;
         Dialog addDialog = new Dialog(getContext());
         addDialog.setContentView(R.layout.alertdialog_addserver);
         if (addDialog.getWindow() != null) {
@@ -344,7 +364,7 @@ public class PlayFragment extends Fragment {
         btnAdd.setOnClickListener(v -> {
             String input = etHost.getText().toString().trim();
             if (input.isEmpty()) {
-                Toast.makeText(getContext(), "Vui lòng nhập IP:Port", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Format harus IP:Port", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -353,14 +373,14 @@ public class PlayFragment extends Fragment {
             if (input.contains(":")) {
                 String[] parts = input.split(":", -1);
                 if (parts.length != 2 || parts[0].trim().isEmpty()) {
-                    Toast.makeText(getContext(), "Format IP:Port tidak valid", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Format IP:Port tidak valid!", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 ip = parts[0];
                 try {
                     port = Integer.parseInt(parts[1]);
                 } catch (NumberFormatException e) {
-                    Toast.makeText(getContext(), "Port không hợp lệ", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Port tidak valid!", Toast.LENGTH_SHORT).show();
                     return;
                 }
             } else {
@@ -369,11 +389,11 @@ public class PlayFragment extends Fragment {
 
             ip = ip.trim();
             if (port < 1 || port > 65535) {
-                Toast.makeText(getContext(), "Port harus antara 1 dan 65535", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Port harus di antara 1 dan 65535!", Toast.LENGTH_SHORT).show();
                 return;
             }
             if (serverAlreadyExists(ip, port)) {
-                Toast.makeText(getContext(), "Server tersebut sudah ada", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Server tersebut sudah ada!", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -386,35 +406,35 @@ public class PlayFragment extends Fragment {
             newServer.setPort(port);
             newServer.setType(SAMPServerInfo.Official.CUSTOM);
 
-            new Thread(() -> {
-                SampQueryAPI query = new SampQueryAPI(finalIp, finalPort);
-                String[] info = query.mo7164b();
-                if (query.f7277a != null) query.f7277a.close();
-
-                if (info != null && info[3] != null && !info[3].isEmpty()) {
-                    newServer.setServerName(info[3]);
+            queryExecutor.execute(() -> {
+                try (SampQueryAPI query = new SampQueryAPI(finalIp, finalPort)) {
+                    String[] info = query.mo7164b();
+                    if (info != null && info[3] != null && !info[3].isEmpty()) {
+                        newServer.setServerName(info[3]);
+                        queryCache.put(finalIp + ":" + finalPort, info);
+                    }
+                } catch (Exception ignored) {
                 }
 
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         if (serverAlreadyExists(finalIp, finalPort)) {
-                            Toast.makeText(getContext(), "Server tersebut sudah ada", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "Server tersebut sudah ada!", Toast.LENGTH_SHORT).show();
                             addDialog.dismiss();
                             return;
                         }
                         ArrayList<SAMPServerInfo> customServers = loadCustomServers();
                         customServers.add(newServer);
                         saveCustomServers(customServers);
-                        Toast.makeText(getContext(), "Đã thêm server!", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(), "Server berhasil ditambahkan!", Toast.LENGTH_SHORT).show();
                         addDialog.dismiss();
                         updateList();
                     });
                 }
-            }).start();
+            });
         });
 
         btnCancel.setOnClickListener(v -> addDialog.dismiss());
-
         addDialog.show();
 
         if (addDialog.getWindow() != null && getContext() != null) {
@@ -443,40 +463,54 @@ public class PlayFragment extends Fragment {
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             SAMPServerInfo server = serverList.get(position);
-            
-            // Set data awal
+            String serverKey = server.getAddress() + ":" + server.getPort();
+            holder.boundKey = serverKey;
+
+            // Default display
             holder.tvName.setText(server.getServerName() + " |");
-            holder.tvAddress.setText("Address: " + server.getAddress() + ":" + server.getPort());
+            holder.tvAddress.setText("Address: " + serverKey);
             holder.tvPlayers.setText("Players: " + server.getCurrentPlayerCount() + " / " + server.getMaxPlayerCount());
             holder.tvMode.setText("Gamemode: " + (server.getServerMode() != null ? server.getServerMode() : "Loading..."));
             holder.ivLock.setVisibility(server.getHasPassword() ? View.VISIBLE : View.GONE);
 
-            // Jalankan query background untuk update info aslinya (Hostname, Player, Mode)
-            new Thread(() -> {
-                SampQueryAPI query = new SampQueryAPI(server.getAddress(), server.getPort());
-                String[] info = query.mo7164b(); // Ambil info lengkap
-                if (query.f7277a != null) query.f7277a.close();
-
-                if (info != null && getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        holder.tvName.setText(info[3] + " |"); // Hostname asli
-                        holder.tvPlayers.setText("Players: " + info[1] + " / " + info[2]);
-                        holder.tvMode.setText("Gamemode: " + info[4]);
-                        
-                        // Update status gembok (info[0] adalah flag password: "1" jika ada)
-                        boolean hasPass = info[0].equals("1");
-                        holder.ivLock.setVisibility(hasPass ? View.VISIBLE : View.GONE);
-                    });
-                } else if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        if (holder.tvMode.getText().toString().equals("Gamemode: Loading...")) {
-                            holder.tvMode.setText("Gamemode: Offline");
+            // Check cache first
+            String[] cached = queryCache.get(serverKey);
+            if (cached != null) {
+                applyServerInfo(holder, cached);
+            } else {
+                // Async query using bounded thread pool with view-recycling guard
+                queryExecutor.execute(() -> {
+                    try (SampQueryAPI query = new SampQueryAPI(server.getAddress(), server.getPort())) {
+                        String[] info = query.mo7164b();
+                        if (info != null) {
+                            queryCache.put(serverKey, info);
                         }
-                    });
-                }
-            }).start();
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> {
+                                if (serverKey.equals(holder.boundKey)) {
+                                    if (info != null) {
+                                        applyServerInfo(holder, info);
+                                    } else {
+                                        if (holder.tvMode.getText().toString().contains("Loading")) {
+                                            holder.tvMode.setText("Gamemode: Offline");
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
 
             holder.itemView.setOnClickListener(v -> listener.onServerClick(server));
+        }
+
+        private void applyServerInfo(ViewHolder holder, String[] info) {
+            holder.tvName.setText(info[3] + " |");
+            holder.tvPlayers.setText("Players: " + info[1] + " / " + info[2]);
+            holder.tvMode.setText("Gamemode: " + info[4]);
+            holder.ivLock.setVisibility("1".equals(info[0]) ? View.VISIBLE : View.GONE);
         }
 
         @Override
@@ -485,8 +519,10 @@ public class PlayFragment extends Fragment {
         }
 
         public class ViewHolder extends RecyclerView.ViewHolder {
+            String boundKey;
             TextView tvName, tvAddress, tvPlayers, tvMode;
             ImageView ivLock;
+
             public ViewHolder(@NonNull View itemView) {
                 super(itemView);
                 tvName = itemView.findViewById(R.id.tv_server_name);
