@@ -28,15 +28,18 @@ jobs:
       - name: Copy real LFS binary files from upstream
         shell: powershell
         run: |
-          Get-ChildItem -Path "upstream-repo" -Recurse -Include *.so, *.a | ForEach-Object {
-              $relPath = Resolve-Path -Relative -Path $_.FullName -BasePath "$((Get-Location).Path)\upstream-repo"
-              $destPath = Join-Path (Get-Location).Path $relPath
-              if (Test-Path $destPath) {
-                  Copy-Item -Path $_.FullName -Destination $destPath -Force
-                  Write-Host "Restored LFS binary: $relPath"
-              }
+          $root = (Get-Location).Path
+          $upstream = Join-Path $root "upstream-repo"
+          Get-ChildItem -Path $upstream -Recurse -Include *.so, *.a | ForEach-Object {
+              $fullPath = $_.FullName
+              $relPath = $fullPath.Substring($upstream.Length).TrimStart('\', '/')
+              $destPath = Join-Path $root $relPath
+              $destDir = Split-Path -Parent $destPath
+              if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Force -Path $destDir }
+              Copy-Item -Path $fullPath -Destination $destPath -Force
+              Write-Host "Restored binary: $relPath ($($_.Length) bytes)"
           }
-          Remove-Item -Recurse -Force "upstream-repo"
+          Remove-Item -Recurse -Force $upstream
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
