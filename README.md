@@ -1,96 +1,21 @@
-# SA-MP Mobile Launcher
+# SA-MP Mobile Launcher & Server Sync Ecosystem
 
-An Android launcher for browsing multiplayer servers and starting the SA-MP mobile game client.
-
-**English** · [Bahasa Indonesia](#bahasa-indonesia)
-
-## Preview
-
-| Home | Server Browser |
-|:---:|:---:|
-| ![Home screen](preview/home.jpg) | ![Server browser](preview/selectserver.jpg) |
-
-| In-game | Settings |
-|:---:|:---:|
-| ![In-game screen](preview/ingame.jpg) | ![Settings screen](preview/settings.jpg) |
-
-## Features
-
-- Browse and select multiplayer servers.
-- Launch the game client from the launcher.
-- Access settings and in-game controls.
-
-## Source From
-- https://github.com/kethrnensm/concac
-- JohnPeriaX
-
-## Contribute
-- Xyvern/Kallzzxa
-## Build
-
-Open the project in Android Studio, allow Gradle sync to finish, then run:
-
-```powershell
-.\gradlew.bat :app:assembleDebug
-```
-
-Debug APKs are generated in `app/build/outputs/apk/debug/`, split for `arm64-v8a` and `armeabi-v7a`.
-
-## Requirements
-
-- Android Studio with Android SDK and NDK `26.2.11394342`.
-- A configured Firebase Android app for package `com.sampmobile.xyvern` if Firebase services are needed.
-- A legally obtained copy of the game files required by the client.
-
-## Disclaimer
-
-This project is an independent community launcher and is not affiliated with or endorsed by Rockstar Games.
+Arsitektur repositori terbagi menjadi 2 komponen utama:
 
 ---
 
-## Bahasa Indonesia
+## 1. `client-side/` (Android Launcher & Game Engine)
+Launcher Android native untuk SA-MP & open.mp:
+* **Clean UI:** Desain gelap minimalis tanpa styling AI-slop atau warna neon berlebih.
+* **Pre-Join Model Sync:** Memeriksa manifest server dan mengunduh aset 0.3.DL (DFF & TXD) secara otomatis sebelum masuk ke game.
+* **Game Data Manager:** Verifikasi file inti GTA SA secara lokal + resume download `files.zip` via HTTP range.
+* **Android 16 Ready:** Kompatibel penuh dengan targetSdk 34, `extractNativeLibs="true"`, dan skema tanda tangan V1+V2+V3.
 
-Launcher Android untuk melihat server multiplayer dan menjalankan client game SA-MP Mobile.
+---
 
-### Pratinjau
-
-| Beranda | Pilih Server |
-|:---:|:---:|
-| ![Tampilan beranda](preview/home.jpg) | ![Daftar server](preview/selectserver.jpg) |
-
-| Dalam Game | Pengaturan |
-|:---:|:---:|
-| ![Tampilan dalam game](preview/ingame.jpg) | ![Tampilan pengaturan](preview/settings.jpg) |
-
-### Fitur
-
-- Melihat dan memilih server multiplayer.
-- Menjalankan client game dari launcher.
-- Mengakses pengaturan dan kontrol dalam game.
-
-
-## Kode Sumber
-- https://github.com/kethrnensm/concac
-- JohnPeriaX
-
-## Kontribusi
-- Xyvern/Kallzzxa
-### Build
-
-Buka proyek di Android Studio dan tunggu Gradle sync selesai, lalu jalankan:
-
-```powershell
-.\gradlew.bat :app:assembleDebug
-```
-
-APK debug tersedia di `app/build/outputs/apk/debug/`, terpisah untuk `arm64-v8a` dan `armeabi-v7a`.
-
-### Persyaratan
-
-- Android Studio dengan Android SDK dan NDK `26.2.11394342`.
-- Aplikasi Android Firebase dengan package `com.sampmobile.xyvern` jika ingin memakai layanan Firebase.
-- Salinan file game yang diperoleh secara legal dan dibutuhkan oleh client.
-
-### Penafian
-
-Proyek ini adalah launcher komunitas independen dan tidak berafiliasi dengan atau didukung oleh Rockstar Games.
+## 2. `server-side/` (Server Sync & 0.3.DL Content Pipeline)
+Komponen integrasi open.mp / SA-MP:
+* `models/`: Tempat menaruh file `.dff` dan `.txd`.
+* `generate_manifest.py`: Script otomatis untuk menghitung sha256 checksum dan ukuran file menjadi `models_manifest.json`.
+* `models_manifest.json`: Endpoint manifest HTTP yang dibaca oleh client-side launcher sebelum player join.
+* `custom_models_loader.inc`: Modul Pawn untuk mendaftarkan model via `AddSimpleModel()` / `AddCharModel()`.

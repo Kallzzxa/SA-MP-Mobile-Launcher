@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout 
+<androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#090A0F">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -15,181 +15,255 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="24dp"
-            android:paddingVertical="32dp">
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="24dp">
 
-            <ImageView
-                android:id="@+id/iv_logo"
-                android:layout_width="100dp"
-                android:layout_height="100dp"
-                app:srcCompat="@drawable/logo2" />
-
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Clean Header -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:fontFamily="@font/montserrat_bold"
-                android:text="M-SAMP MOBILE"
-                android:textColor="#FFFFFF"
-                android:textSize="26sp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:fontFamily="@font/montserrat_regular"
-                android:text="High-Performance Edition"
-                android:textColor="#8A8F98"
-                android:textSize="13sp" />
+                <ImageView
+                    android:id="@+id/iv_logo"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    app:srcCompat="@drawable/samp_logo" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/montserrat_bold"
+                        android:text="SA-MP CLIENT"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:letterSpacing="0.04" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/montserrat_medium"
+                        android:text="Dedicated 0.3.DL Sync Engine"
+                        android:textColor="#71717A"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
 
             <!-- Card Status Verifikasi Data Game -->
-            <androidx.constraintlayout.widget.ConstraintLayout
+            <LinearLayout
                 android:id="@+id/card_data_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
-                android:background="@drawable/bg_nav_active"
-                android:backgroundTint="#14FFFFFF"
+                android:layout_marginTop="20dp"
+                android:background="#12131A"
+                android:orientation="vertical"
                 android:padding="16dp">
 
-                <View
-                    android:id="@+id/dot_status"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:background="@drawable/bg_dot_red"
-                    app:layout_constraintBottom_toBottomOf="@+id/tv_data_title"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="@+id/tv_data_title" />
-
-                <TextView
-                    android:id="@+id/tv_data_title"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:fontFamily="@font/montserrat_bold"
-                    android:text="Status Data Game"
-                    android:textColor="#FFFFFF"
-                    android:textSize="15sp"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toEndOf="@+id/dot_status"
-                    app:layout_constraintTop_toTopOf="parent" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/dot_status"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/bg_dot_red" />
+
+                    <TextView
+                        android:id="@+id/tv_data_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:fontFamily="@font/montserrat_bold"
+                        android:text="Status Data Game"
+                        android:textColor="#F4F4F5"
+                        android:textSize="14sp" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tv_data_desc"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="Mengecek kelengkapan data game..."
-                    android:textColor="#C0C5CE"
+                    android:text="Mengecek kelengkapan file..."
+                    android:textColor="#A1A1AA"
                     android:textSize="12sp"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/tv_data_title" />
+                    android:lineSpacingExtra="3dp" />
 
                 <ProgressBar
                     android:id="@+id/pb_download"
                     style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-                    android:layout_width="0dp"
-                    android:layout_height="8dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
                     android:layout_marginTop="12dp"
                     android:progressDrawable="@drawable/download_progress"
-                    android:visibility="gone"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/tv_data_desc" />
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/tv_download_progress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:fontFamily="@font/montserrat_bold"
+                    android:fontFamily="@font/montserrat_medium"
                     android:text="0%"
-                    android:textColor="#FF0037"
+                    android:textColor="#3B82F6"
                     android:textSize="12sp"
-                    android:visibility="gone"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/pb_download" />
+                    android:visibility="gone" />
 
-                <!-- Action Button Container -->
                 <LinearLayout
                     android:id="@+id/layout_actions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:orientation="horizontal"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/tv_download_progress">
+                    android:orientation="horizontal">
 
                     <Button
                         android:id="@+id/btn_verify_data"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="40dp"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_button_close"
+                        android:background="#1E202B"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Verifikasi Ulang"
+                        android:text="Cek Data"
                         android:textAllCaps="false"
-                        android:textColor="#FFFFFF"
+                        android:textColor="#D4D4D8"
                         android:textSize="12sp" />
 
                     <Button
                         android:id="@+id/btn_download_data"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="40dp"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:background="@drawable/ic_buttoncolor"
+                        android:background="#2563EB"
                         android:fontFamily="@font/montserrat_bold"
                         android:text="Download Data"
                         android:textAllCaps="false"
                         android:textColor="#FFFFFF"
                         android:textSize="12sp" />
-
                 </LinearLayout>
+            </LinearLayout>
 
-            </androidx.constraintlayout.widget.ConstraintLayout>
-
-            <!-- Card Info Manual Copy -->
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:id="@+id/card_manual_info"
+            <!-- Card Dedicated Server & 0.3.DL Model Sync -->
+            <LinearLayout
+                android:id="@+id/card_server_sync"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:background="@drawable/bg_nav_active"
-                android:backgroundTint="#0AFFFFFF"
+                android:background="#12131A"
+                android:orientation="vertical"
                 android:padding="16dp">
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="@font/montserrat_bold"
+                        android:text="Dedicated Server"
+                        android:textColor="#F4F4F5"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tv_server_status_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#1A2744"
+                        android:fontFamily="@font/montserrat_bold"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:text="0.3.DL ACTIVE"
+                        android:textColor="#60A5FA"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
                 <TextView
-                    android:id="@+id/tv_manual_title"
+                    android:id="@+id/tv_server_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="@font/montserrat_bold"
+                    android:text="Nusantara Roleplay (open.mp)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tv_server_endpoint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="@font/montserrat_regular"
+                    android:text="IP: 127.0.0.1:7777 (Custom Models Sync)"
+                    android:textColor="#71717A"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tv_model_sync_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:fontFamily="@font/montserrat_medium"
+                    android:text="Model Sync: Menunggu sinkronisasi aset..."
+                    android:textColor="#A1A1AA"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_sync_and_play"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="14dp"
+                    android:background="#2563EB"
+                    android:fontFamily="@font/montserrat_bold"
+                    android:text="Sync Models &amp; Play"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- Card Info Manual Path -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="#0D0E14"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Punya Data Sendiri?"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
+                    android:text="Direktori Data Game"
+                    android:textColor="#A1A1AA"
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/tv_manual_path"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="4dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="Letakkan file GTA SA (data, texdb, models) di:\nAndroid/data/com.sampmobile.xyvern/files/"
-                    android:textColor="#8A8F98"
-                    android:textSize="11sp"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/tv_manual_title" />
-
-            </androidx.constraintlayout.widget.ConstraintLayout>
+                    android:text="Android/data/com.sampmobile.xyvern/files/"
+                    android:textColor="#52525B"
+                    android:textSize="11sp" />
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>

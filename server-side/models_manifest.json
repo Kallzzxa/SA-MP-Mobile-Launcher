@@ -1,0 +1,22 @@
+{
+  "server_name": "Nusantara Roleplay (open.mp)",
+  "endpoint": "127.0.0.1:7777",
+  "sync_version": "1.0",
+  "total_custom_models": 1,
+  "models": [
+    {
+      "id": -2000,
+      "base_id": 19379,
+      "type": "simple",
+      "virtual_world": -1,
+      "dff": "sample_cube.dff",
+      "txd": "sample_cube.txd",
+      "dff_url": "https://raw.githubusercontent.com/rezzylrn/samp-mobile-optimized/main/server-side/models/sample_cube.dff",
+      "txd_url": "https://raw.githubusercontent.com/rezzylrn/samp-mobile-optimized/main/server-side/models/sample_cube.txd",
+      "dff_sha256": "fdbc29b115905ed95eb7a4b1be98e4435eec105a18b37e8cd45b896d8ed6201a",
+      "txd_sha256": "dd07eedc733835a7640d6528f95cf5141065cf06a1eeeeb1d719939e0c0189ca",
+      "dff_size": 39,
+      "txd_size": 40
+    }
+  ]
+}
