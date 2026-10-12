@@ -58,6 +58,11 @@ jobs:
           git config --system core.longpaths true
           reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
+      - name: Generate custom release keystore
+        shell: cmd
+        run: |
+          keytool -genkeypair -v -keystore app-release-key.jks -alias sampkey -keyalg RSA -keysize 2048 -validity 10000 -storepass password123456 -keypass password123456 -dname "CN=SAMP, OU=Dev, O=RakyatId, L=Jakarta, ST=Jakarta, C=ID"
+
       - name: Grant gradlew permission
         shell: cmd
         run: |
@@ -67,7 +72,7 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
+          gradlew.bat assembleRelease assembleDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
 
       - name: List generated APKs
         shell: powershell
@@ -84,15 +89,17 @@ jobs:
         shell: cmd
         run: |
           for /r release-apks %%f in (*.apk) do (
+            echo ==============================================
             echo Verifying %%f
             call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" verify --verbose "%%f"
+            echo ==============================================
           )
 
-      # Upload Debug APK
-      - name: Upload Debug APK
+      # Upload Artifacts
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-apks
           path: release-apks/*.apk
 
       # Create GitHub Release

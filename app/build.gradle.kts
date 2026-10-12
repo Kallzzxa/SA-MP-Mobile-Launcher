@@ -24,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "com.sampmobile.xyvern"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 33
         versionCode = 130
         versionName = "1.0"
 
@@ -47,16 +47,26 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            v1SigningEnabled = true
+            v2SigningEnabled = true
+        }
         create("release") {
-            storeFile = file("${rootDir}/keystore_playmarket2.jks")
-            storePassword = "password"
-            keyAlias = "key0"
-            keyPassword = "password"
+            val keyFile = file("${rootDir}/app-release-key.jks")
+            if (keyFile.exists()) {
+                storeFile = keyFile
+                storePassword = "password123456"
+                keyAlias = "sampkey"
+                keyPassword = "password123456"
+            }
+            v1SigningEnabled = true
+            v2SigningEnabled = true
         }
     }
 
     buildTypes {
         getByName("debug") {
+            applicationIdSuffix = ".debug"
             isDebuggable = true
             isJniDebuggable = false
             isMinifyEnabled = false
@@ -80,7 +90,7 @@ android {
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
 
             externalNativeBuild {
                 cmake {
@@ -128,6 +138,7 @@ android {
 
     packaging {
         jniLibs {
+            useLegacyPackaging = true
             excludes += "META-INF/*"
         }
         resources {
