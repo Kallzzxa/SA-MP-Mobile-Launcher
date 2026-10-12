@@ -28,11 +28,38 @@ SplashScreen::SplashScreen()
 
 void SplashScreen::performLayout()
 {
-	m_logo->setFixedSize(UISettings::splashscreenLogoSize());
-	m_logo->setPosition(UISettings::splashscreenLogoPos());
+	ImVec2 screenSize = parent() ? parent()->size() : size();
+	if (screenSize.x <= 0.0f || screenSize.y <= 0.0f) {
+		screenSize = ImGui::GetIO().DisplaySize;
+	}
 
-	m_progressBar->setFixedSize(UISettings::splashscreenPBarSize());
-	m_progressBar->setPosition(UISettings::splashscreenPBarPos());
+	// 1. Center the SA-MP Logo perfectly in the screen
+	// Base aspect ratio of SA-MP logo is ~4:3 or ~16:9 box
+	float logoWidth = screenSize.x * 0.55f;
+	float logoHeight = logoWidth * 0.45f;
+	if (logoHeight > screenSize.y * 0.45f) {
+		logoHeight = screenSize.y * 0.45f;
+		logoWidth = logoHeight / 0.45f;
+	}
+
+	ImVec2 logoPos = ImVec2(
+		(screenSize.x - logoWidth) * 0.5f,
+		(screenSize.y - logoHeight) * 0.42f
+	);
+
+	m_logo->setFixedSize(ImVec2(logoWidth, logoHeight));
+	m_logo->setPosition(logoPos);
+
+	// 2. Center the loading progress bar horizontally below the logo
+	float pbarWidth = screenSize.x * 0.40f;
+	float pbarHeight = 6.0f;
+	ImVec2 pbarPos = ImVec2(
+		(screenSize.x - pbarWidth) * 0.5f,
+		logoPos.y + logoHeight + 25.0f
+	);
+
+	m_progressBar->setFixedSize(ImVec2(pbarWidth, pbarHeight));
+	m_progressBar->setPosition(pbarPos);
 }
 
 void SplashScreen::draw(ImGuiRenderer* renderer)
@@ -43,13 +70,26 @@ void SplashScreen::draw(ImGuiRenderer* renderer)
 	m_logo->draw(renderer);
 
 	// Auto-advancing smooth loading progress
-	static float currentProgress = 0.05f;
+	static float currentProgress = 0.08f;
 	if (currentProgress < 1.0f) {
-		currentProgress += 0.012f;
+		currentProgress += 0.015f;
 		if (currentProgress > 1.0f) currentProgress = 1.0f;
-		m_progressBar->setValue(currentProgress);
 	}
 
-	// progress bar
-	m_progressBar->draw(renderer);
+	// Direct vector rendering for guaranteed visible & moving loading bar
+	ImVec2 pbPos = m_progressBar->absolutePosition();
+	ImVec2 pbSize = m_progressBar->size();
+	if (pbSize.x > 0.0f && pbSize.y > 0.0f)
+	{
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		// Background slot
+		drawList->AddRectFilled(pbPos, ImVec2(pbPos.x + pbSize.x, pbPos.y + pbSize.y), IM_COL32(24, 30, 42, 220), 3.0f);
+		// Animated progress fill (Electric cyber blue)
+		float filledWidth = pbSize.x * currentProgress;
+		if (filledWidth > 0.0f) {
+			drawList->AddRectFilled(pbPos, ImVec2(pbPos.x + filledWidth, pbPos.y + pbSize.y), IM_COL32(2, 132, 199, 255), 3.0f);
+			// Glowing edge tip
+			drawList->AddCircleFilled(ImVec2(pbPos.x + filledWidth, pbPos.y + pbSize.y * 0.5f), 3.5f, IM_COL32(56, 189, 248, 255));
+		}
+	}
 }

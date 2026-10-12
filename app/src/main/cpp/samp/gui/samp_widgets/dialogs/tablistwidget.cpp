@@ -99,7 +99,7 @@ void TabListWidget::ItemWidget::performLayout()
 
 void TabListWidget::ItemWidget::draw(ImGuiRenderer* renderer)
 {
-	if (this->selected()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0x64, 0x95, 0xED)/*ImColor(0.7f, 0.1f, 0.1f)*/, true);
+	if (this->selected()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(30, 41, 59, 200), true);
 	ListBoxItem::draw(renderer);
 }
 

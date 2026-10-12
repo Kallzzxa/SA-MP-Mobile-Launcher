@@ -34,9 +34,9 @@ public:
 		float radius = (size().x < size().y ? size().x : size().y) * 0.46f;
 
 		if (recording()) {
-			// Active recording: Glowing crimson disc
-			drawList->AddCircle(center, radius + 2.5f, IM_COL32(239, 68, 68, 160), 32, 2.0f);
-			drawList->AddCircleFilled(center, radius, IM_COL32(220, 38, 38, 240), 32);
+			// Active recording: Glowing electric cyber-blue disc (NO RED)
+			drawList->AddCircle(center, radius + 2.5f, IM_COL32(56, 189, 248, 160), 32, 2.0f);
+			drawList->AddCircleFilled(center, radius, IM_COL32(2, 132, 199, 240), 32);
 			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 220), 32, 1.5f);
 		} else {
 			// Idle: Deep slate navy circle with sleek electric blue rim
@@ -69,30 +69,56 @@ public:
 	void touchPopEvent() override
 	{
 		countdown = 500;
-		setRecording(0);
+		if (!m_dragging) {
+			setRecording(0);
+		}
+		m_dragging = false;
 	}
 
 	void touchPushEvent() override
 	{
-			//setRecording(recording() ^ 1);
 		setRecording(1);
 		countdown = 500;
+		m_dragging = false;
+		m_touchStartPos = absolutePosition();
+	}
+
+	void touchMoveEvent(const ImVec2& delta) override
+	{
+		// Live on-screen drag adjustment: allows easy repositioning with touch
+		m_dragging = true;
+		ImVec2 newPos = position() + delta;
+
+		// Keep within screen bounds
+		ImVec2 dispSize = ImGui::GetIO().DisplaySize;
+		if (dispSize.x > 0.0f && dispSize.y > 0.0f) {
+			newPos.x = std::clamp(newPos.x, 10.0f, dispSize.x - size().x - 10.0f);
+			newPos.y = std::clamp(newPos.y, 10.0f, dispSize.y - size().y - 10.0f);
+		}
+
+		setPosition(newPos);
+
+		if (pSettings) {
+			pSettings->Get().fVoiceChatPosX = newPos.x;
+			pSettings->Get().fVoiceChatPosY = newPos.y;
+		}
 	}
 
 	void setRecording(bool recording) 
 	{ 
 		if (recording == 1) countdown = 200;
 		m_recording = recording;
-		this->setCaptionColor(m_recording ? ImColor(1.0f, 0.0f, 0.0f) : ImColor(1.0f, 1.0f, 1.0f));
+		this->setCaptionColor(m_recording ? ImColor(56, 189, 248) : ImColor(1.0f, 1.0f, 1.0f));
 	}
 
 	bool recording() const { return m_recording; }
 
 private:
 	bool m_recording;
+	bool m_dragging{ false };
+	ImVec2 m_touchStartPos{ 0.0f, 0.0f };
 	RwTexture* m_texture_micro_on;
 	RwTexture* m_texture_micro_off;
-	//int countdown = 1000;
 public:
 	int countdown = 1000;
 };
