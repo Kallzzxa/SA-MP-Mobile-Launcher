@@ -1,0 +1,72 @@
+name: Sync Game Data from MediaFire to GitHub Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      mediafire_url:
+        description: "MediaFire file page URL"
+        required: true
+        default: "https://www.mediafire.com/file/rhkel93l3frrgtn/files.zip/file"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Download files.zip from MediaFire
+        shell: bash
+        run: |
+          pip install requests
+          python3 - << 'EOF'
+          import re, sys, requests
+
+          page_url = "${{ github.event.inputs.mediafire_url }}"
+          headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+          resp = requests.get(page_url, headers=headers)
+          m = re.search(r'href="(https?://download[^"]+mediafire[^"]+files\.zip)"', resp.text)
+          if not m:
+              m = re.search(r'aria-label="Download file"\s+href="([^"]+)"', resp.text)
+
+          if not m:
+              print("Failed to find direct download link on MediaFire page")
+              sys.exit(1)
+
+          direct_url = m.group(1)
+          print(f"Direct download link: {direct_url}")
+
+          with requests.get(direct_url, headers=headers, stream=True) as r:
+              r.raise_for_status()
+              total = int(r.headers.get('content-length', 0))
+              print(f"Downloading {total} bytes...")
+              with open("files.zip", "wb") as f:
+                  downloaded = 0
+                  for chunk in r.iter_content(chunk_size=1024*1024):
+                      if chunk:
+                          f.write(chunk)
+                          downloaded += len(chunk)
+                          if total > 0 and downloaded % (50 * 1024 * 1024) < 1024 * 1024:
+                              print(f"{downloaded / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB")
+
+          print("Download completed!")
+          EOF
+          ls -lh files.zip
+
+      - name: Upload to GitHub Release data-v1
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: data-v1
+          name: GTA SA / SAMP Data Pack v1
+          files: files.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
