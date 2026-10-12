@@ -63,7 +63,6 @@ android {
 
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = ".debug"
             isDebuggable = true
             isJniDebuggable = false
             isMinifyEnabled = false
