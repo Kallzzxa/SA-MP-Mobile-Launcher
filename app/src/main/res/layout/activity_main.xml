@@ -22,8 +22,8 @@
     <LinearLayout
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:background="#0D0E14"
+        android:layout_height="64dp"
+        android:background="#000000"
         android:orientation="horizontal"
         android:gravity="center"
         android:paddingHorizontal="16dp"
@@ -32,15 +32,15 @@
         <LinearLayout
             android:id="@+id/nav_home"
             android:layout_width="0dp"
-            android:layout_height="38dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal"
             android:paddingHorizontal="8dp">
             <ImageView
                 android:id="@+id/iv_home"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 app:srcCompat="@drawable/ic_mainmenu"
                 app:tint="@color/white" />
             <TextView
@@ -51,22 +51,21 @@
                 android:text="Home"
                 android:textColor="@color/white"
                 android:fontFamily="@font/montserrat_bold"
-                android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/nav_play"
             android:layout_width="0dp"
-            android:layout_height="38dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal"
             android:paddingHorizontal="8dp">
             <ImageView
                 android:id="@+id/iv_play"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 app:srcCompat="@android:drawable/ic_media_play"
                 app:tint="@color/white" />
             <TextView
@@ -74,25 +73,24 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="Servers"
+                android:text="Play"
                 android:textColor="@color/white"
                 android:fontFamily="@font/montserrat_bold"
-                android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/nav_settings"
             android:layout_width="0dp"
-            android:layout_height="38dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal"
             android:paddingHorizontal="8dp">
             <ImageView
                 android:id="@+id/iv_settings"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 app:srcCompat="@drawable/ic_settingsmenu"
                 app:tint="@color/white" />
             <TextView
@@ -103,7 +101,6 @@
                 android:text="Settings"
                 android:textColor="@color/white"
                 android:fontFamily="@font/montserrat_bold"
-                android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
 

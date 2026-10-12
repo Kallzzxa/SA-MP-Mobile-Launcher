@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#090A0F">
+    android:background="#000000">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -28,8 +28,8 @@
 
                 <ImageView
                     android:id="@+id/iv_logo"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     app:srcCompat="@drawable/samp_logo" />
 
                 <LinearLayout
@@ -51,8 +51,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/montserrat_medium"
-                        android:text="Dedicated 0.3.DL Sync Engine"
-                        android:textColor="#71717A"
+                        android:text="High-Performance Edition"
+                        android:textColor="#8A8F98"
                         android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
@@ -63,7 +63,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:background="#12131A"
+                android:background="@drawable/bg_dialog_round"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -85,8 +85,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Status Data Game"
-                        android:textColor="#F4F4F5"
+                        android:text="Data Game Belum Lengkap"
+                        android:textColor="#FFFFFF"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -97,7 +97,7 @@
                     android:layout_marginTop="8dp"
                     android:fontFamily="@font/montserrat_regular"
                     android:text="Mengecek kelengkapan file..."
-                    android:textColor="#A1A1AA"
+                    android:textColor="#8A8F98"
                     android:textSize="12sp"
                     android:lineSpacingExtra="3dp" />
 
@@ -132,12 +132,12 @@
                     <Button
                         android:id="@+id/btn_verify_data"
                         android:layout_width="0dp"
-                        android:layout_height="40dp"
+                        android:layout_height="44dp"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:background="#1E202B"
+                        android:backgroundTint="#1F232B"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Cek Data"
+                        android:text="Verifikasi Ulang"
                         android:textAllCaps="false"
                         android:textColor="#D4D4D8"
                         android:textSize="12sp" />
@@ -145,7 +145,7 @@
                     <Button
                         android:id="@+id/btn_download_data"
                         android:layout_width="0dp"
-                        android:layout_height="40dp"
+                        android:layout_height="44dp"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:backgroundTint="#FF0037"
@@ -157,13 +157,52 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Card Server Utama / Quick Play -->
+            <!-- Card Punya Data Sendiri / Panduan Path -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_dialog_round"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/montserrat_bold"
+                    android:text="Punya Data Sendiri?"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="@font/montserrat_regular"
+                    android:text="Salin folder data, texdb, models dari GTA SA milikmu ke folder penyimpanan game:"
+                    android:textColor="#8A8F98"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_manual_path"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#15171E"
+                    android:padding="10dp"
+                    android:fontFamily="@font/montserrat_medium"
+                    android:text="/storage/emulated/0/Android/data/com.sampmobile.xyvern/files"
+                    android:textColor="#FF0037"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- Card Quick Play / Server Terakhir -->
             <LinearLayout
                 android:id="@+id/card_server_sync"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:background="#12131A"
+                android:background="@drawable/bg_dialog_round"
                 android:orientation="vertical"
                 android:padding="16dp">
 
@@ -179,7 +218,7 @@
                         android:layout_weight="1"
                         android:fontFamily="@font/montserrat_bold"
                         android:text="Server Favorit"
-                        android:textColor="#F4F4F5"
+                        android:textColor="#FFFFFF"
                         android:textSize="14sp" />
 
                     <TextView
@@ -212,7 +251,7 @@
                     android:layout_marginTop="2dp"
                     android:fontFamily="@font/montserrat_regular"
                     android:text="Address: 127.0.0.1:7777"
-                    android:textColor="#71717A"
+                    android:textColor="#8A8F98"
                     android:textSize="11sp" />
 
                 <Button
@@ -226,34 +265,6 @@
                     android:textAllCaps="false"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp" />
-            </LinearLayout>
-
-            <!-- Card Info Manual Path -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="#0D0E14"
-                android:orientation="vertical"
-                android:padding="14dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/montserrat_bold"
-                    android:text="Direktori Data Game"
-                    android:textColor="#A1A1AA"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/tv_manual_path"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="@font/montserrat_regular"
-                    android:text="Android/data/com.sampmobile.xyvern/files/"
-                    android:textColor="#52525B"
-                    android:textSize="11sp" />
             </LinearLayout>
 
         </LinearLayout>
