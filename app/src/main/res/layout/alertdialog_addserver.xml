@@ -16,7 +16,7 @@
         android:fontFamily="@font/montserrat_bold"
         android:letterSpacing="0.02"
         android:text="ADD NEW SERVER"
-        android:textColor="#FF0037"
+        android:textColor="#0284C7"
         android:textSize="17sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"

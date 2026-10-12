@@ -89,15 +89,22 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     private native void onInputEnd(byte[] str);
     @Override
     public void OnInputEnd(String str) {
+        if (str != null) {
+            String trimmed = str.trim();
+            if (trimmed.equalsIgnoreCase("/q") || trimmed.equalsIgnoreCase("/quit")) {
+                exitGame();
+                return;
+            }
+        }
+
         byte[] toReturn = null;
         try {
-            toReturn = str.getBytes("windows-874");
+            toReturn = str != null ? str.getBytes("windows-874") : new byte[0];
         } catch(UnsupportedEncodingException e) {}
 
         try {
             onInputEnd(toReturn);
         } catch (UnsatisfiedLinkError e5) {
-            Log.e(TAG, e5.getMessage());
         }
     }
 

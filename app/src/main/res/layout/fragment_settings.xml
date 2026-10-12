@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
+    android:background="#090D16"
     android:padding="16dp">
 
     <TextView
@@ -25,7 +25,7 @@
         android:layout_width="120dp"
         android:layout_height="3dp"
         android:layout_marginTop="8dp"
-        android:background="#FF0037"
+        android:background="#0284C7"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/textView9" />
@@ -94,8 +94,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -124,8 +124,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -154,8 +154,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -184,8 +184,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -214,8 +214,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -244,8 +244,8 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:thumbTint="#FF0037"
-                    app:trackTint="#33FF0037" />
+                    app:thumbTint="#0284C7"
+                    app:trackTint="#330284C7" />
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <androidx.constraintlayout.widget.ConstraintLayout

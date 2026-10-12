@@ -7,7 +7,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:layout_gravity="center"
-    android:background="#090A0F"
+    android:background="#090D16"
     android:keepScreenOn="true">
 
     <com.sampmobile.xyvern.launcher.util.ViewPagerWithoutSwipe
@@ -23,7 +23,7 @@
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="64dp"
-        android:background="#000000"
+        android:background="#0B0F19"
         android:orientation="horizontal"
         android:gravity="center"
         android:paddingHorizontal="16dp"

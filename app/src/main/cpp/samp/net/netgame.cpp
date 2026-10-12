@@ -992,17 +992,28 @@ void CNetGame::SendChatMessage(const char* szMsg)
 	m_pRakClient->RPC(&RPC_Chat, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
 }
 
+static std::string TrimString(const std::string& str) {
+	size_t first = str.find_first_not_of(" 	\r\n");
+	if (first == std::string::npos) return "";
+	size_t last = str.find_last_not_of(" 	\r\n");
+	return str.substr(first, (last - first + 1));
+}
+
 void CNetGame::SendChatCommand(const char* szCommand)
 {
 	if (!szCommand) return;
 
-	// Client-side standard commands
-	if (strcasecmp(szCommand, "/q") == 0 || strcasecmp(szCommand, "/quit") == 0) {
-		pJavaWrapper->exitGame();
+	std::string cmd = TrimString(szCommand);
+	if (cmd.empty()) return;
+
+	// Client-side quick command: Exit game
+	if (strcasecmp(cmd.c_str(), "/q") == 0 || strcasecmp(cmd.c_str(), "/quit") == 0) {
+		if (pJavaWrapper) pJavaWrapper->exitGame();
 		return;
 	}
 
-	if (strcasecmp(szCommand, "/fps") == 0) {
+	// Client-side command: Toggle FPS overlay
+	if (strcasecmp(cmd.c_str(), "/fps") == 0) {
 		if (pSettings) {
 			pSettings->Get().iFPSCounter = !pSettings->Get().iFPSCounter;
 			if (pUI) pUI->chat()->addInfoMessage("FPS Counter: %s", pSettings->Get().iFPSCounter ? "Enabled" : "Disabled");
@@ -1010,13 +1021,47 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
-	if (strcasecmp(szCommand, "/reconnect") == 0 || strcasecmp(szCommand, "/rec") == 0) {
+	// Client-side command: Adjust mic button position (/micpos <x> <y>)
+	if (strncasecmp(cmd.c_str(), "/micpos", 7) == 0) {
+		float newX = 0.0f, newY = 0.0f;
+		if (sscanf(cmd.c_str() + 7, "%f %f", &newX, &newY) == 2) {
+			if (pUI && pUI->voicebutton()) {
+				pUI->voicebutton()->setPosition(ImVec2(newX, newY));
+			}
+			if (pSettings) {
+				pSettings->Get().fVoiceChatPosX = newX;
+				pSettings->Get().fVoiceChatPosY = newY;
+			}
+			if (pUI) pUI->chat()->addInfoMessage("[VOICE] Position moved to X: %.0f, Y: %.0f", newX, newY);
+		} else {
+			if (pUI) pUI->chat()->addInfoMessage("Usage: /micpos <X> <Y> (e.g. /micpos 1500 450)");
+		}
+		return;
+	}
+
+	// Client-side command: Voice volume (/vvol <0-100> or /voicevol)
+	if (strncasecmp(cmd.c_str(), "/vvol", 5) == 0 || strncasecmp(cmd.c_str(), "/voicevol", 9) == 0) {
+		int vol = 100;
+		const char* arg = (strncasecmp(cmd.c_str(), "/voicevol", 9) == 0) ? (cmd.c_str() + 9) : (cmd.c_str() + 5);
+		if (sscanf(arg, "%d", &vol) == 1) {
+			if (vol < 0) vol = 0;
+			if (vol > 100) vol = 100;
+			if (pUI) pUI->chat()->addInfoMessage("[VOICE] Volume set to %d%%", vol);
+		} else {
+			if (pUI) pUI->chat()->addInfoMessage("Usage: /vvol <0-100>");
+		}
+		return;
+	}
+
+	// Client-side command: Reconnect
+	if (strcasecmp(cmd.c_str(), "/reconnect") == 0 || strcasecmp(cmd.c_str(), "/rec") == 0) {
 		if (pUI) pUI->chat()->addInfoMessage("Reconnecting to server...");
 		ShutdownForGameModeRestart();
 		return;
 	}
 
-	if (strcasecmp(szCommand, "/clearchat") == 0 || strcasecmp(szCommand, "/cc") == 0) {
+	// Client-side command: Clear chat
+	if (strcasecmp(cmd.c_str(), "/clearchat") == 0 || strcasecmp(cmd.c_str(), "/cc") == 0) {
 		if (pUI) {
 			for (int i = 0; i < 20; i++) pUI->chat()->addDebugMessage(" ");
 			pUI->chat()->addInfoMessage("Chat cleared.");
@@ -1024,13 +1069,21 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
+	// Client-side command: Show client help
+	if (strcasecmp(cmd.c_str(), "/cmds") == 0 || strcasecmp(cmd.c_str(), "/help") == 0) {
+		if (pUI) {
+			pUI->chat()->addInfoMessage("Client Commands: /q, /fps, /rec, /cc, /micpos <x y>, /vvol <0-100>");
+		}
+		// Also allow server /help to pass through to server if connected
+	}
+
 	if (GetGameState() != GAMESTATE_CONNECTED) return;
 
 	RakNet::BitStream bsParams;
-	int iStrlen = strlen(szCommand);
+	int iStrlen = cmd.length();
 
 	bsParams.Write(iStrlen);
-	bsParams.Write(szCommand, iStrlen);
+	bsParams.Write(cmd.c_str(), iStrlen);
 	m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
 }
 

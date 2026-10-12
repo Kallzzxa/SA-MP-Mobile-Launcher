@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#090D16">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -19,7 +19,7 @@
             android:paddingHorizontal="20dp"
             android:paddingVertical="24dp">
 
-            <!-- Clean Header -->
+            <!-- Clean Modern Header -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -52,20 +52,20 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/montserrat_medium"
                         android:text="High-Performance Edition"
-                        android:textColor="#8A8F98"
+                        android:textColor="#38BDF8"
                         android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Card Status Verifikasi Data Game -->
+            <!-- Card 1: Game Data Verification & Play Action -->
             <LinearLayout
                 android:id="@+id/card_data_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="22dp"
                 android:background="@drawable/bg_dialog_round"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="18dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -85,7 +85,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Data Game Belum Lengkap"
+                        android:text="Checking Assets..."
                         android:textColor="#FFFFFF"
                         android:textSize="14sp" />
                 </LinearLayout>
@@ -96,8 +96,8 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="Mengecek kelengkapan file..."
-                    android:textColor="#8A8F98"
+                    android:text="Verifying core game files..."
+                    android:textColor="#94A3B8"
                     android:textSize="12sp"
                     android:lineSpacingExtra="3dp" />
 
@@ -106,9 +106,9 @@
                     style="@style/Widget.AppCompat.ProgressBar.Horizontal"
                     android:layout_width="match_parent"
                     android:layout_height="6dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="14dp"
                     android:progressDrawable="@drawable/download_progress"
-                    android:progressTint="#FF0037"
+                    android:progressTint="#0284C7"
                     android:visibility="gone" />
 
                 <TextView
@@ -118,7 +118,7 @@
                     android:layout_marginTop="6dp"
                     android:fontFamily="@font/montserrat_medium"
                     android:text="0%"
-                    android:textColor="#FF0037"
+                    android:textColor="#38BDF8"
                     android:textSize="12sp"
                     android:visibility="gone" />
 
@@ -132,45 +132,45 @@
                     <Button
                         android:id="@+id/btn_verify_data"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="46dp"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:backgroundTint="#1F232B"
+                        android:backgroundTint="#1E293B"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Verifikasi Ulang"
+                        android:text="Verify"
                         android:textAllCaps="false"
-                        android:textColor="#D4D4D8"
-                        android:textSize="12sp" />
+                        android:textColor="#E2E8F0"
+                        android:textSize="13sp" />
 
                     <Button
                         android:id="@+id/btn_download_data"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="46dp"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:backgroundTint="#FF0037"
+                        android:backgroundTint="#0284C7"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Download Data"
+                        android:text="Download Assets"
                         android:textAllCaps="false"
                         android:textColor="#FFFFFF"
-                        android:textSize="12sp" />
+                        android:textSize="13sp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Card Punya Data Sendiri / Panduan Path -->
+            <!-- Card 2: Manual Storage Directory Guide -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:background="@drawable/bg_dialog_round"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="18dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Punya Data Sendiri?"
+                    android:text="Custom Data Directory"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp" />
 
@@ -179,60 +179,21 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="Salin folder data, texdb, models dari GTA SA milikmu ke folder penyimpanan game:"
-                    android:textColor="#8A8F98"
+                    android:text="If placing your own GTA SA files (data, texdb, models), paste them into:"
+                    android:textColor="#94A3B8"
                     android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/tv_manual_path"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:background="#15171E"
-                    android:padding="10dp"
+                    android:layout_marginTop="10dp"
+                    android:background="#0F172A"
+                    android:padding="12dp"
                     android:fontFamily="@font/montserrat_medium"
                     android:text="/storage/emulated/0/Android/data/com.sampmobile.xyvern/files"
-                    android:textColor="#FF0037"
+                    android:textColor="#38BDF8"
                     android:textSize="11sp" />
-            </LinearLayout>
-
-            <!-- Card Quick Action / Jump to Servers -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/bg_dialog_round"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/montserrat_bold"
-                    android:text="Daftar Server"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:fontFamily="@font/montserrat_regular"
-                    android:text="Pilih dan sambungkan ke server multiplayer favorit atau hosted."
-                    android:textColor="#8A8F98"
-                    android:textSize="12sp" />
-
-                <Button
-                    android:id="@+id/btn_open_servers"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="14dp"
-                    android:backgroundTint="#FF0037"
-                    android:fontFamily="@font/montserrat_bold"
-                    android:text="Buka Daftar Server"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp" />
             </LinearLayout>
 
         </LinearLayout>

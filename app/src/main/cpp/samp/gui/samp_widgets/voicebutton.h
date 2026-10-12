@@ -30,47 +30,40 @@ public:
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 		ImVec2 pMin = absolutePosition();
 		ImVec2 pMax = absolutePosition() + size();
-		float width = size().x;
-		float height = size().y;
-		float rounding = width * 0.35f;
+		ImVec2 center = ImVec2((pMin.x + pMax.x) * 0.5f, (pMin.y + pMax.y) * 0.5f);
+		float radius = (size().x < size().y ? size().x : size().y) * 0.46f;
 
 		if (recording()) {
-			drawList->AddRectFilled(pMin, pMax, IM_COL32(220, 38, 38, 235), rounding);
-			drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 220), rounding, 0, 1.5f);
+			// Active recording: Glowing crimson disc
+			drawList->AddCircle(center, radius + 2.5f, IM_COL32(239, 68, 68, 160), 32, 2.0f);
+			drawList->AddCircleFilled(center, radius, IM_COL32(220, 38, 38, 240), 32);
+			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 220), 32, 1.5f);
 		} else {
-			drawList->AddRectFilled(pMin, pMax, IM_COL32(15, 17, 24, 205), rounding);
-			drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 45), rounding, 0, 1.2f);
+			// Idle: Deep slate navy circle with sleek electric blue rim
+			drawList->AddCircleFilled(center, radius, IM_COL32(15, 23, 42, 215), 32);
+			drawList->AddCircle(center, radius, IM_COL32(56, 189, 248, 130), 32, 1.5f);
 		}
 
-		// Centered microphone glyph
-		float centerX = (pMin.x + pMax.x) * 0.5f;
-		float centerY = pMin.y + height * 0.42f;
-		float micScale = width * 0.22f;
-
+		// Centered crisp vector microphone glyph (No text labels)
 		ImU32 glyphColor = IM_COL32(255, 255, 255, 245);
+		float micScale = radius * 0.36f;
 
 		// 1. Microphone Capsule (rounded body)
-		ImVec2 capMin = ImVec2(centerX - micScale * 0.7f, centerY - micScale * 1.5f);
-		ImVec2 capMax = ImVec2(centerX + micScale * 0.7f, centerY + micScale * 0.3f);
-		drawList->AddRectFilled(capMin, capMax, glyphColor, micScale * 0.7f);
+		ImVec2 capMin = ImVec2(center.x - micScale * 0.5f, center.y - micScale * 0.95f);
+		ImVec2 capMax = ImVec2(center.x + micScale * 0.5f, center.y + micScale * 0.3f);
+		drawList->AddRectFilled(capMin, capMax, glyphColor, micScale * 0.5f);
 
 		// 2. Microphone U-cradle arc
-		drawList->PathArcTo(ImVec2(centerX, centerY - micScale * 0.1f), micScale * 1.35f, 0.0f, 3.14159265f, 16);
+		drawList->PathArcTo(ImVec2(center.x, center.y - micScale * 0.05f), micScale * 0.95f, 0.0f, 3.14159265f, 20);
 		drawList->PathStroke(glyphColor, 0, 2.0f);
 
 		// 3. Vertical stem
-		float stemTop = centerY - micScale * 0.1f + micScale * 1.35f;
-		float stemBottom = stemTop + micScale * 0.8f;
-		drawList->AddLine(ImVec2(centerX, stemTop), ImVec2(centerX, stemBottom), glyphColor, 2.0f);
+		float stemTop = center.y - micScale * 0.05f + micScale * 0.95f;
+		float stemBottom = stemTop + micScale * 0.55f;
+		drawList->AddLine(ImVec2(center.x, stemTop), ImVec2(center.x, stemBottom), glyphColor, 2.0f);
 
 		// 4. Base foot
-		drawList->AddLine(ImVec2(centerX - micScale * 1.0f, stemBottom), ImVec2(centerX + micScale * 1.0f, stemBottom), glyphColor, 2.0f);
-
-		// 5. Small crisp label
-		const char* labelText = recording() ? "REC" : "MIC";
-		ImVec2 textSize = ImGui::CalcTextSize(labelText);
-		ImVec2 textPos = ImVec2(centerX - textSize.x * 0.5f, pMax.y - textSize.y - 4.0f);
-		drawList->AddText(textPos, glyphColor, labelText);
+		drawList->AddLine(ImVec2(center.x - micScale * 0.7f, stemBottom), ImVec2(center.x + micScale * 0.7f, stemBottom), glyphColor, 2.0f);
 	}
 
 	void touchPopEvent() override
