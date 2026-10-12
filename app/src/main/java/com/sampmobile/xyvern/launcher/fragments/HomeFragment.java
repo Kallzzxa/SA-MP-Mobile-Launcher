@@ -44,8 +44,8 @@ import java.util.concurrent.Executors;
 @Obfuscate
 public class HomeFragment extends Fragment {
 
-    // Default manifest URL (bisa dikustom atau diarahkan ke mirror online manapun)
-    private static final String DEFAULT_MANIFEST_URL = "https://samp-mobile.shop/client_config.json";
+    // Direct download URL untuk data pack resmi GTA SA / SAMP
+    private static final String DATA_ZIP_URL = "https://github.com/rezzylrn/samp-mobile-optimized/releases/download/data-v1/files.zip";
 
     private View dotStatus;
     private TextView tvDataTitle;
@@ -134,11 +134,11 @@ public class HomeFragment extends Fragment {
                     dotStatus.setBackgroundResource(R.drawable.bg_dot_green);
                     tvDataTitle.setText("Data Game Terverifikasi");
                     tvDataDesc.setText("Semua file dasar GTA SA & SAMP lengkap (" + (result.totalSizeBytes / 1048576) + " MB). Siap bermain!");
-                    btnDownloadData.setText("Update Data");
+                    btnDownloadData.setText("Download Ulang Data");
                 } else {
                     dotStatus.setBackgroundResource(R.drawable.bg_dot_red);
                     tvDataTitle.setText("Data Game Belum Lengkap");
-                    tvDataDesc.setText("File tidak terverifikasi (" + result.missingFiles.size() + " komponen hilang).\nSilakan klik 'Download Data' atau copy manual data GTA SA.");
+                    tvDataDesc.setText("File tidak terverifikasi (" + result.missingFiles.size() + " komponen hilang).\nKlik 'Download Data' untuk mengunduh data pack resmi (files.zip).");
                     btnDownloadData.setText("Download Data");
                 }
             });
@@ -150,142 +150,83 @@ public class HomeFragment extends Fragment {
         isDownloading = true;
         pbDownload.setVisibility(View.VISIBLE);
         tvDownloadProgress.setVisibility(View.VISIBLE);
-        pbDownload.setIndeterminate(true);
-        tvDataDesc.setText("Mengambil daftar file game...");
+        pbDownload.setIndeterminate(false);
+        pbDownload.setMax(100);
+        pbDownload.setProgress(0);
+        tvDownloadProgress.setText("0%");
+        tvDataDesc.setText("Menghubungkan ke server data...");
         btnDownloadData.setEnabled(false);
+
+        File baseDir = requireContext().getExternalFilesDir(null);
+        if (baseDir == null) return;
+        File zipFile = new File(baseDir, "files.zip");
 
         executor.execute(() -> {
             try {
-                // Fetch config
-                URL url = new URL(DEFAULT_MANIFEST_URL);
+                // Step 1: Download files.zip langsung dari hosting cepat GitHub Release
+                mainHandler.post(() -> tvDataDesc.setText("Mengunduh data pack (files.zip ~635 MB)..."));
+
+                URL url = new URL(DATA_ZIP_URL);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
 
-                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                    throw new Exception("HTTP Response: " + conn.getResponseCode());
-                }
-
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                reader.close();
-
-                JSONObject configJson = new JSONObject(sb.toString()).getJSONObject("client_config");
-                String cacheFilesUrl = configJson.getString("url_cache_files");
-
-                // Fetch files manifest
-                URL filesUrl = new URL(cacheFilesUrl);
-                HttpURLConnection filesConn = (HttpURLConnection) filesUrl.openConnection();
-                filesConn.setConnectTimeout(10000);
-                filesConn.setReadTimeout(10000);
-
-                BufferedReader filesReader = new BufferedReader(new InputStreamReader(filesConn.getInputStream(), StandardCharsets.UTF_8));
-                StringBuilder filesSb = new StringBuilder();
-                while ((line = filesReader.readLine()) != null) filesSb.append(line);
-                filesReader.close();
-
-                JSONObject filesObj = new JSONObject(filesSb.toString());
-                JSONArray filesArray = filesObj.getJSONArray("files");
-
-                ArrayList<FilesData> downloadQueue = new ArrayList<>();
-                long totalDownloadBytes = 0;
-                File baseDir = requireContext().getExternalFilesDir(null);
-
-                for (int i = 0; i < filesArray.length(); i++) {
-                    JSONObject item = filesArray.getJSONObject(i);
-                    String name = item.getString("name");
-                    long size = item.getLong("size");
-                    String path = item.getString("path");
-                    String fileUrl = item.optString("url", "https://samp-mobile.shop/files/" + path);
-
-                    File localFile = new File(baseDir, path);
-                    if (!localFile.exists() || localFile.length() != size) {
-                        downloadQueue.add(new FilesData(name, size, path, fileUrl));
-                        totalDownloadBytes += size;
+                int responseCode = conn.getResponseCode();
+                // Handle manual redirect if needed (GitHub releases redirect to AWS S3/Azure)
+                if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM || responseCode == 307 || responseCode == 308) {
+                    String redirectUrl = conn.getHeaderField("Location");
+                    if (redirectUrl != null) {
+                        conn.disconnect();
+                        conn = (HttpURLConnection) new URL(redirectUrl).openConnection();
+                        conn.setConnectTimeout(15000);
+                        conn.setReadTimeout(30000);
                     }
                 }
 
-                if (downloadQueue.isEmpty()) {
-                    mainHandler.post(() -> {
-                        isDownloading = false;
-                        pbDownload.setVisibility(View.GONE);
-                        tvDownloadProgress.setVisibility(View.GONE);
-                        btnDownloadData.setEnabled(true);
-                        Toast.makeText(getContext(), "Data sudah lengkap, tidak ada yang perlu diunduh!", Toast.LENGTH_SHORT).show();
-                        runVerification();
-                    });
-                    return;
+                long totalBytes = conn.getContentLengthLong();
+                if (totalBytes <= 0) totalBytes = 666478908L; // fallback length
+
+                java.io.InputStream in = new java.io.BufferedInputStream(conn.getInputStream(), 65536);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(zipFile);
+                byte[] buffer = new byte[65536];
+                long downloadedBytes = 0;
+                long lastUpdate = System.currentTimeMillis();
+                int read;
+
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                    downloadedBytes += read;
+
+                    long now = System.currentTimeMillis();
+                    if (now - lastUpdate > 150) {
+                        lastUpdate = now;
+                        final long cur = downloadedBytes;
+                        final long tot = totalBytes;
+                        final int percent = (int) ((cur * 100) / tot);
+                        mainHandler.post(() -> {
+                            pbDownload.setProgress(percent);
+                            tvDownloadProgress.setText(percent + "% (" + (cur / 1048576) + "/" + (tot / 1048576) + " MB)");
+                        });
+                    }
                 }
+                out.flush();
+                out.close();
+                in.close();
+                conn.disconnect();
 
-                final long finalTotalBytes = totalDownloadBytes;
-                final int totalFiles = downloadQueue.size();
-
+                // Step 2: Unzip files.zip langsung ke root folder data game
                 mainHandler.post(() -> {
-                    pbDownload.setIndeterminate(false);
-                    pbDownload.setMax(100);
-                    pbDownload.setProgress(0);
-                    tvDataDesc.setText("Mengunduh " + totalFiles + " file game...");
+                    pbDownload.setIndeterminate(true);
+                    tvDataDesc.setText("Mengekstrak data game ke direktori lokal...");
+                    tvDownloadProgress.setText("Mengekstrak...");
                 });
 
-                // Download loop
-                long[] downloadedBytesAccumulator = new long[]{0};
+                unzipFile(zipFile, baseDir);
 
-                for (int i = 0; i < downloadQueue.size(); i++) {
-                    FilesData fileItem = downloadQueue.get(i);
-                    File target = new File(baseDir, fileItem.getPath());
-                    if (target.getParentFile() != null && !target.getParentFile().exists()) {
-                        target.getParentFile().mkdirs();
-                    }
-
-                    final int currentFileIdx = i + 1;
-                    mainHandler.post(() -> {
-                        tvDataDesc.setText("Mengunduh (" + currentFileIdx + "/" + totalFiles + "): " + fileItem.getName());
-                    });
-
-                    boolean[] fileDone = new boolean[]{false};
-                    boolean[] fileFailed = new boolean[]{false};
-
-                    String dirPath = target.getParent();
-                    String fileName = target.getName();
-
-                    PRDownloader.download(fileItem.getUrl(), dirPath, fileName)
-                            .build()
-                            .setOnProgressListener(new OnProgressListener() {
-                                @Override
-                                public void onProgress(Progress progress) {
-                                    if (finalTotalBytes > 0) {
-                                        long currentTotal = downloadedBytesAccumulator[0] + progress.currentBytes;
-                                        int p = (int) ((currentTotal * 100) / finalTotalBytes);
-                                        if (p > 100) p = 100;
-                                        final int finalPercent = p;
-                                        mainHandler.post(() -> {
-                                            pbDownload.setProgress(finalPercent);
-                                            tvDownloadProgress.setText(finalPercent + "%");
-                                        });
-                                    }
-                                }
-                            })
-                            .start(new OnDownloadListener() {
-                                @Override
-                                public void onDownloadComplete() {
-                                    downloadedBytesAccumulator[0] += fileItem.getSize();
-                                    fileDone[0] = true;
-                                }
-
-                                @Override
-                                public void onError(Error error) {
-                                    fileFailed[0] = true;
-                                    fileDone[0] = true;
-                                }
-                            });
-
-                    while (!fileDone[0]) {
-                        try {
-                            Thread.sleep(50);
-                        } catch (InterruptedException ignored) {}
-                    }
+                // Hapus zip untuk menghemat storage
+                if (zipFile.exists()) {
+                    zipFile.delete();
                 }
 
                 mainHandler.post(() -> {
@@ -293,21 +234,60 @@ public class HomeFragment extends Fragment {
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    Toast.makeText(getContext(), "Download data game selesai!", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), "Data game berhasil diunduh dan dipasang!", Toast.LENGTH_LONG).show();
                     runVerification();
                 });
 
             } catch (Exception e) {
+                if (zipFile.exists()) {
+                    zipFile.delete();
+                }
                 mainHandler.post(() -> {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    tvDataDesc.setText("Gagal mengunduh data online (" + e.getMessage() + ").\nSilakan masukkan data GTA SA sendiri ke direktori yang tertera.");
-                    Toast.makeText(getContext(), "Gagal koneksi server data. Silakan tambahkan file manual.", Toast.LENGTH_LONG).show();
+                    tvDataDesc.setText("Gagal mengunduh: " + e.getMessage() + "\nSilakan cek koneksi atau letakkan file GTA SA manual.");
+                    Toast.makeText(getContext(), "Gagal download data: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     runVerification();
                 });
             }
         });
+    }
+
+    private void unzipFile(File zipFile, File targetDir) throws Exception {
+        java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                new java.io.BufferedInputStream(new java.io.FileInputStream(zipFile), 65536));
+        java.util.zip.ZipEntry ze;
+        byte[] buffer = new byte[65536];
+
+        while ((ze = zis.getNextEntry()) != null) {
+            String entryName = ze.getName();
+            // Cegah zip slip vulnerability
+            File file = new File(targetDir, entryName);
+            String canonicalDestPath = file.getCanonicalPath();
+            if (!canonicalDestPath.startsWith(targetDir.getCanonicalPath())) {
+                zis.closeEntry();
+                continue;
+            }
+
+            if (ze.isDirectory()) {
+                file.mkdirs();
+            } else {
+                File parent = file.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    parent.mkdirs();
+                }
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
+                int count;
+                while ((count = zis.read(buffer)) != -1) {
+                    fos.write(buffer, 0, count);
+                }
+                fos.flush();
+                fos.close();
+            }
+            zis.closeEntry();
+        }
+        zis.close();
     }
 }
