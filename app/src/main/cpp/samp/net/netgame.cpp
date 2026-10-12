@@ -498,7 +498,7 @@ void CNetGame::ProcessConnecting()
 	if (CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("Connecting to SA-MP Server...");
+		if (pUI) pUI->chat()->addDebugMessage("Connecting to server...");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
@@ -537,32 +537,26 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("The server didn't respond. Retrying..");
+	if (pUI) pUI->chat()->addDebugMessage("Server didn't respond. Retrying...");
 	if (pAudioStream) { //add new
 		pAudioStream->Stop(true);
 	}
 	SpeakerList::Hide(); //add new
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
-
-	//SpeakerList::Hide();
-	//MicroIcon::Hide();
 }
 
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("The server is full. Retrying...");
+	if(pUI) pUI->chat()->addDebugMessage("Server full. Retrying...");
 	SpeakerList::Hide(); //addnew
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
-
-	//SpeakerList::Hide();
-	//MicroIcon::Hide();
 }
 
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server closed the connection.");
+	if (pUI) pUI->chat()->addDebugMessage("Server closed connection.");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -593,7 +587,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSuccAuth.Read(uiChallenge);
 	uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining the game...");
+	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 

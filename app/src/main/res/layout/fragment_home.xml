@@ -196,9 +196,8 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- Card Quick Play / Server Terakhir -->
+            <!-- Card Quick Action / Jump to Servers -->
             <LinearLayout
-                android:id="@+id/card_server_sync"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
@@ -206,62 +205,31 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/montserrat_bold"
-                        android:text="Server Favorit"
-                        android:textColor="#FFFFFF"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/tv_server_status_badge"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="#2E1015"
-                        android:fontFamily="@font/montserrat_bold"
-                        android:paddingHorizontal="8dp"
-                        android:paddingVertical="3dp"
-                        android:text="ONLINE"
-                        android:textColor="#FF0037"
-                        android:textSize="10sp" />
-                </LinearLayout>
-
                 <TextView
-                    android:id="@+id/tv_server_name"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Nusantara Roleplay"
+                    android:text="Daftar Server"
                     android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
+                    android:textSize="14sp" />
 
                 <TextView
-                    android:id="@+id/tv_server_endpoint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="6dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="Address: 127.0.0.1:7777"
+                    android:text="Pilih dan sambungkan ke server multiplayer favorit atau hosted."
                     android:textColor="#8A8F98"
-                    android:textSize="11sp" />
+                    android:textSize="12sp" />
 
                 <Button
-                    android:id="@+id/btn_sync_and_play"
+                    android:id="@+id/btn_open_servers"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:layout_marginTop="14dp"
                     android:backgroundTint="#FF0037"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Main Sekarang"
+                    android:text="Buka Daftar Server"
                     android:textAllCaps="false"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp" />

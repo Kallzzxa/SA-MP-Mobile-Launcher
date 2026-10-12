@@ -40,6 +40,7 @@ public class SettingsFragment extends Fragment {
     SwitchCompat mVoiceSwitch;
     SwitchCompat mModifySwitch;
     SwitchCompat mAMLSwitch;
+    SwitchCompat mCLEOSwitch;
     SwitchCompat mFPSSwitch;
     SeekBar mMessagesSeekBar;
     TextView mMessagesText;
@@ -71,6 +72,10 @@ public class SettingsFragment extends Fragment {
         mAMLSwitch.setChecked(requireContext()
             .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
+        mCLEOSwitch = view.findViewById(R.id.cleo_switch);
+        mCLEOSwitch.setChecked(requireContext()
+            .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+            .getBoolean("cleo_enabled", true));
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -146,6 +151,14 @@ public class SettingsFragment extends Fragment {
                 .putBoolean("aml_enabled", enabled)
                 .apply();
             Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
+        });
+
+        mCLEOSwitch.setOnCheckedChangeListener((buttonView, enabled) -> {
+            requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("cleo_enabled", enabled)
+                .apply();
+            Toast.makeText(requireContext(), "CLEO setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
         });
 
         mKeyboardSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {

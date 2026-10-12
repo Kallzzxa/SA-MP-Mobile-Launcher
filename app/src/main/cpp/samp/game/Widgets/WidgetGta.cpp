@@ -30,6 +30,11 @@ WidgetIDs GetWidgetTypeFromWidget(CWidgetGta* pWidget)
         if(m_pWidgets[WidgetIDs::WIDGET_ACCELERATE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_ACCELERATE]) return WidgetIDs::WIDGET_ACCELERATE;
         if(m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR] && pWidget == m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR]) return WidgetIDs::WIDGET_ENTER_CAR;
         if(m_pWidgets[WidgetIDs::WIDGET_BRAKE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_BRAKE]) return WidgetIDs::WIDGET_BRAKE;
+        if(m_pWidgets[WidgetIDs::WIDGET_HORN] && pWidget == m_pWidgets[WidgetIDs::WIDGET_HORN]) return WidgetIDs::WIDGET_HORN;
+        if(m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT]) return WidgetIDs::WIDGET_VEHICLE_STEER_LEFT;
+        if(m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT]) return WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT;
+        if(m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE]) return WidgetIDs::WIDGET_HANDBRAKE;
+        if(m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT]) return WidgetIDs::WIDGET_CAR_SHOOT;
     }
 
     return static_cast<WidgetIDs>(-1);
@@ -42,39 +47,98 @@ void SetWidgetFromId(int idWidget, CWidgetGta* pWidget)
 
 void SetWidgetFromName(const char* name, CWidgetGta* pWidget)
 {
+    if(!name || !pWidget) return;
     if(!strcmp("accelerate", name)) SetWidgetFromId(WidgetIDs::WIDGET_ACCELERATE, pWidget);
     if(!strcmp("hud_car", name)) SetWidgetFromId(WidgetIDs::WIDGET_ENTER_CAR, pWidget);
     if(!strcmp("brake", name)) SetWidgetFromId(WidgetIDs::WIDGET_BRAKE, pWidget);
+    if(!strcmp("horn", name) || strstr(name, "horn")) SetWidgetFromId(WidgetIDs::WIDGET_HORN, pWidget);
+    if(!strcmp("steer_left", name) || strstr(name, "steer_left") || strstr(name, "steerl") || !strcmp("left", name)) SetWidgetFromId(WidgetIDs::WIDGET_VEHICLE_STEER_LEFT, pWidget);
+    if(!strcmp("steer_right", name) || strstr(name, "steer_right") || strstr(name, "steerr") || !strcmp("right", name)) SetWidgetFromId(WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT, pWidget);
+    if(!strcmp("handbrake", name) || strstr(name, "handbrake")) SetWidgetFromId(WidgetIDs::WIDGET_HANDBRAKE, pWidget);
+    if(!strcmp("car_shoot", name) || strstr(name, "car_shoot")) SetWidgetFromId(WidgetIDs::WIDGET_CAR_SHOOT, pWidget);
+}
+
+static bool IsVehicleControlWidget(CWidgetGta* pWidget)
+{
+    if (!pWidget) return false;
+    if (m_pWidgets[WidgetIDs::WIDGET_ACCELERATE] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_BRAKE] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_HORN] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE] == pWidget ||
+        m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT] == pWidget)
+    {
+        return true;
+    }
+
+    if (CTouchInterface::m_pWidgets)
+    {
+        if (pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_ACCELERATE] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_BRAKE] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_LEFT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_RIGHT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN_ALT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HANDBRAKE_AND_AIR_SHOOT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_CAR_SHOOT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_LEFT] ||
+            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_RIGHT])
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 eWidgetState ProcessFixedWidget(CWidgetGta* pWidget)
 {
-    WidgetIDs widgetType = GetWidgetTypeFromWidget(pWidget);
-
+    if (!pWidget || !pGame) return STATE_NONE;
     CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
+    if (!pPlayerPed) return STATE_NONE;
+
+    bool inVehicle = pPlayerPed->IsInVehicle();
+
+    if (IsVehicleControlWidget(pWidget))
+    {
+        if (!inVehicle && !pPlayerPed->IsInJetpackMode())
+        {
+            pWidget->SetEnabled(false);
+            return STATE_FIXED;
+        }
+    }
+
+    WidgetIDs widgetType = GetWidgetTypeFromWidget(pWidget);
     switch(widgetType)
     {
         case -1:
             return STATE_NONE;
         case WidgetIDs::WIDGET_ATTACK:
-    if(pPlayerPed->IsInVehicle() ||
-       pPlayerPed->IsInJetpackMode())
-    {
-        return STATE_FIXED;
-    }
-    break;
+            if(inVehicle || pPlayerPed->IsInJetpackMode())
+            {
+                pWidget->SetEnabled(false);
+                return STATE_FIXED;
+            }
+            break;
 
-case WidgetIDs::WIDGET_SPRINT:
-    if(pPlayerPed->IsInVehicle())
-    {
-        return STATE_FIXED;
-    }
-    break;
+        case WidgetIDs::WIDGET_SPRINT:
+            if(inVehicle)
+            {
+                pWidget->SetEnabled(false);
+                return STATE_FIXED;
+            }
+            break;
+
         case WidgetIDs::WIDGET_ACCELERATE:
         case WidgetIDs::WIDGET_BRAKE:
-            if(!pPlayerPed->IsInVehicle() &&
-               !pPlayerPed->IsInJetpackMode())
+        case WidgetIDs::WIDGET_HORN:
+        case WidgetIDs::WIDGET_VEHICLE_STEER_LEFT:
+        case WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT:
+        case WidgetIDs::WIDGET_HANDBRAKE:
+        case WidgetIDs::WIDGET_CAR_SHOOT:
+            if(!inVehicle && !pPlayerPed->IsInJetpackMode())
             {
+                pWidget->SetEnabled(false);
                 return STATE_FIXED;
             }
             break;

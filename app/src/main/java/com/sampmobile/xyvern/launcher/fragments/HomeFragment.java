@@ -55,7 +55,7 @@ public class HomeFragment extends Fragment {
     private TextView tvDownloadProgress;
     private Button btnVerifyData;
     private Button btnDownloadData;
-    private Button btnSyncAndPlay;
+    private Button btnOpenServers;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -77,9 +77,13 @@ public class HomeFragment extends Fragment {
         tvDownloadProgress = view.findViewById(R.id.tv_download_progress);
         btnVerifyData = view.findViewById(R.id.btn_verify_data);
         btnDownloadData = view.findViewById(R.id.btn_download_data);
-        btnSyncAndPlay = view.findViewById(R.id.btn_sync_and_play);
+        btnOpenServers = view.findViewById(R.id.btn_open_servers);
 
-        btnSyncAndPlay.setOnClickListener(v -> launchDirectGame());
+        btnOpenServers.setOnClickListener(v -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).changeTab(1);
+            }
+        });
 
         Context ctx = requireContext();
         File extDir = ctx.getExternalFilesDir(null);
@@ -337,19 +341,5 @@ public class HomeFragment extends Fragment {
             }
         }
         zf.close();
-    }
-
-    private void launchDirectGame() {
-        if (getContext() == null) return;
-        GameDataVerifier.VerificationResult verify = GameDataVerifier.verifyGameData(requireContext());
-        if (!verify.isValid) {
-            Toast.makeText(getContext(), "Silakan download / pasang data game terlebih dahulu!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        android.content.Intent intent = new android.content.Intent(getActivity(), com.sampmobile.xyvern.game.SAMP.class);
-        intent.putExtra("ip", "127.0.0.1");
-        intent.putExtra("port", 7777);
-        startActivity(intent);
     }
 }

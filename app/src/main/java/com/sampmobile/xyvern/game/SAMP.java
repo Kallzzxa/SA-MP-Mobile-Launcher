@@ -134,16 +134,37 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         }
 
         try {
+            File extFiles = getExternalFilesDir(null);
+            if (extFiles != null) {
+                File modsDir = new File(extFiles, "mods");
+                if (!modsDir.exists()) modsDir.mkdirs();
+                File cleoDir = new File(extFiles, "cleo");
+                if (!cleoDir.exists()) cleoDir.mkdirs();
+            }
+
             boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
                     .getBoolean("aml_enabled", true);
             if (amlEnabled) {
-                System.loadLibrary("AML");
-                Log.i(TAG, "AndroidModLoader loaded");
-            } else {
-                Log.i(TAG, "AndroidModLoader disabled in settings");
+                try {
+                    System.loadLibrary("AML");
+                    Log.i(TAG, "AndroidModLoader loaded");
+                } catch (UnsatisfiedLinkError e) {
+                    Log.i(TAG, "libAML.so optional module not present");
+                }
             }
-        } catch (UnsatisfiedLinkError error) {
-            Log.e(TAG, "Failed to load AndroidModLoader", error);
+
+            boolean cleoEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
+                    .getBoolean("cleo_enabled", true);
+            if (cleoEnabled) {
+                try {
+                    System.loadLibrary("cleo");
+                    Log.i(TAG, "CLEO Android loaded");
+                } catch (UnsatisfiedLinkError e) {
+                    Log.i(TAG, "libcleo.so optional module not present");
+                }
+            }
+        } catch (Exception error) {
+            Log.e(TAG, "Error initializing mod loaders", error);
         }
 
         mKeyboard = new CustomKeyboard(this);
