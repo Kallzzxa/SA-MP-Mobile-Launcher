@@ -123,6 +123,7 @@ android {
     buildFeatures {
         prefab = true
         viewBinding = true
+        buildConfig = true
     }
 
     packaging {

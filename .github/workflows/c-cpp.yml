@@ -67,7 +67,7 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleDebug -Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a --stacktrace
+          gradlew.bat assembleDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
 
       - name: List generated APKs
         shell: powershell
@@ -79,7 +79,16 @@ jobs:
           }
           Get-ChildItem -Path "release-apks" -Filter *.apk | Select-Object FullName, Length
 
-      # Sign APK with debug key to ensure v1 + v2 + v3 signature is valid
+      # Verify APK signature scheme
+      - name: Verify APK Signatures
+        shell: cmd
+        run: |
+          for /r release-apks %%f in (*.apk) do (
+            echo Verifying %%f
+            call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" verify --verbose "%%f"
+          )
+
+      # Upload Debug APK
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
