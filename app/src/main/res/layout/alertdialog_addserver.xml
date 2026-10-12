@@ -15,8 +15,8 @@
         android:layout_height="wrap_content"
         android:fontFamily="@font/montserrat_bold"
         android:letterSpacing="0.02"
-        android:text="TAMBAH SERVER BARU"
-        android:textColor="#FF3355"
+        android:text="ADD NEW SERVER"
+        android:textColor="#FF0037"
         android:textSize="17sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
@@ -41,7 +41,7 @@
         android:background="@drawable/ic_nickname_bg"
         android:fontFamily="@font/montserrat_regular"
         android:gravity="center"
-        android:hint="IP : Port (Contoh: 127.0.0.1:7777)"
+        android:hint="IP:Port (e.g. 127.0.0.1:7777)"
         android:imeOptions="actionDone"
         android:inputType="text"
         android:textColor="@color/white"
@@ -81,7 +81,7 @@
             android:layout_marginStart="8dp"
             android:background="@drawable/ic_buttoncolor"
             android:fontFamily="@font/montserrat_bold"
-            android:text="TAMBAH"
+            android:text="ADD"
             android:textColor="#FFFFFF"
             android:textSize="14sp" />
 
