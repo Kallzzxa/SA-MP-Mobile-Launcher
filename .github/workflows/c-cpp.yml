@@ -71,7 +71,7 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleDebug --stacktrace
+          gradlew.bat assembleDebug -Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a --stacktrace
 
       # Sign APK with debug key to ensure v1 + v2 + v3 signature is valid
       - name: Upload Debug APK
