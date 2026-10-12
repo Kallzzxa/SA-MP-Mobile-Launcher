@@ -257,11 +257,12 @@ public class HomeFragment extends Fragment {
                                 public void onProgress(Progress progress) {
                                     if (finalTotalBytes > 0) {
                                         long currentTotal = downloadedBytesAccumulator[0] + progress.currentBytes;
-                                        int percent = (int) ((currentTotal * 100) / finalTotalBytes);
-                                        if (percent > 100) percent = 100;
+                                        int p = (int) ((currentTotal * 100) / finalTotalBytes);
+                                        if (p > 100) p = 100;
+                                        final int finalPercent = p;
                                         mainHandler.post(() -> {
-                                            pbDownload.setProgress(percent);
-                                            tvDownloadProgress.setText(percent + "%");
+                                            pbDownload.setProgress(finalPercent);
+                                            tvDownloadProgress.setText(finalPercent + "%");
                                         });
                                     }
                                 }
