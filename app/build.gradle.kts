@@ -30,6 +30,10 @@ android {
 
         multiDexEnabled = true
 
+        ndk {
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -67,6 +71,7 @@ android {
 
             externalNativeBuild {
                 cmake {
+                    abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
                     cppFlags += "-fvisibility=default"
                 }
             }
@@ -86,6 +91,7 @@ android {
 
             externalNativeBuild {
                 cmake {
+                    abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
                     cppFlags += "-fvisibility=hidden"
                 }
             }

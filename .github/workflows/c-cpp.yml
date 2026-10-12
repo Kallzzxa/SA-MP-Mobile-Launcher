@@ -67,7 +67,7 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleRelease assembleDebug --stacktrace
+          gradlew.bat assembleRelease assembleDebug -Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a --stacktrace
 
       - name: List generated APKs
         shell: powershell
