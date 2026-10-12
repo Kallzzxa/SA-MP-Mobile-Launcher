@@ -24,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "com.sampmobile.xyvern"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 130
         versionName = "1.0"
 
@@ -35,20 +35,29 @@ android {
 
     splits {
         abi {
-            isEnable = true
+            isEnable = false
             reset()
             include("armeabi-v7a", "arm64-v8a")
             isUniversalApk = false
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootDir}/keystore_playmarket2.jks")
+            storePassword = "password"
+            keyAlias = "key0"
+            keyPassword = "password"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
-            isDebuggable = false
+            isDebuggable = true
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            // Sử dụng mặc định của Android, không ép dùng cấu hình release nữa
+            signingConfig = signingConfigs.getByName("debug")
 
             externalNativeBuild {
                 cmake {
@@ -67,7 +76,7 @@ android {
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            // Đã gỡ bỏ cấu hình ký cứng để tránh lỗi tìm file jks
+            signingConfig = signingConfigs.getByName("debug")
 
             externalNativeBuild {
                 cmake {

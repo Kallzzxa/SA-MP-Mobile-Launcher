@@ -67,20 +67,20 @@ jobs:
         run: |
           if not exist gradlew.bat exit /b 1
 
-      # Chỉ build duy nhất bản Debug để tiết kiệm tối đa thời gian
+      # Build APK
       - name: Build Debug APK
         shell: cmd
         run: |
           gradlew.bat assembleDebug --stacktrace
 
-      # Upload file Debug APK lên Artifact của lượt chạy
+      # Sign APK with debug key to ensure v1 + v2 + v3 signature is valid
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
 
-      # Tạo GitHub Release và chỉ đẩy duy nhất file Debug APK lên
+      # Create GitHub Release
       - name: Create GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
