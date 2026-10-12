@@ -2,30 +2,30 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingVertical="14dp"
+    android:paddingVertical="12dp"
     android:background="?attr/selectableItemBackground">
 
+    <!-- Row 1: Server Name (Header) -->
     <TextView
         android:id="@+id/tv_server_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="SERVER NAME |"
+        android:text="SERVER NAME"
         android:textColor="#FFFFFF"
         android:textSize="15sp"
-        android:textAllCaps="true"
         android:fontFamily="@font/montserrat_bold"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Row 2: Lock Icon + Address -->
     <ImageView
         android:id="@+id/iv_lock"
-        android:layout_width="18dp"
-        android:layout_height="18dp"
-        android:layout_marginTop="8dp"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginTop="6dp"
         app:srcCompat="@drawable/ic_password_on"
         app:tint="#00E676"
         app:layout_constraintStart_toStartOf="parent"
@@ -46,6 +46,7 @@
         app:layout_constraintBottom_toBottomOf="@id/iv_lock"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Row 3: Gamemode (clean independent line) -->
     <TextView
         android:id="@+id/tv_server_mode"
         android:layout_width="0dp"
@@ -59,6 +60,7 @@
         app:layout_constraintTop_toBottomOf="@id/iv_lock"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Row 4: Players count (clean independent line) -->
     <TextView
         android:id="@+id/tv_server_status"
         android:layout_width="0dp"
@@ -72,12 +74,14 @@
         app:layout_constraintTop_toBottomOf="@id/tv_server_mode"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Divider line -->
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="12dp"
-        android:background="#1AFFFFFF"
+        android:background="#14FFFFFF"
         app:layout_constraintTop_toBottomOf="@id/tv_server_status"
-        tools:layout_editor_absoluteX="-16dp" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

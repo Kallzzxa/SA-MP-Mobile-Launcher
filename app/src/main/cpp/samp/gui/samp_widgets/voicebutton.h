@@ -34,30 +34,40 @@ public:
 		float radius = (size().x < size().y ? size().x : size().y) * 0.44f;
 
 		if (recording()) {
-			// Modern recording state: glowing dark-red circle with pulse border
-			drawList->AddCircleFilled(center, radius, IM_COL32(239, 68, 68, 220), 32);
-			drawList->AddCircle(center, radius + 2.0f, IM_COL32(255, 255, 255, 200), 32, 1.5f);
+			// Recording state: Premium glowing red gradient
+			drawList->AddCircleFilled(center, radius + 3.0f, IM_COL32(239, 68, 68, 80), 32);
+			drawList->AddCircleFilled(center, radius, IM_COL32(220, 38, 38, 240), 32);
+			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 220), 32, 1.8f);
 		} else {
-			// Modern sleek dark glass badge
-			drawList->AddCircleFilled(center, radius, IM_COL32(18, 19, 26, 200), 32);
-			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 50), 32, 1.2f);
+			// Sleek dark frosted glass disc
+			drawList->AddCircleFilled(center, radius, IM_COL32(18, 20, 28, 225), 32);
+			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 45), 32, 1.2f);
 		}
 
-		// Vector microphone icon rendering
-		float micW = radius * 0.35f;
-		float micH = radius * 0.65f;
-		ImVec2 micMin = ImVec2(center.x - micW, center.y - micH * 0.6f);
-		ImVec2 micMax = ImVec2(center.x + micW, center.y + micH * 0.2f);
-		ImU32 iconColor = recording() ? IM_COL32(255, 255, 255, 255) : IM_COL32(212, 212, 216, 230);
+		// Professional Microphone Glyph Design
+		ImU32 glyphColor = recording() ? IM_COL32(255, 255, 255, 255) : IM_COL32(244, 244, 245, 230);
+		float capW = radius * 0.28f;
+		float capTop = center.y - radius * 0.48f;
+		float capBottom = center.y + radius * 0.08f;
 
-		// Capsule body
-		drawList->AddRectFilled(micMin, micMax, iconColor, micW);
-		// Arc stand
-		drawList->AddCircle(ImVec2(center.x, center.y - micH * 0.1f), micW * 1.5f, iconColor, 16, 1.5f);
-		// Bottom stem
-		drawList->AddLine(ImVec2(center.x, center.y + micH * 0.25f), ImVec2(center.x, center.y + micH * 0.65f), iconColor, 2.0f);
-		// Base plate
-		drawList->AddLine(ImVec2(center.x - micW, center.y + micH * 0.65f), ImVec2(center.x + micW, center.y + micH * 0.65f), iconColor, 2.0f);
+		// 1. Microphone Capsule (rounded capsule with smooth caps)
+		drawList->AddRectFilled(ImVec2(center.x - capW, capTop), ImVec2(center.x + capW, capBottom), glyphColor, capW);
+
+		// 2. Microphone U-Shaped Cradle / Arc
+		float arcR = capW * 1.65f;
+		float arcCenterY = capBottom - capW * 0.5f;
+		// Semi-circle cradle arc
+		drawList->PathArcTo(ImVec2(center.x, arcCenterY), arcR, 0.0f, 3.14159265f, 20);
+		drawList->PathStroke(glyphColor, 0, 2.0f);
+
+		// 3. Central Vertical Stem
+		float stemTop = arcCenterY + arcR;
+		float stemBottom = stemTop + radius * 0.26f;
+		drawList->AddLine(ImVec2(center.x, stemTop), ImVec2(center.x, stemBottom), glyphColor, 2.2f);
+
+		// 4. Sturdy Base Foot
+		float baseHalfW = capW * 1.35f;
+		drawList->AddLine(ImVec2(center.x - baseHalfW, stemBottom), ImVec2(center.x + baseHalfW, stemBottom), glyphColor, 2.2f);
 	}
 
 	void touchPopEvent() override

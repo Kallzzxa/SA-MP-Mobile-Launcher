@@ -1000,12 +1000,37 @@ void CNetGame::SendChatMessage(const char* szMsg)
 
 void CNetGame::SendChatCommand(const char* szCommand)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+	if (!szCommand) return;
 
-	if (szCommand && (strcasecmp(szCommand, "/q") == 0 || strcasecmp(szCommand, "/quit") == 0)) {
+	// Client-side standard commands
+	if (strcasecmp(szCommand, "/q") == 0 || strcasecmp(szCommand, "/quit") == 0) {
 		pJavaWrapper->exitGame();
 		return;
 	}
+
+	if (strcasecmp(szCommand, "/fps") == 0) {
+		if (pSettings) {
+			pSettings->Get().iFPSCounter = !pSettings->Get().iFPSCounter;
+			if (pUI) pUI->chat()->addInfoMessage("FPS Counter: %s", pSettings->Get().iFPSCounter ? "Enabled" : "Disabled");
+		}
+		return;
+	}
+
+	if (strcasecmp(szCommand, "/reconnect") == 0 || strcasecmp(szCommand, "/rec") == 0) {
+		if (pUI) pUI->chat()->addInfoMessage("Reconnecting to server...");
+		ShutdownForGameModeRestart();
+		return;
+	}
+
+	if (strcasecmp(szCommand, "/clearchat") == 0 || strcasecmp(szCommand, "/cc") == 0) {
+		if (pUI) {
+			for (int i = 0; i < 20; i++) pUI->chat()->addDebugMessage(" ");
+			pUI->chat()->addInfoMessage("Chat cleared.");
+		}
+		return;
+	}
+
+	if (GetGameState() != GAMESTATE_CONNECTED) return;
 
 	RakNet::BitStream bsParams;
 	int iStrlen = strlen(szCommand);

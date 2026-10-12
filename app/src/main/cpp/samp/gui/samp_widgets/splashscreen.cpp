@@ -41,6 +41,15 @@ void SplashScreen::draw(ImGuiRenderer* renderer)
 	renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0.0f, 0.0f, 0.0f), true);
 	// logo
 	m_logo->draw(renderer);
+
+	// Auto-advancing smooth loading progress
+	static float currentProgress = 0.05f;
+	if (currentProgress < 1.0f) {
+		currentProgress += 0.012f;
+		if (currentProgress > 1.0f) currentProgress = 1.0f;
+		m_progressBar->setValue(currentProgress);
+	}
+
 	// progress bar
 	m_progressBar->draw(renderer);
 }
