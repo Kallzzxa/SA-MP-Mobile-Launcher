@@ -23,26 +23,22 @@ android {
 
     defaultConfig {
         applicationId = "com.sampmobile.xyvern"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 33
         versionCode = 130
         versionName = "1.0"
 
         multiDexEnabled = true
 
-        ndk {
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
-        }
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     splits {
         abi {
-            isEnable = true
+            isEnable = false
             reset()
             include("armeabi-v7a", "arm64-v8a")
-            isUniversalApk = true
+            isUniversalApk = false
         }
     }
 
@@ -67,7 +63,7 @@ android {
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
 
             externalNativeBuild {
                 cmake {
@@ -114,6 +110,7 @@ android {
 
     sourceSets {
         getByName("main") {
+            jniLibs.srcDir("src/main/jniLibs")
             jniLibs.srcDir("src/main/cpp/samp/vendor/bass/libs")
             jniLibs.srcDir(layout.buildDirectory.dir("generated/glosshook-jniLibs"))
         }

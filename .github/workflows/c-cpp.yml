@@ -67,7 +67,7 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleRelease -Pandroid.injected.build.abi=arm64-v8a --stacktrace
+          gradlew.bat assembleRelease assembleDebug --stacktrace
 
       - name: List generated APKs
         shell: powershell
@@ -85,7 +85,8 @@ jobs:
         run: |
           for /r release-apks %%f in (*.apk) do (
             echo ==============================================
-            echo Verifying %%f
+            echo File: %%f
+            call "%ANDROID_HOME%\build-tools\34.0.0\aapt2.exe" dump badging "%%f" | findstr "package: sdkVersion: targetSdkVersion: native-code:"
             call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" verify --verbose "%%f"
             echo ==============================================
           )

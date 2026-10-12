@@ -18,7 +18,6 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
-        android:gwpAsanMode="always"
         android:requestLegacyExternalStorage="true"
         android:banner="@mipmap/ic_launcher"
         android:hardwareAccelerated="true"
