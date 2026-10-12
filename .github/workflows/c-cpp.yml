@@ -1,10 +1,6 @@
 name: Build APK Windows (Debug Version)
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 permissions:
@@ -83,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/**/*.apk
+          path: app/build/**/*.apk
 
       # Create GitHub Release
       - name: Create GitHub Release
@@ -92,6 +88,6 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build v${{ github.run_number }}
-          files: app/build/outputs/**/*.apk
+          files: app/build/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
