@@ -48,19 +48,16 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            v1SigningEnabled = true
-            v2SigningEnabled = true
+            enableV1Signing = true
+            enableV2Signing = true
         }
         create("release") {
-            val keyFile = file("${rootDir}/app-release-key.jks")
-            if (keyFile.exists()) {
-                storeFile = keyFile
-                storePassword = "password123456"
-                keyAlias = "sampkey"
-                keyPassword = "password123456"
-            }
-            v1SigningEnabled = true
-            v2SigningEnabled = true
+            storeFile = file("${rootDir}/app-release-key.jks")
+            storePassword = "password123456"
+            keyAlias = "sampkey"
+            keyPassword = "password123456"
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 

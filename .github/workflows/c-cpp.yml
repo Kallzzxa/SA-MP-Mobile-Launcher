@@ -58,11 +58,6 @@ jobs:
           git config --system core.longpaths true
           reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
-      - name: Generate custom release keystore
-        shell: cmd
-        run: |
-          keytool -genkeypair -v -keystore app-release-key.jks -alias sampkey -keyalg RSA -keysize 2048 -validity 10000 -storepass password123456 -keypass password123456 -dname "CN=SAMP, OU=Dev, O=RakyatId, L=Jakarta, ST=Jakarta, C=ID"
-
       - name: Grant gradlew permission
         shell: cmd
         run: |
