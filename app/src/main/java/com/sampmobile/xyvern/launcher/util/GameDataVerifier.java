@@ -13,8 +13,7 @@ public class GameDataVerifier {
             "data/gta.dat",
             "data/surface.dat",
             "data/fonts.dat",
-            "data/handling.cfg",
-            "SAMP/settings.ini"
+            "data/handling.cfg"
     };
 
     public static class VerificationResult {

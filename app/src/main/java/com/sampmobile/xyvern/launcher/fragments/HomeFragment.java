@@ -160,65 +160,92 @@ public class HomeFragment extends Fragment {
         File baseDir = requireContext().getExternalFilesDir(null);
         if (baseDir == null) return;
         File zipFile = new File(baseDir, "files.zip");
+        File partFile = new File(baseDir, "files.zip.part");
 
         executor.execute(() -> {
             try {
-                // Step 1: Download files.zip langsung dari hosting cepat GitHub Release
-                mainHandler.post(() -> tvDataDesc.setText("Mengunduh data pack (files.zip ~635 MB)..."));
+                // Cek apakah files.zip sudah pernah terunduh utuh sebelumnya
+                long expectedTotal = 666478908L;
+                if (!zipFile.exists() || zipFile.length() != expectedTotal) {
+                    mainHandler.post(() -> tvDataDesc.setText("Mengunduh data pack (files.zip ~635 MB)..."));
 
-                URL url = new URL(DATA_ZIP_URL);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setInstanceFollowRedirects(true);
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
+                    long existingBytes = partFile.exists() ? partFile.length() : 0;
+                    URL url = new URL(DATA_ZIP_URL);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setInstanceFollowRedirects(true);
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
 
-                int responseCode = conn.getResponseCode();
-                // Handle manual redirect if needed (GitHub releases redirect to AWS S3/Azure)
-                if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM || responseCode == 307 || responseCode == 308) {
-                    String redirectUrl = conn.getHeaderField("Location");
-                    if (redirectUrl != null) {
-                        conn.disconnect();
-                        conn = (HttpURLConnection) new URL(redirectUrl).openConnection();
-                        conn.setConnectTimeout(15000);
-                        conn.setReadTimeout(30000);
+                    if (existingBytes > 0) {
+                        conn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
+                    }
+
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM || responseCode == 307 || responseCode == 308) {
+                        String redirectUrl = conn.getHeaderField("Location");
+                        if (redirectUrl != null) {
+                            conn.disconnect();
+                            conn = (HttpURLConnection) new URL(redirectUrl).openConnection();
+                            conn.setConnectTimeout(15000);
+                            conn.setReadTimeout(30000);
+                            if (existingBytes > 0) {
+                                conn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
+                            }
+                            responseCode = conn.getResponseCode();
+                        }
+                    }
+
+                    boolean isAppend = (responseCode == HttpURLConnection.HTTP_PARTIAL);
+                    if (!isAppend && existingBytes > 0) {
+                        existingBytes = 0; // Server tidak support range, mulai ulang dari 0
+                    }
+
+                    long totalBytes = conn.getContentLengthLong();
+                    if (isAppend) {
+                        totalBytes += existingBytes;
+                    } else if (totalBytes <= 0) {
+                        totalBytes = expectedTotal;
+                    }
+
+                    java.io.InputStream in = new java.io.BufferedInputStream(conn.getInputStream(), 65536);
+                    java.io.FileOutputStream out = new java.io.FileOutputStream(partFile, isAppend);
+                    byte[] buffer = new byte[65536];
+                    long downloadedBytes = existingBytes;
+                    long lastUpdate = System.currentTimeMillis();
+                    int read;
+
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                        downloadedBytes += read;
+
+                        long now = System.currentTimeMillis();
+                        if (now - lastUpdate > 150) {
+                            lastUpdate = now;
+                            final long cur = downloadedBytes;
+                            final long tot = totalBytes;
+                            final int percent = (int) ((cur * 100) / tot);
+                            mainHandler.post(() -> {
+                                pbDownload.setProgress(percent);
+                                tvDownloadProgress.setText(percent + "% (" + (cur / 1048576) + "/" + (tot / 1048576) + " MB)");
+                            });
+                        }
+                    }
+                    out.flush();
+                    out.close();
+                    in.close();
+                    conn.disconnect();
+
+                    if (!partFile.renameTo(zipFile)) {
+                        throw new Exception("Gagal menyelesaikan download file zip!");
                     }
                 }
-
-                long totalBytes = conn.getContentLengthLong();
-                if (totalBytes <= 0) totalBytes = 666478908L; // fallback length
-
-                java.io.InputStream in = new java.io.BufferedInputStream(conn.getInputStream(), 65536);
-                java.io.FileOutputStream out = new java.io.FileOutputStream(zipFile);
-                byte[] buffer = new byte[65536];
-                long downloadedBytes = 0;
-                long lastUpdate = System.currentTimeMillis();
-                int read;
-
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                    downloadedBytes += read;
-
-                    long now = System.currentTimeMillis();
-                    if (now - lastUpdate > 150) {
-                        lastUpdate = now;
-                        final long cur = downloadedBytes;
-                        final long tot = totalBytes;
-                        final int percent = (int) ((cur * 100) / tot);
-                        mainHandler.post(() -> {
-                            pbDownload.setProgress(percent);
-                            tvDownloadProgress.setText(percent + "% (" + (cur / 1048576) + "/" + (tot / 1048576) + " MB)");
-                        });
-                    }
-                }
-                out.flush();
-                out.close();
-                in.close();
-                conn.disconnect();
 
                 // Step 2: Unzip files.zip langsung ke root folder data game
                 mainHandler.post(() -> {
-                    pbDownload.setIndeterminate(true);
-                    tvDataDesc.setText("Mengekstrak data game ke direktori lokal...");
+                    pbDownload.setIndeterminate(false);
+                    pbDownload.setMax(100);
+                    pbDownload.setProgress(0);
+                    tvDataDesc.setText("Mengekstrak data game...");
                     tvDownloadProgress.setText("Mengekstrak...");
                 });
 
@@ -234,21 +261,18 @@ public class HomeFragment extends Fragment {
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    Toast.makeText(getContext(), "Data game berhasil diunduh dan dipasang!", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), "Data game berhasil dipasang!", Toast.LENGTH_LONG).show();
                     runVerification();
                 });
 
             } catch (Exception e) {
-                if (zipFile.exists()) {
-                    zipFile.delete();
-                }
                 mainHandler.post(() -> {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    tvDataDesc.setText("Gagal mengunduh: " + e.getMessage() + "\nSilakan cek koneksi atau letakkan file GTA SA manual.");
-                    Toast.makeText(getContext(), "Gagal download data: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    tvDataDesc.setText("Terjadi kesalahan: " + e.getMessage() + "\nBisa dilanjutkan kembali dengan klik Download Data.");
+                    Toast.makeText(getContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     runVerification();
                 });
             }
@@ -256,18 +280,26 @@ public class HomeFragment extends Fragment {
     }
 
     private void unzipFile(File zipFile, File targetDir) throws Exception {
-        java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
-                new java.io.BufferedInputStream(new java.io.FileInputStream(zipFile), 65536));
-        java.util.zip.ZipEntry ze;
+        java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zipFile);
+        int totalEntries = zf.size();
+        int processed = 0;
         byte[] buffer = new byte[65536];
 
-        while ((ze = zis.getNextEntry()) != null) {
+        java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zf.entries();
+        while (entries.hasMoreElements()) {
+            java.util.zip.ZipEntry ze = entries.nextElement();
+            processed++;
+
             String entryName = ze.getName();
-            // Cegah zip slip vulnerability
+            // Jika zip membungkus folder root 'files/' atau 'files\', strip prefix-nya
+            if (entryName.startsWith("files/") || entryName.startsWith("files\\")) {
+                entryName = entryName.substring(6);
+            }
+            if (entryName.isEmpty()) continue;
+
             File file = new File(targetDir, entryName);
             String canonicalDestPath = file.getCanonicalPath();
             if (!canonicalDestPath.startsWith(targetDir.getCanonicalPath())) {
-                zis.closeEntry();
                 continue;
             }
 
@@ -278,16 +310,28 @@ public class HomeFragment extends Fragment {
                 if (parent != null && !parent.exists()) {
                     parent.mkdirs();
                 }
+                java.io.InputStream is = zf.getInputStream(ze);
                 java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
                 int count;
-                while ((count = zis.read(buffer)) != -1) {
+                while ((count = is.read(buffer)) != -1) {
                     fos.write(buffer, 0, count);
                 }
                 fos.flush();
                 fos.close();
+                is.close();
             }
-            zis.closeEntry();
+
+            final int curProcessed = processed;
+            final int tot = totalEntries;
+            if (tot > 0 && curProcessed % 25 == 0) {
+                final int percent = (curProcessed * 100) / tot;
+                mainHandler.post(() -> {
+                    pbDownload.setIndeterminate(false);
+                    pbDownload.setProgress(percent);
+                    tvDownloadProgress.setText("Mengekstrak " + percent + "% (" + curProcessed + "/" + tot + ")");
+                });
+            }
         }
-        zis.close();
+        zf.close();
     }
 }
