@@ -268,6 +268,21 @@ public class PlayFragment extends Fragment {
             }
             sp.edit().putString("nickname", newNick).apply();
 
+            // Verifikasi data game sebelum meluncurkan client
+            com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify = 
+                    com.sampmobile.xyvern.launcher.util.GameDataVerifier.verifyGameData(requireContext());
+            if (!verify.isValid) {
+                Toast.makeText(getContext(), 
+                        "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.", 
+                        Toast.LENGTH_LONG).show();
+                stopPingTask();
+                detailDialog.dismiss();
+                if (getActivity() instanceof MainActivity) {
+                    ((MainActivity) getActivity()).changeTab(0); // Pindah ke tab Home
+                }
+                return;
+            }
+
             stopPingTask();
             detailDialog.dismiss();
             Intent intent = new Intent(getActivity(), SAMP.class);

@@ -73,13 +73,18 @@ jobs:
         shell: powershell
         run: |
           Get-ChildItem -Path . -Recurse -Filter *.apk | Select-Object FullName, Length
+          New-Item -ItemType Directory -Force -Path "release-apks"
+          Get-ChildItem -Path "app\build" -Recurse -Filter *.apk | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "release-apks" -Force
+          }
+          Get-ChildItem -Path "release-apks" -Filter *.apk | Select-Object FullName, Length
 
       # Sign APK with debug key to ensure v1 + v2 + v3 signature is valid
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/**/*.apk
+          path: release-apks/*.apk
 
       # Create GitHub Release
       - name: Create GitHub Release
@@ -88,6 +93,6 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build v${{ github.run_number }}
-          files: app/build/**/*.apk
+          files: release-apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
