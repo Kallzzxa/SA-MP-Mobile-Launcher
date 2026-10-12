@@ -79,13 +79,20 @@ jobs:
           }
           Get-ChildItem -Path "release-apks" -Filter *.apk | Select-Object FullName, Length
 
-      # Verify APK signature scheme and re-sign with apksigner if v1 missing
-      - name: Verify APK Signatures
+      # Verify and Sign APK with proper 4-byte zipalign + apksigner
+      - name: Verify and Sign APKs
         shell: cmd
         run: |
           for /r release-apks %%f in (*.apk) do (
             echo ==============================================
-            echo File: %%f
+            echo Processing %%f
+            call "%ANDROID_HOME%\build-tools\34.0.0\zipalign.exe" -c -v 4 "%%f"
+            if errorlevel 1 (
+              echo Re-aligning %%f
+              call "%ANDROID_HOME%\build-tools\34.0.0\zipalign.exe" -f -p 4 "%%f" "%%~dpnf-aligned.apk"
+              move /y "%%~dpnf-aligned.apk" "%%f"
+            )
+            echo Signing with full V1 + V2 + V3 scheme:
             call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" sign --ks app-release-key.jks --ks-pass pass:password123456 --ks-key-alias sampkey --key-pass pass:password123456 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false "%%f"
             call "%ANDROID_HOME%\build-tools\34.0.0\aapt2.exe" dump badging "%%f" | findstr "package: sdkVersion: targetSdkVersion: native-code:"
             call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" verify --verbose "%%f"
