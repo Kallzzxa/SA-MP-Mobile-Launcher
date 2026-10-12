@@ -202,9 +202,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             String nickname = sp.getString("nickname", "AndroidUser"); 
             if (nickname.length() > 24) nickname = nickname.substring(0, 24);
             
-            String[] versions = {"0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
+            String[] versions = {"0.3.DL-R1", "0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
             int vIdx = spCore.getInt(ctx, "VERSION", 0);
-            String version = (vIdx >= 0 && vIdx < versions.length) ? versions[vIdx] : "0.3.7";
+            String version = (vIdx >= 0 && vIdx < versions.length) ? versions[vIdx] : "0.3.DL-R1";
 
             StringBuilder sb = new StringBuilder();
             sb.append("[client]\n");

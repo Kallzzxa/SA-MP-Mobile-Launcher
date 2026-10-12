@@ -24,7 +24,7 @@ extern char* g_pszStorage;
 #define ARRAY_SIZE(a) ( sizeof((a)) / sizeof(*(a)) )
 #endif
 
-#define SAMP_VERSION	"0.3.7"
+#define SAMP_VERSION	"0.3.DL-R1"
 
 #define SAMP_ARCHIVE_PATH "/Android/data/com.sampmobile.xyvern/samp.data"
 #define FONT_NAME "arial_bold.ttf"

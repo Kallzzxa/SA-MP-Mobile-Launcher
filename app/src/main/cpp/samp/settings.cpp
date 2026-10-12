@@ -24,7 +24,7 @@ CSettings::CSettings()
 		ini.SetValue("client", "host", "127.0.0.1");
 		ini.SetValue("client", "port", "7777");
 		ini.SetValue("client", "password", "");
-		ini.SetValue("client", "version", "0.3.7");
+		ini.SetValue("client", "version", "0.3.DL-R1");
 		ini.SetValue("gui", "androidkeyboard", "false");
 		ini.SetValue("gui", "VoiceChatEnable", "true");
 		ini.SetValue("gui", "fps", "0");
@@ -42,7 +42,7 @@ CSettings::CSettings()
 	m_Settings.szHost[length] = '\0';
 	length = reader.Get("client", "password", "").copy(m_Settings.szPassword, MAX_SETTINGS_STRING);
 	m_Settings.szPassword[length] = '\0';
-    length = reader.Get("client", "version", "0.3.7").copy(m_Settings.szVersion, MAX_SETTINGS_STRING);
+    length = reader.Get("client", "version", "0.3.DL-R1").copy(m_Settings.szVersion, MAX_SETTINGS_STRING);
     m_Settings.szVersion[length] = '\0';
 	m_Settings.iPort = reader.GetInteger("client", "port", 7777);
     m_Settings.bAutoAim = reader.GetBoolean("client", "autoaim", false);

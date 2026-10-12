@@ -578,6 +578,11 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	PLAYERID MyPlayerID;
 	unsigned int uiChallenge;
 	int iVersion = 4057;
+	if (pSettings && strstr(pSettings->Get().szVersion, "0.3.DL")) {
+		iVersion = 4062;
+	} else if (!pSettings && strstr(SAMP_VERSION, "0.3.DL")) {
+		iVersion = 4062;
+	}
 	uint8_t byteMod = 1;
 
 	bsSuccAuth.IgnoreBits(8);	// packetId
