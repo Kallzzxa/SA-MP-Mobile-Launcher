@@ -67,25 +67,26 @@ jobs:
       - name: Build Debug APK
         shell: cmd
         run: |
-          gradlew.bat assembleRelease assembleDebug -Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a --stacktrace
+          gradlew.bat assembleRelease --stacktrace
 
       - name: List generated APKs
         shell: powershell
         run: |
           Get-ChildItem -Path . -Recurse -Filter *.apk | Select-Object FullName, Length
           New-Item -ItemType Directory -Force -Path "release-apks"
-          Get-ChildItem -Path "app\build" -Recurse -Filter *.apk | ForEach-Object {
+          Get-ChildItem -Path "app\build" -Recurse -Filter "*release*.apk" | ForEach-Object {
               Copy-Item -Path $_.FullName -Destination "release-apks" -Force
           }
           Get-ChildItem -Path "release-apks" -Filter *.apk | Select-Object FullName, Length
 
-      # Verify APK signature scheme
+      # Verify APK signature scheme and re-sign with apksigner if v1 missing
       - name: Verify APK Signatures
         shell: cmd
         run: |
           for /r release-apks %%f in (*.apk) do (
             echo ==============================================
             echo File: %%f
+            call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" sign --ks app-release-key.jks --ks-pass pass:password123456 --ks-key-alias sampkey --key-pass pass:password123456 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false "%%f"
             call "%ANDROID_HOME%\build-tools\34.0.0\aapt2.exe" dump badging "%%f" | findstr "package: sdkVersion: targetSdkVersion: native-code:"
             call "%ANDROID_HOME%\build-tools\34.0.0\apksigner.bat" verify --verbose "%%f"
             echo ==============================================

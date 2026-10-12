@@ -24,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "com.sampmobile.xyvern"
         minSdk = 26
-        targetSdk = 33
+        targetSdk = 34
         versionCode = 130
         versionName = "1.0"
 
