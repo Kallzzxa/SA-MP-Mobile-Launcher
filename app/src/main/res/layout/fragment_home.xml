@@ -108,6 +108,7 @@
                     android:layout_height="6dp"
                     android:layout_marginTop="12dp"
                     android:progressDrawable="@drawable/download_progress"
+                    android:progressTint="#FF0037"
                     android:visibility="gone" />
 
                 <TextView
@@ -117,7 +118,7 @@
                     android:layout_marginTop="6dp"
                     android:fontFamily="@font/montserrat_medium"
                     android:text="0%"
-                    android:textColor="#3B82F6"
+                    android:textColor="#FF0037"
                     android:textSize="12sp"
                     android:visibility="gone" />
 
@@ -147,7 +148,7 @@
                         android:layout_height="40dp"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:background="#2563EB"
+                        android:backgroundTint="#FF0037"
                         android:fontFamily="@font/montserrat_bold"
                         android:text="Download Data"
                         android:textAllCaps="false"
@@ -156,7 +157,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Card Dedicated Server & 0.3.DL Model Sync -->
+            <!-- Card Server Utama / Quick Play -->
             <LinearLayout
                 android:id="@+id/card_server_sync"
                 android:layout_width="match_parent"
@@ -177,7 +178,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:fontFamily="@font/montserrat_bold"
-                        android:text="Dedicated Server"
+                        android:text="Server Favorit"
                         android:textColor="#F4F4F5"
                         android:textSize="14sp" />
 
@@ -185,12 +186,12 @@
                         android:id="@+id/tv_server_status_badge"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:background="#1A2744"
+                        android:background="#2E1015"
                         android:fontFamily="@font/montserrat_bold"
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="3dp"
-                        android:text="0.3.DL ACTIVE"
-                        android:textColor="#60A5FA"
+                        android:text="ONLINE"
+                        android:textColor="#FF0037"
                         android:textSize="10sp" />
                 </LinearLayout>
 
@@ -200,7 +201,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Nusantara Roleplay (open.mp)"
+                    android:text="Nusantara Roleplay"
                     android:textColor="#FFFFFF"
                     android:textSize="13sp" />
 
@@ -210,31 +211,21 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:fontFamily="@font/montserrat_regular"
-                    android:text="IP: 127.0.0.1:7777 (Custom Models Sync)"
+                    android:text="Address: 127.0.0.1:7777"
                     android:textColor="#71717A"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/tv_model_sync_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:fontFamily="@font/montserrat_medium"
-                    android:text="Model Sync: Menunggu sinkronisasi aset..."
-                    android:textColor="#A1A1AA"
                     android:textSize="11sp" />
 
                 <Button
                     android:id="@+id/btn_sync_and_play"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="48dp"
                     android:layout_marginTop="14dp"
-                    android:background="#2563EB"
+                    android:backgroundTint="#FF0037"
                     android:fontFamily="@font/montserrat_bold"
-                    android:text="Sync Models &amp; Play"
+                    android:text="Main Sekarang"
                     android:textAllCaps="false"
                     android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
+                    android:textSize="14sp" />
             </LinearLayout>
 
             <!-- Card Info Manual Path -->

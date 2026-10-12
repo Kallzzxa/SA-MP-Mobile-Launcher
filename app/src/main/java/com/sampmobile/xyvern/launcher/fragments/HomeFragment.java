@@ -55,7 +55,6 @@ public class HomeFragment extends Fragment {
     private TextView tvDownloadProgress;
     private Button btnVerifyData;
     private Button btnDownloadData;
-    private TextView tvModelSyncStatus;
     private Button btnSyncAndPlay;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -78,10 +77,9 @@ public class HomeFragment extends Fragment {
         tvDownloadProgress = view.findViewById(R.id.tv_download_progress);
         btnVerifyData = view.findViewById(R.id.btn_verify_data);
         btnDownloadData = view.findViewById(R.id.btn_download_data);
-        tvModelSyncStatus = view.findViewById(R.id.tv_model_sync_status);
         btnSyncAndPlay = view.findViewById(R.id.btn_sync_and_play);
 
-        btnSyncAndPlay.setOnClickListener(v -> syncModelsAndLaunchGame());
+        btnSyncAndPlay.setOnClickListener(v -> launchDirectGame());
 
         Context ctx = requireContext();
         File extDir = ctx.getExternalFilesDir(null);
@@ -341,7 +339,7 @@ public class HomeFragment extends Fragment {
         zf.close();
     }
 
-    private void syncModelsAndLaunchGame() {
+    private void launchDirectGame() {
         if (getContext() == null) return;
         GameDataVerifier.VerificationResult verify = GameDataVerifier.verifyGameData(requireContext());
         if (!verify.isValid) {
@@ -349,96 +347,9 @@ public class HomeFragment extends Fragment {
             return;
         }
 
-        tvModelSyncStatus.setText("Model Sync: Menghubungkan ke dedicated server...");
-        btnSyncAndPlay.setEnabled(false);
-
-        executor.execute(() -> {
-            File baseDir = requireContext().getExternalFilesDir(null);
-            File customModelsDir = new File(baseDir, "models/custom");
-            if (!customModelsDir.exists()) {
-                customModelsDir.mkdirs();
-            }
-
-            // Sync artconfig / custom model manifest dari server release mirror
-            String modelsManifestUrl = "https://raw.githubusercontent.com/rezzylrn/samp-mobile-optimized/main/server-side/models_manifest.json";
-            try {
-                URL url = new URL(modelsManifestUrl);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-
-                if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = r.readLine()) != null) sb.append(line);
-                    r.close();
-
-                    JSONObject manifest = new JSONObject(sb.toString());
-                    JSONArray models = manifest.optJSONArray("models");
-                    int downloadedCount = 0;
-
-                    if (models != null) {
-                        for (int i = 0; i < models.length(); i++) {
-                            JSONObject m = models.getJSONObject(i);
-                            String dffName = m.getString("dff");
-                            String txdName = m.getString("txd");
-                            String dffUrl = m.getString("dff_url");
-                            String txdUrl = m.getString("txd_url");
-
-                            File localDff = new File(customModelsDir, dffName);
-                            File localTxd = new File(customModelsDir, txdName);
-
-                            if (!localDff.exists() || localDff.length() == 0) {
-                                downloadDirectFile(dffUrl, localDff);
-                                downloadedCount++;
-                            }
-                            if (!localTxd.exists() || localTxd.length() == 0) {
-                                downloadDirectFile(txdUrl, localTxd);
-                                downloadedCount++;
-                            }
-                        }
-                    }
-
-                    final int syncTotal = (models != null) ? models.length() : 0;
-                    final int newDownloaded = downloadedCount;
-                    mainHandler.post(() -> {
-                        tvModelSyncStatus.setText("Model Sync: " + syncTotal + " custom model sinkron (" + newDownloaded + " file baru diupdate)");
-                    });
-                }
-            } catch (Exception e) {
-                mainHandler.post(() -> {
-                    tvModelSyncStatus.setText("Model Sync: Menggunakan cache lokal (server sync idle)");
-                });
-            }
-
-            mainHandler.post(() -> {
-                btnSyncAndPlay.setEnabled(true);
-                // Launch dedicated game activity ke server open.mp (127.0.0.1:7777 / dedicated)
-                android.content.Intent intent = new android.content.Intent(getActivity(), com.sampmobile.xyvern.game.SAMP.class);
-                intent.putExtra("ip", "127.0.0.1");
-                intent.putExtra("port", 7777);
-                startActivity(intent);
-            });
-        });
-    }
-
-    private void downloadDirectFile(String fileUrl, File dest) throws Exception {
-        URL u = new URL(fileUrl);
-        HttpURLConnection c = (HttpURLConnection) u.openConnection();
-        c.setConnectTimeout(10000);
-        c.setReadTimeout(15000);
-        if (c.getResponseCode() == HttpURLConnection.HTTP_OK) {
-            java.io.InputStream in = c.getInputStream();
-            java.io.FileOutputStream out = new java.io.FileOutputStream(dest);
-            byte[] b = new byte[8192];
-            int n;
-            while ((n = in.read(b)) != -1) {
-                out.write(b, 0, n);
-            }
-            out.flush();
-            out.close();
-            in.close();
-        }
+        android.content.Intent intent = new android.content.Intent(getActivity(), com.sampmobile.xyvern.game.SAMP.class);
+        intent.putExtra("ip", "127.0.0.1");
+        intent.putExtra("port", 7777);
+        startActivity(intent);
     }
 }
