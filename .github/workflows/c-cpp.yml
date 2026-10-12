@@ -73,12 +73,17 @@ jobs:
         run: |
           gradlew.bat assembleDebug -Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a --stacktrace
 
+      - name: List generated APKs
+        shell: cmd
+        run: |
+          dir /s /b app\build\outputs\*.apk
+
       # Sign APK with debug key to ensure v1 + v2 + v3 signature is valid
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/**/*.apk
 
       # Create GitHub Release
       - name: Create GitHub Release
@@ -87,6 +92,6 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build v${{ github.run_number }}
-          files: app/build/outputs/apk/debug/*.apk
+          files: app/build/outputs/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
