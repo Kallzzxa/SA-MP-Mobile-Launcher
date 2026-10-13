@@ -4,7 +4,7 @@
 #include "../game/Timer.h"
 #include "../gui/gui.h"
 #include "../audiostream.h"
-
+#include "../cef/SAMPMobileCef.h"
 // voice
 #include "../voice_new/MicroIcon.h"
 #include "../voice_new/SpeakerList.h"
@@ -64,6 +64,10 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	m_iPort = iPort;
 
 	m_pRakClient = RakNetworkFactory::GetRakClientInterface();
+
+	cef::setGamePath(g_pszStorage);
+	cef::initNetwork(m_pRakClient, 252);
+
 	InitializePools();
 
 	GetPlayerPool()->SetLocalPlayerName(szPlayerName);
@@ -317,9 +321,13 @@ void CNetGame::UpdateNetwork()
                 break;
             }
 
-            case 251:
-                Packet_CustomRPC(pkt);
-                break;
+			case 252:
+				cef::handlePacket(pkt);
+				break;
+
+			case 251:
+				Packet_CustomRPC(pkt);
+				break;
         }
 
 		// voice
@@ -617,7 +625,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-
+	cef::handleServerConnection();
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
