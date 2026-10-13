@@ -40,6 +40,7 @@ public class SettingsFragment extends Fragment {
     SwitchCompat mVoiceSwitch;
     SwitchCompat mModifySwitch;
     SwitchCompat mAMLSwitch;
+    SwitchCompat mCefSwitch;
     SwitchCompat mFPSSwitch;
     SeekBar mMessagesSeekBar;
     TextView mMessagesText;
@@ -71,6 +72,7 @@ public class SettingsFragment extends Fragment {
         mAMLSwitch.setChecked(requireContext()
             .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
+        mCefSwitch = view.findViewById(R.id.cef_switch);
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -166,6 +168,14 @@ public class SettingsFragment extends Fragment {
                 .putBoolean("aml_enabled", enabled)
                 .apply();
             Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
+        });
+
+        mCefSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "CEF_ENABLED", b);
+                Toast.makeText(requireContext(), b ? "CEF WebView diaktifkan" : "CEF WebView dimatikan. Restart game untuk menerapkan.", Toast.LENGTH_LONG).show();
+            }
         });
 
         mKeyboardSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -282,6 +292,11 @@ public class SettingsFragment extends Fragment {
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
         mAMLSwitch.setChecked(requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
+        // CEF default ON; only OFF when the user explicitly disabled it before.
+        android.content.SharedPreferences cefPrefs = requireContext().getApplicationContext()
+                .getSharedPreferences(com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
+        boolean cefOn = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
+        mCefSwitch.setChecked(cefOn);
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");

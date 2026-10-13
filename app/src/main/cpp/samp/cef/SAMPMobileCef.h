@@ -66,6 +66,11 @@ namespace cef
     bool isInitialized();
 
     /**
+     * Reports WebView init result back to the SA:MP Server (RPC_BrowserInit).
+     */
+    void sendBrowserInit(bool success, int errorCode);
+
+    /**
      * Utility function to append logs to SAMP/cef.log file.
      */
     void log(const char* fmt, ...);

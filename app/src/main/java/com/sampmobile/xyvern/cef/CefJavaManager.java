@@ -53,6 +53,18 @@ public class CefJavaManager {
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean mChatInputOpen = new AtomicBoolean(false);
 
+    /** Master switch: when false the WebView is never created (Settings toggle). */
+    private static volatile boolean sWebViewEnabled = true;
+    public static void setWebViewEnabled(boolean enabled) { sWebViewEnabled = enabled; }
+    public static boolean isWebViewEnabled() { return sWebViewEnabled; }
+
+    /** Device folder where server-synced CEF UI files are cached. */
+    private File getUiDir() {
+        File dir = new File(mActivity.getExternalFilesDir(null), "SAMP/cef_ui");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
     /** omp-cef compatible JS bootstrap, injected before page scripts run. */
     private static final String BOOTSTRAP_JS =
         "(function(){\n" +
@@ -102,11 +114,60 @@ public class CefJavaManager {
         "      var args = [];\n" +
         "      try { args = JSON.parse(argsJson || '[]'); if (!Array.isArray(args)) args = [args]; }\n" +
         "      catch (e) { args = [argsJson]; }\n" +
+        "      if (name && name.indexOf('__cefui_') === 0 && handleCefUi(name, args)) return;\n" +
         "      var list = handlers[name] || [];\n" +
         "      if (!list.length) { (pending[name] = pending[name] || []).push(args); return; }\n" +
         "      for (var i = 0; i < list.length; i++) { try { list[i].apply(null, args); } catch (e) {} }\n" +
         "    }\n" +
         "  };\n" +
+        "  // Server-hosted CEF UI sync (scriptfiles/cef/ on the game server).\n" +
+        "  // The server sends __cefui_* events; they are handled here and never\n" +
+        "  // reach user handlers.\n" +
+        "  var uiState = { file: '', received: 0, total: 0 };\n" +
+        "  function ompProgress() {\n" +
+        "    try {\n" +
+        "      if (window.__ompcef) window.__ompcef.progress(uiState.file, uiState.received, uiState.total, uiState.received, uiState.total);\n" +
+        "    } catch (e) {}\n" +
+        "  }\n" +
+        "  function handleCefUi(name, args) {\n" +
+        "    try {\n" +
+        "      if (name === '__cefui_version') {\n" +
+        "        var serverVer = String(args[0]);\n" +
+        "        var localVer = '';\n" +
+        "        try { localVer = String(AndroidCefBridge.getUiVersion()); } catch (e) {}\n" +
+        "        try { if (window.__ompcef) window.__ompcef.manifest(0, 0); } catch (e) {}\n" +
+        "        if (localVer === serverVer && serverVer !== '') { api.emit('__cefui_uptodate'); }\n" +
+        "        else { api.emit('__cefui_needfiles'); }\n" +
+        "        return true;\n" +
+        "      }\n" +
+        "      if (name === '__cefui_begin') {\n" +
+        "        uiState.file = String(args[0]);\n" +
+        "        uiState.total = parseInt(args[1] || '0', 10) || 0;\n" +
+        "        uiState.received = 0;\n" +
+        "        AndroidCefBridge.uiFileBegin(uiState.file, uiState.total);\n" +
+        "        ompProgress();\n" +
+        "        return true;\n" +
+        "      }\n" +
+        "      if (name === '__cefui_chunk') {\n" +
+        "        var b64 = String(args[0]);\n" +
+        "        AndroidCefBridge.uiFileChunk(b64);\n" +
+        "        uiState.received += Math.floor(b64.length * 3 / 4);\n" +
+        "        ompProgress();\n" +
+        "        return true;\n" +
+        "      }\n" +
+        "      if (name === '__cefui_end') {\n" +
+        "        AndroidCefBridge.uiFileEnd(String(args[0]));\n" +
+        "        return true;\n" +
+        "      }\n" +
+        "      if (name === '__cefui_done') {\n" +
+        "        AndroidCefBridge.setUiVersion(String(args[0]));\n" +
+        "        try { if (window.__ompcef) window.__ompcef.done(); } catch (e) {}\n" +
+        "        api.emit('__cefui_ready');\n" +
+        "        return true;\n" +
+        "      }\n" +
+        "    } catch (e) {}\n" +
+        "    return false;\n" +
+        "  }\n" +
         "  var inputFocused = false;\n" +
         "  function checkFocus(target) {\n" +
         "    var isInput = !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));\n" +
@@ -159,7 +220,11 @@ public class CefJavaManager {
         this.mRootLayout = rootLayout;
         this.mActivity = activity;
 
-        mMainHandler.post(this::initWebView);
+        if (sWebViewEnabled) {
+            mMainHandler.post(this::initWebView);
+        } else {
+            Log.i(TAG, "CEF WebView disabled in settings, skipping init");
+        }
     }
 
     private void initWebView() {
@@ -260,9 +325,10 @@ public class CefJavaManager {
     }
 
     /**
-     * Serve the omp-cef style local schemes from assets/cef/:
-     *   cef://index.html        -> assets/cef/index.html
-     *   http://cef/index.html   -> assets/cef/index.html   (PC omp-cef scheme)
+     * Serve the omp-cef style local schemes:
+     *   cef://index.html        -> device SAMP/cef_ui/index.html (server-synced),
+     *                              fallback assets/cef/index.html
+     *   http://cef/index.html   -> same (PC omp-cef scheme)
      */
     private WebResourceResponse serveCefScheme(Uri uri) {
         if (uri == null) return null;
@@ -278,25 +344,45 @@ public class CefJavaManager {
         // block directory traversal
         if (path.contains("..")) return null;
 
+        // 1) server-synced UI on the device wins
+        try {
+            File dev = new File(getUiDir(), path);
+            if (dev.isFile()) {
+                InputStream in = new java.io.FileInputStream(dev);
+                Log.d(TAG, "serving cef:// -> " + dev.getAbsolutePath());
+                return new WebResourceResponse(mimeOf(path), encodingOf(mimeOf(path)), in);
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "cef device file error: " + path);
+        }
+
+        // 2) fallback to bundled assets/cef/
         String assetPath = "cef/" + path;
         try {
             AssetManager am = mActivity.getAssets();
             InputStream in = am.open(assetPath);
-            String ext = "";
-            int dot = assetPath.lastIndexOf('.');
-            if (dot >= 0) ext = assetPath.substring(dot + 1).toLowerCase();
-            String mime = MIME_TYPES.get(ext);
-            if (mime == null) mime = "application/octet-stream";
-            // text types get a charset, binary types must pass null encoding
-            String encoding = (mime.startsWith("text/") || mime.equals("application/javascript")
-                    || mime.equals("application/json") || mime.equals("image/svg+xml")
-                    || mime.equals("application/xml")) ? "UTF-8" : null;
+            String mime = mimeOf(path);
             Log.d(TAG, "serving cef:// -> assets/" + assetPath);
-            return new WebResourceResponse(mime, encoding, in);
+            return new WebResourceResponse(mime, encodingOf(mime), in);
         } catch (IOException e) {
             Log.w(TAG, "cef asset missing: " + assetPath);
             return null;
         }
+    }
+
+    private static String mimeOf(String path) {
+        String ext = "";
+        int dot = path.lastIndexOf('.');
+        if (dot >= 0) ext = path.substring(dot + 1).toLowerCase();
+        String mime = MIME_TYPES.get(ext);
+        return mime != null ? mime : "application/octet-stream";
+    }
+
+    private static String encodingOf(String mime) {
+        // text types get a charset, binary types must pass null encoding
+        return (mime.startsWith("text/") || mime.equals("application/javascript")
+                || mime.equals("application/json") || mime.equals("image/svg+xml")
+                || mime.equals("application/xml")) ? "UTF-8" : null;
     }
 
     public void setClientManager(CefClientManager clientManager) {
@@ -439,6 +525,102 @@ public class CefJavaManager {
                 } catch (Exception ignored) {}
                 android.os.Process.killProcess(android.os.Process.myPid());
             });
+        }
+
+        // ---------------------------------------------------------------
+        // Server-hosted CEF UI sync (scriptfiles/cef/ on the game server).
+        // Files are cached in <game>/SAMP/cef_ui/ and served via cef://.
+        // ---------------------------------------------------------------
+        private java.io.OutputStream mUiOut;
+        private String mUiFileName = "";
+
+        private File uiSafeFile(String name) {
+            if (name == null) return null;
+            name = name.replace('\\', '/');
+            while (name.startsWith("/")) name = name.substring(1);
+            if (name.isEmpty() || name.contains("..")) return null;
+            try {
+                File dir = getUiDir();
+                File f = new File(dir, name);
+                String canonDir = dir.getCanonicalPath() + java.io.File.separator;
+                String canonFile = f.getCanonicalPath();
+                if (!canonFile.startsWith(canonDir)) return null;
+                return f;
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getUiVersion() {
+            try {
+                File ver = new File(getUiDir(), ".version");
+                if (!ver.isFile()) return "";
+                byte[] buf = new byte[(int) Math.min(ver.length(), 64)];
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(ver)) {
+                    int n = fis.read(buf);
+                    if (n > 0) return new String(buf, 0, n, "UTF-8").trim();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "getUiVersion failed: " + e.getMessage());
+            }
+            return "";
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean setUiVersion(String version) {
+            try {
+                File ver = new File(getUiDir(), ".version");
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(ver)) {
+                    fos.write((version == null ? "" : version).getBytes("UTF-8"));
+                }
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "setUiVersion failed: " + e.getMessage());
+                return false;
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean uiFileBegin(String name, long totalBytes) {
+            try {
+                if (mUiOut != null) { try { mUiOut.close(); } catch (Exception ignored) {} mUiOut = null; }
+                File f = uiSafeFile(name);
+                if (f == null) return false;
+                File parent = f.getParentFile();
+                if (parent != null && !parent.exists()) parent.mkdirs();
+                mUiOut = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));
+                mUiFileName = name;
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "uiFileBegin failed: " + e.getMessage());
+                return false;
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean uiFileChunk(String base64) {
+            try {
+                if (mUiOut == null || base64 == null) return false;
+                byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                mUiOut.write(data);
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "uiFileChunk failed: " + e.getMessage());
+                return false;
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean uiFileEnd(String name) {
+            try {
+                if (mUiOut != null) { mUiOut.flush(); mUiOut.close(); mUiOut = null; }
+                mUiFileName = "";
+                return true;
+            } catch (Exception e) {
+                Log.w(TAG, "uiFileEnd failed: " + e.getMessage());
+                return false;
+            }
         }
     }
 }

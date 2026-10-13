@@ -158,18 +158,26 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         instance = this;
 
         // ============================================================
-        // SA:MP MOBILE CEF
+        // SA:MP MOBILE CEF (can be toggled in launcher Settings)
         // ============================================================
         try {
-            FrameLayout rootLayout = findViewById(android.R.id.content);
+            android.content.SharedPreferences cefPrefs = getSharedPreferences(
+                    com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
+            boolean cefEnabled = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
+            com.sampmobile.xyvern.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
+            if (!cefEnabled) {
+                Log.i(TAG, "SA:MP Mobile CEF disabled in settings");
+            } else {
+                FrameLayout rootLayout = findViewById(android.R.id.content);
 
-            mCefClientManager = new CefClientManager(this);
-            mCefJavaManager = new CefJavaManager(rootLayout, this);
+                mCefClientManager = new CefClientManager(this);
+                mCefJavaManager = new CefJavaManager(rootLayout, this);
 
-            mCefClientManager.setJavaManager(mCefJavaManager);
-            mCefJavaManager.setClientManager(mCefClientManager);
+                mCefClientManager.setJavaManager(mCefJavaManager);
+                mCefJavaManager.setClientManager(mCefClientManager);
 
-            Log.i(TAG, "SA:MP Mobile CEF initialized");
+                Log.i(TAG, "SA:MP Mobile CEF initialized");
+            }
         } catch (Exception e) {
             Log.e(TAG, "Failed to initialize SA:MP Mobile CEF", e);
         }

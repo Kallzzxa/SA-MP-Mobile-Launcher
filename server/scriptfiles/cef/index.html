@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Server CEF UI</title>
+    <!-- omp-cef compatible bridge (served from the launcher via cef://) -->
+    <script src="cef://cef-bridge.js"></script>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+            background: transparent; color: #eef1f8;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .card {
+            width: min(420px, 92vw);
+            background: rgba(20, 26, 42, 0.92);
+            border: 1px solid rgba(120, 150, 255, 0.25);
+            border-radius: 18px;
+            padding: 28px 26px;
+            text-align: center;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+        }
+        .logo {
+            width: 64px; height: 64px; margin: 0 auto 14px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #4e7eff, #8a5bff);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; font-weight: 800; color: #fff;
+        }
+        h1 { margin: 0 0 6px; font-size: 22px; }
+        p.sub { margin: 0 0 18px; font-size: 13px; color: #9aa3b8; }
+        #msg {
+            min-height: 40px; margin-bottom: 16px; padding: 10px 12px;
+            background: rgba(78, 126, 255, 0.12);
+            border: 1px solid rgba(78, 126, 255, 0.3);
+            border-radius: 10px; font-size: 13px; color: #cdd8ff;
+            display: none;
+        }
+        button {
+            width: 100%; padding: 13px; margin-top: 8px;
+            border: none; border-radius: 12px;
+            background: linear-gradient(135deg, #4e7eff, #6a8dff);
+            color: #fff; font-size: 15px; font-weight: 700;
+            cursor: pointer;
+        }
+        button:active { transform: scale(0.98); }
+        button.ghost {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .hint { margin-top: 14px; font-size: 11px; color: #6b7288; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">S</div>
+        <h1>Selamat Datang!</h1>
+        <p class="sub">UI ini di-download dari server (scriptfiles/cef/)</p>
+        <div id="msg"></div>
+        <button id="btn-hello">Sapa Server</button>
+        <button id="btn-close" class="ghost">Tutup</button>
+        <p class="hint">window.cef API &bull; omp-cef compatible</p>
+    </div>
+
+    <script>
+        // Server -> web :  CefSendEvent(playerid, "ui_welcome", "Halo dari server!")
+        cef.on("ui_welcome", function (text) {
+            var box = document.getElementById("msg");
+            box.style.display = "block";
+            box.textContent = text;
+        });
+
+        document.getElementById("btn-hello").addEventListener("click", function () {
+            // web -> server :  CefRegisterEventCallback("ui_hello", "OnUiHello")
+            cef.emit("ui_hello", "Halo juga dari HP!");
+        });
+
+        document.getElementById("btn-close").addEventListener("click", function () {
+            cef.emit("ui_close");
+        });
+    </script>
+</body>
+</html>

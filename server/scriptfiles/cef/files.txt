@@ -1,0 +1,3 @@
+# Daftar file UI yang di-sync ke client (satu per baris, relatif ke scriptfiles/cef/)
+# Naikkan version.txt setiap kali mengubah file di bawah ini.
+index.html

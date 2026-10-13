@@ -335,6 +335,7 @@ extern "C" {
 			isSuccess ? 1 : 0,
 			(int)errorCode
 		);
+		cef::sendBrowserInit(isSuccess != JNI_FALSE, (int)errorCode);
 	}
 
 	JNIEXPORT void JNICALL

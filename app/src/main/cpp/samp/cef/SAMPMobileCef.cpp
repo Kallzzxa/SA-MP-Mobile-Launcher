@@ -189,6 +189,34 @@ namespace cef
         if (attached)
             javaVM->DetachCurrentThread();
     }
+    void sendBrowserInit(bool success, int errorCode)
+    {
+        if (!g_bInitialized || !g_pRakClient)
+            return;
+
+        RakClientInterface* rakClient =
+            reinterpret_cast<RakClientInterface*>(g_pRakClient);
+
+        RakNet::BitStream bs;
+
+        bs.Write((uint16_t)g_nPacketId);
+        bs.Write((uint32_t)RPC_BrowserInit);
+        bs.Write(success);
+        bs.Write((int16_t)errorCode);
+
+        rakClient->Send(
+            &bs,
+            HIGH_PRIORITY,
+            RELIABLE,
+            0
+        );
+
+        log(
+            "BrowserInit sent: success=%d error=%d",
+            success ? 1 : 0,
+            errorCode
+        );
+    }
     void setGamePath(const char* szPath)
     {
         if (!szPath) return;
