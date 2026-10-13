@@ -637,6 +637,17 @@ void DLManager::ProcessTick() {
         m_lastSpeedSampleBytes = cur;
     }
 
+    // Diagnostic heartbeat: prove whether the server ever talks 0.3.DL at us.
+    static bool s_bReportedNoManifest = false;
+    if (!s_bReportedNoManifest && (now - m_connectTime > 9000) && m_totalModels.load() == 0) {
+        s_bReportedNoManifest = true;
+        if (pUI && pUI->chat()) {
+            pUI->chat()->addDebugMessage(
+                "{F59E0B}[0.3.DL]{FFFFFF} No model manifest received (RPC 179 never arrived). "
+                "Server may not expose artwork to this client.");
+        }
+    }
+
     if (m_bDownloadFinished.load()) return;
 
     size_t queued = 0, active = 0, done = 0, failed = 0;
@@ -701,10 +712,16 @@ void DLManager::ToggleOverlay() {
 }
 
 // ---------------------------------------------------------------------------
-// UI
+// UI - drawn straight onto the foreground draw list, the same path the FPS
+// label uses. Classic ImGui windows are unreliable here because the game UI
+// owns its own draw list and frame ordering.
 // ---------------------------------------------------------------------------
 void DLManager::RenderImGui() {
     if (!m_bInitialized.load()) return;
+    if (!pUI) return;
+
+    ImGuiRenderer* r = pUI->renderer();
+    if (!r) return;
 
     size_t queued = 0, active = 0, done = 0, failed = 0;
     GetProgressStats(queued, active, done, failed);
@@ -717,86 +734,105 @@ void DLManager::RenderImGui() {
     const bool shouldShow = m_bForceShowOverlay ||
                             active > 0 ||
                             (total > 0 && !finished) ||
-                            (total == 0 && (now - m_connectTime) < 6000) ||
+                            (total == 0 && (now - m_connectTime) < 8000) ||
                             (m_finishTime > 0 && (now - m_finishTime) < 6000);
     if (!shouldShow) return;
 
-    ImGuiIO& io = ImGui::GetIO();
-    const float cardWidth  = std::clamp(io.DisplaySize.x * 0.52f, 420.0f, 560.0f);
-    const float cardHeight = 96.0f;
-    const float posX = (io.DisplaySize.x - cardWidth) * 0.5f;
-    const float posY = 20.0f;
+    const ImVec2 screen = pUI->displaySize();
+    const float pad     = 12.0f;
+    const float cardW   = std::min(std::clamp(screen.x * 0.46f, 300.0f, 440.0f),
+                                   std::max(screen.x - 32.0f, 200.0f));
+    const float cardH   = 78.0f;
+    const float x0      = (screen.x - cardW) * 0.5f;
+    const float y0      = 14.0f;
+    const ImVec2 tl(x0, y0);
+    const ImVec2 br(x0 + cardW, y0 + cardH);
 
-    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(cardWidth, cardHeight), ImGuiCond_Always);
+    const ImColor kCyberBlue(2, 132, 199, 255);    // #0284C7
+    const ImColor kSky      (56, 189, 248, 255);   // #38BDF8
+    const ImColor kDark     (9, 13, 22, 235);      // #090D16
+    const ImColor kTrack    (18, 24, 38, 255);
+    const ImColor kGreen    (34, 197, 94, 255);
+    const ImColor kAmber    (245, 158, 11, 255);
+    const ImColor kRed      (239, 68, 68, 255);
+    const ImColor kGrey     (148, 163, 184, 255);
 
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing;
+    // Panel: filled body + 1px accent border.
+    r->drawRect(tl, br, kDark, true);
+    r->drawRect(tl, br, kCyberBlue, false, 1.5f);
 
-    const ImVec4 kCyberBlue(0.008f, 0.518f, 0.780f, 1.0f);   // #0284C7
-    const ImVec4 kSky      (0.220f, 0.741f, 0.973f, 1.0f);   // #38BDF8
-    const ImVec4 kDark     (0.035f, 0.051f, 0.086f, 0.96f);  // #090D16
-    const ImVec4 kTrack    (0.055f, 0.078f, 0.126f, 1.0f);
+    const float fs = std::max(UISettings::fontSize() * 0.8f, 11.0f);
+    const float lh = fs + 6.0f;
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, kDark);
-    ImGui::PushStyleColor(ImGuiCol_Border, kCyberBlue);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 10.0f));
+    // ---- Line 1: title + status
+    r->drawText(ImVec2(x0 + pad, y0 + 8.0f), kSky, "CUSTOM MODELS", true, fs);
 
-    if (ImGui::Begin("##dl_card", nullptr, flags)) {
-        ImGui::TextColored(kSky, "CUSTOM MODELS");
-        ImGui::SameLine();
-
-        if (failed > 0) {
-            ImGui::TextColored(ImVec4(0.94f, 0.35f, 0.35f, 1.0f), "// %zu FAILED", failed);
-        } else if (finished) {
-            ImGui::TextColored(ImVec4(0.133f, 0.773f, 0.369f, 1.0f), "// READY");
-        } else if (active > 0) {
-            ImGui::TextColored(ImVec4(0.961f, 0.620f, 0.043f, 1.0f),
-                               "// %zu/%d SLOTS ACTIVE", active, DL_MAX_CONCURRENT);
-        } else if (total > 0) {
-            ImGui::TextColored(kSky, "// VERIFYING CACHE");
-        } else {
-            ImGui::TextColored(ImVec4(0.65f, 0.68f, 0.72f, 1.0f), "// HANDSHAKE");
-        }
-
-        float fraction = 0.0f;
-        if (total > 0) {
-            fraction = std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.0f, 1.0f);
-        } else if (finished) {
-            fraction = 1.0f;
-        }
-
-        char overlay[96];
-        if (total > 0) {
-            snprintf(overlay, sizeof(overlay), "%zu / %d models  (%.0f%%)",
-                     done, total, fraction * 100.0f);
-        } else if (finished) {
-            snprintf(overlay, sizeof(overlay), "No custom models");
-        } else {
-            snprintf(overlay, sizeof(overlay), "Querying server model list...");
-        }
-
-        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, kCyberBlue);
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, kTrack);
-        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 18.0f), overlay);
-        ImGui::PopStyleColor(2);
-
-        if (total > 0 && !finished) {
-            ImGui::TextDisabled("pending %zu  |  slots %zu/%d  |  %.0f KB/s  |  cached %zu",
-                                pending, active, DL_MAX_CONCURRENT, m_speedKBps.load(), done);
-        } else if (finished) {
-            ImGui::TextColored(kSky, "%s",
-                               failed > 0 ? "Finished with errors - rejoin to retry."
-                                          : "All assets verified. Spawn enabled.");
-        } else {
-            ImGui::TextDisabled("Connected. Waiting for artwork manifest...");
-        }
+    char status[64];
+    ImColor statusColor = kGrey;
+    if (failed > 0) {
+        snprintf(status, sizeof(status), "// %zu FAILED", failed);
+        statusColor = kRed;
+    } else if (finished) {
+        snprintf(status, sizeof(status), "// READY");
+        statusColor = kGreen;
+    } else if (active > 0) {
+        snprintf(status, sizeof(status), "// %zu/%d SLOTS", active, DL_MAX_CONCURRENT);
+        statusColor = kAmber;
+    } else if (total > 0) {
+        snprintf(status, sizeof(status), "// VERIFYING");
+        statusColor = kSky;
+    } else {
+        snprintf(status, sizeof(status), "// HANDSHAKE");
     }
-    ImGui::End();
+    // Right-align the status by measuring the longest plausible string.
+    const float statusX = br.x - pad - (strlen(status) * fs * 0.58f);
+    r->drawText(ImVec2(std::max(statusX, x0 + pad + 120.0f), y0 + 8.0f), statusColor, status, true, fs);
 
-    ImGui::PopStyleVar(3);
-    ImGui::PopStyleColor(2);
+    // ---- Line 2: progress track + fill
+    float fraction = 0.0f;
+    if (total > 0) {
+        fraction = std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.0f, 1.0f);
+    } else if (finished) {
+        fraction = 1.0f;
+    }
+
+    const float barY  = y0 + 8.0f + lh;
+    const float barH  = 12.0f;
+    const float barX0 = x0 + pad;
+    const float barX1 = br.x - pad;
+    if (barX1 > barX0) {
+        r->drawRect(ImVec2(barX0, barY), ImVec2(barX1, barY + barH), kTrack, true);
+        const float fillW = (barX1 - barX0) * fraction;
+        if (fillW > 0.5f) {
+            r->drawRect(ImVec2(barX0, barY), ImVec2(barX0 + fillW, barY + barH), kCyberBlue, true);
+        }
+        r->drawRect(ImVec2(barX0, barY), ImVec2(barX1, barY + barH), kCyberBlue, false, 1.0f);
+
+        char overlay[80];
+        if (total > 0) {
+            snprintf(overlay, sizeof(overlay), "%zu / %d  (%.0f%%)", done, total, fraction * 100.0f);
+        } else if (finished) {
+            snprintf(overlay, sizeof(overlay), "no custom models");
+        } else {
+            snprintf(overlay, sizeof(overlay), "waiting for manifest...");
+        }
+        const float txtW = strlen(overlay) * fs * 0.58f;
+        r->drawText(ImVec2((barX0 + barX1 - txtW) * 0.5f, barY - 1.0f),
+                    kSky, overlay, true, fs * 0.92f);
+    }
+
+    // ---- Line 3: detail stats
+    char detail[128];
+    if (total > 0 && !finished) {
+        snprintf(detail, sizeof(detail), "pending %zu  |  slots %zu/%d  |  %.0f KB/s  |  cached %zu",
+                 pending, active, DL_MAX_CONCURRENT, m_speedKBps.load(), done);
+    } else if (finished) {
+        snprintf(detail, sizeof(detail), "%s",
+                 failed > 0 ? "finished with errors - rejoin to retry"
+                            : "all assets verified - spawn enabled");
+    } else {
+        snprintf(detail, sizeof(detail), "connected - no 0.3.DL artwork received yet");
+    }
+    r->drawText(ImVec2(x0 + pad, barY + barH + 6.0f), kGrey, detail, true, fs * 0.9f);
 }
+

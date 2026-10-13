@@ -124,8 +124,9 @@ void ImGuiWrapper::render()
 		}
 	}
 
-	drawList();
 	DLManager::Instance().RenderImGui();
+
+	drawList();
 	ImGui::EndFrame();
 	ImGui::Render();
 	renderDrawData(ImGui::GetDrawData());
