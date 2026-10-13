@@ -3,6 +3,7 @@
 #include "netgame.h"
 #include "../audiostream.h"
 #include "game/BuildingRemoval.h"
+#include "dl/dlmanager.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -119,9 +120,41 @@ void ScrSetSpawnInfo(RPCParameters *rpcParams)
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	PLAYER_SPAWN_INFO spawnInfo;
+	PLAYER_SPAWN_INFO spawnInfo{};
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read((char*)&spawnInfo, sizeof(PLAYER_SPAWN_INFO));
+
+	if (bsData.GetNumberOfUnreadBits() >= (50 * 8)) {
+		uint8_t byteTeam;
+		int iSkin;
+		uint32_t dCustomSkinID;
+		uint8_t unk;
+		CVector vecPos;
+		float fRotation;
+		int iSpawnWeapons[3];
+		int iSpawnWeaponsAmmo[3];
+
+		bsData.Read(byteTeam);
+		bsData.Read(iSkin);
+		bsData.Read(dCustomSkinID);
+		bsData.Read(unk);
+		bsData.Read(vecPos.x);
+		bsData.Read(vecPos.y);
+		bsData.Read(vecPos.z);
+		bsData.Read(fRotation);
+		bsData.Read((char*)iSpawnWeapons, sizeof(iSpawnWeapons));
+		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
+
+		spawnInfo.byteTeam = byteTeam;
+		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
+		spawnInfo.iSkin = IsValidPedModel(actualSkin) ? actualSkin : iSkin;
+		spawnInfo.unk = unk;
+		spawnInfo.vecPos = vecPos;
+		spawnInfo.fRotation = fRotation;
+		memcpy(spawnInfo.iSpawnWeapons, iSpawnWeapons, sizeof(iSpawnWeapons));
+		memcpy(spawnInfo.iSpawnWeaponsAmmo, iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
+	} else {
+		bsData.Read((char*)&spawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	}
 
 	pNetGame->GetPlayerPool()->GetLocalPlayer()->SetSpawnInfo(&spawnInfo);
 
@@ -243,7 +276,11 @@ void ScrCreateObject(RPCParameters* rpcParams)
 	}
 
 	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	pObjectPool->New(ObjectID, iModel, vecPos, vecRot, fDrawDistance);
+	int actualModel = iModel;
+	if (iModel < 0) {
+		actualModel = DLManager::Instance().GetVirtualModelId(iModel);
+	}
+	pObjectPool->New(ObjectID, actualModel, vecPos, vecRot, fDrawDistance);
 
 	CObject* pObject = pObjectPool->GetAt(ObjectID);
 	if (AttachedObjectID != INVALID_OBJECT_ID)
@@ -470,11 +507,41 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 
 	int iPlayerID;
 	int iModel;
+	uint32_t dCustomSkinID = 0;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
 	bsData.Read(iPlayerID);
 	bsData.Read(iModel);
+	if (bsData.GetNumberOfUnreadBits() >= 32) {
+		bsData.Read(dCustomSkinID);
+	}
 
-	if (IsValidPedModel(iModel))
+	int actualModel = iModel;
+	if (dCustomSkinID > 0) {
+		int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
+		if (IsValidPedModel(virtId)) {
+			actualModel = virtId;
+		}
+	}
+
+	if (IsValidPedModel(actualModel))
+	{
+		if (pPlayerPool->GetLocalPlayerID() == iPlayerID)
+		{
+			pPlayerPool->GetLocalPlayer()->GetPlayerPed()->SetModelIndex(actualModel);
+		}
+		else
+		{
+			if (pPlayerPool->GetSlotState(iPlayerID) == true)
+			{
+				CRemotePlayer* pPlayer = pPlayerPool->GetAt(iPlayerID);
+				if (!pPlayer || pPlayer->GetState() == PLAYER_STATE_NONE) return;
+				CPlayerPed* pPlayerPed = pPlayer->GetPlayerPed();
+				if (!pPlayerPed) return;
+				pPlayerPed->SetModelIndex(actualModel);
+			}
+		}
+	}
+	else if (IsValidPedModel(iModel))
 	{
 		if (pPlayerPool->GetLocalPlayerID() == iPlayerID)
 		{
@@ -491,10 +558,6 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 				pPlayerPed->SetModelIndex(iModel);
 			}
 		}
-	}
-	else
-	{
-		//if (gui) gui->chat()->addDebugMessage("Warning: SetPlayerSkin %d isn't a valid ped model.", iModel);
 	}
 }
 

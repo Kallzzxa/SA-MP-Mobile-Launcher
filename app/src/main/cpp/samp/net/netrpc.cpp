@@ -344,7 +344,38 @@ void RequestClass(RPCParameters *rpcParams)
 	CLocalPlayer *pLocalPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer();
 
 	bsData.Read(byteRequestOutcome);
-	bsData.Read((char*)&SpawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	if (bsData.GetNumberOfUnreadBits() >= (50 * 8)) {
+		uint8_t byteTeam;
+		int iSkin;
+		uint32_t dCustomSkinID;
+		uint8_t unk;
+		CVector vecPos;
+		float fRotation;
+		int iSpawnWeapons[3];
+		int iSpawnWeaponsAmmo[3];
+
+		bsData.Read(byteTeam);
+		bsData.Read(iSkin);
+		bsData.Read(dCustomSkinID);
+		bsData.Read(unk);
+		bsData.Read(vecPos.x);
+		bsData.Read(vecPos.y);
+		bsData.Read(vecPos.z);
+		bsData.Read(fRotation);
+		bsData.Read((char*)iSpawnWeapons, sizeof(iSpawnWeapons));
+		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
+
+		SpawnInfo.byteTeam = byteTeam;
+		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
+		SpawnInfo.iSkin = IsValidPedModel(actualSkin) ? actualSkin : iSkin;
+		SpawnInfo.unk = unk;
+		SpawnInfo.vecPos = vecPos;
+		SpawnInfo.fRotation = fRotation;
+		memcpy(SpawnInfo.iSpawnWeapons, iSpawnWeapons, sizeof(iSpawnWeapons));
+		memcpy(SpawnInfo.iSpawnWeaponsAmmo, iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
+	} else {
+		bsData.Read((char*)&SpawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	}
 
 	Log::addParameter("byteRequestOutcome", byteRequestOutcome);
 	Log::addParameter("SpawnInfo.byteTeam", SpawnInfo.byteTeam);
@@ -596,6 +627,16 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 	bsData.Read(playerId);
 	bsData.Read(byteTeam);
 	bsData.Read(iSkin);
+	if (bsData.GetNumberOfUnreadBits() >= (47 * 8)) {
+		uint32_t dCustomSkinID = 0;
+		bsData.Read(dCustomSkinID);
+		if (dCustomSkinID > 0) {
+			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
+			if (IsValidPedModel(virtId)) {
+				iSkin = virtId;
+			}
+		}
+	}
 	bsData.Read(vecPos.x);
 	bsData.Read(vecPos.y);
 	bsData.Read(vecPos.z);
@@ -1369,7 +1410,27 @@ void ShowActor(RPCParameters* rpcParams)
 
 	NEW_ACTOR newActor;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
+
+	if (bsData.GetNumberOfUnreadBits() >= (31 * 8)) {
+		bsData.Read(newActor.ActorID);
+		bsData.Read(newActor.iSkin);
+		uint32_t dCustomSkinID = 0;
+		bsData.Read(dCustomSkinID);
+		if (dCustomSkinID > 0) {
+			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
+			if (IsValidPedModel(virtId)) {
+				newActor.iSkin = virtId;
+			}
+		}
+		bsData.Read(newActor.vecPos.x);
+		bsData.Read(newActor.vecPos.y);
+		bsData.Read(newActor.vecPos.z);
+		bsData.Read(newActor.fAngle);
+		bsData.Read(newActor.fHealth);
+		bsData.Read(newActor.bInvulnerable);
+	} else {
+		bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
+	}
 
 	if (IsValidPedModel(newActor.iSkin))
 	{
@@ -1492,6 +1553,23 @@ void EditObject(RPCParameters *rpcParams) {
 	FLog("RPC: EditObject %d", objectId);
 }
 
+#include "dl/dlmanager.h"
+
+void DL_ModelRequest(RPCParameters* rpcParams)
+{
+	DLManager::Instance().OnModelRequest(rpcParams);
+}
+
+void DL_ModelFile(RPCParameters* rpcParams)
+{
+	DLManager::Instance().OnModelFile(rpcParams);
+}
+
+void DL_DownloadCompleted(RPCParameters* rpcParams)
+{
+	DLManager::Instance().OnDownloadCompleted(rpcParams);
+}
+
 void RegisterRPCs(RakClientInterface *pRakClient)
 {
 	Log::traceLastFunc("Registering RPC's..");
@@ -1547,12 +1625,22 @@ void RegisterRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ShowActor, ShowActor);							// DONE
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_HideActor, HideActor);							// DONE
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ChatBubble, ChatBubble);
+
+	// 0.3.DL Artwork
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelRequest, DL_ModelRequest);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelFile, DL_ModelFile);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DownloadCompleted, DL_DownloadCompleted);
 }
 
 void UnregisterRPCs(RakClientInterface *pRakClient)
 {
 	Log::traceLastFunc("Unregistering RPC's..");
     pRakClient->UnregisterAsRemoteProcedureCall(&RPC_InitGame);
+
+	// 0.3.DL Artwork
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelRequest);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelFile);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_DownloadCompleted);
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_SetPlayerSkillLevel);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrCreate3DTextLabel);

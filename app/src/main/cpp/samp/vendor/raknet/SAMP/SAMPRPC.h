@@ -154,3 +154,11 @@ extern int RPC_SetPlayerSkillLevel;
 extern int RPC_EditObject;
 extern int RPC_EditAttachedObject;
 extern int RPC_EnterEditObject;
+
+// SA-MP 0.3.DL Artwork / Custom Models RPC
+extern int RPC_ModelRequest;
+extern int RPC_RequestDff;
+extern int RPC_RequestTxd;
+extern int RPC_ModelFile;
+extern int RPC_FinishDownload;
+extern int RPC_DownloadCompleted;

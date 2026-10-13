@@ -44,6 +44,8 @@ unsigned char GetPacketID(Packet *p)
 
 extern CJavaWrapper *pJavaWrapper;
 
+#include "dl/dlmanager.h"
+
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
 {
 	FLog("CNetGame initializing..");
@@ -71,6 +73,11 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	RegisterRPCs(m_pRakClient);
 	RegisterScriptRPCs(m_pRakClient);
 	m_pRakClient->SetPassword(szPass);
+
+	// 0.3.DL Artwork Downloader & Virtual Model Manager
+	if (g_pszStorage) {
+		DLManager::Instance().Initialize(m_szHostOrIp, m_iPort, g_pszStorage, m_pRakClient);
+	}
 
 	memset(m_dwMapIcon, 0, sizeof(m_dwMapIcon));
 
@@ -108,6 +115,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 
 CNetGame::~CNetGame()
 {
+	DLManager::Instance().Reset();
 	// voice
 	Network::OnRaknetDisconnect();
 

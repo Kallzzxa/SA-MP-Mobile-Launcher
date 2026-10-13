@@ -1961,8 +1961,10 @@ int GetModelRefCounts(int iModel)
 
 bool IsValidPedModel(uint modelID)
 {
-    if(modelID < 0 || modelID > 20000) return false;
+    if (modelID >= 18631 && modelID < 20000) return true; // 0.3.DL Virtual Custom Ped range
+    if (modelID > 20000) return false;
     auto dwModelArray = CModelInfo::ms_modelInfoPtrs;
+    if (!dwModelArray) return false;
 
     uintptr_t ModelInfo = reinterpret_cast<uintptr_t>(dwModelArray[modelID]);
     if(ModelInfo && *(uintptr_t*)ModelInfo == (uintptr_t)g_libGTASA + (VER_x32 ? 0x00667658 : 0x82F310))
