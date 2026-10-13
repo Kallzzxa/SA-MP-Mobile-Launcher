@@ -11,6 +11,7 @@
 #include "../voice_new/MicroIcon.h"
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
+#include "../net/dl/dlmanager.h"
 
 #include "../gui/samp_widgets/voicebutton.h"
 #include "game/Textures/TextureDatabaseRuntime.h"
@@ -209,6 +210,8 @@ void UI::render()
     renderDebug();
 
     ProcessPushedTextdraws();
+
+    DLManager::Instance().RenderImGui();
 
 	if (m_bNeedClearMousePos) {
 		ImGuiIO& io = ImGui::GetIO();

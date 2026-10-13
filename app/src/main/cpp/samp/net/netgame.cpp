@@ -213,6 +213,7 @@ void CNetGame::UninitializePools()
 
 void CNetGame::Process()
 {
+	DLManager::Instance().ProcessTick();
 	static uint32_t time = CTimer::m_snTimeInMillisecondsNonClipped;
 	bool bProcess = false;
 	if (CTimer::m_snTimeInMillisecondsNonClipped - time >= 1000 / 30)

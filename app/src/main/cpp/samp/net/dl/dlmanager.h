@@ -42,6 +42,8 @@ public:
 
     void Initialize(const std::string& serverIp, int serverPort, const std::string& storagePath, RakClientInterface* pRakClient);
     void Reset();
+    void ProcessTick();
+    void RenderImGui();
 
     // RPC Handlers
     void OnModelRequest(RPCParameters* rpcParams);
@@ -59,18 +61,20 @@ public:
     int16_t GetVirtualModelId(int32_t networkId);
     int32_t GetNetworkModelId(int16_t virtualId);
 
-    bool IsDownloadFinished() const { return m_bDownloadFinished; }
-    int GetTotalModels() const { return m_totalModels; }
-    int GetDownloadedModels() const { return m_downloadedModels; }
+    bool IsInitialized() const { return m_bInitialized.load(); }
+    bool IsDownloadFinished() const { return m_bDownloadFinished.load(); }
+    int GetTotalModels() const { return m_totalModels.load(); }
+    int GetDownloadedModels() const { return m_downloadedModels.load(); }
+
+    void CheckPendingDownloads();
+    void SendFinishDownload();
 
 private:
     DLManager();
     ~DLManager();
 
-    void CheckPendingDownloads();
     void RequestNextFile();
     void DownloadWorker(const std::string& url, uint32_t crc, uint32_t expectedSize, bool isDff);
-    void SendFinishDownload();
 
     std::string m_serverIp;
     int m_serverPort;
@@ -91,8 +95,14 @@ private:
         std::string url;
     };
     std::vector<PendingFile> m_requestQueue;
+    std::atomic<bool> m_bInitialized{false};
     std::atomic<bool> m_bDownloading{false};
     std::atomic<bool> m_bDownloadFinished{false};
-    int m_totalModels{0};
-    int m_downloadedModels{0};
+    std::atomic<int> m_totalModels{0};
+    std::atomic<int> m_downloadedModels{0};
+
+    uint32_t m_connectTime{0};
+    uint32_t m_finishTime{0};
+    std::string m_currentFileName;
+    float m_currentFileProgress{0.0f};
 };

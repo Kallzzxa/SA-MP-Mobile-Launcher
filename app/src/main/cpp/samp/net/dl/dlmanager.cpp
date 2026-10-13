@@ -1,5 +1,7 @@
 #include "dlmanager.h"
 #include "../../main.h"
+#include "../../gui/gui.h"
+#include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
 #include <sys/stat.h>
@@ -16,6 +18,9 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <chrono>
+
+extern UI* pUI;
 
 // Standard CRC32 IEEE 802.3 table
 static uint32_t s_crcTable[256];
@@ -59,6 +64,21 @@ uint32_t DLManager::CalculateFileCRC32(const std::string& filepath) {
     return crc ^ 0xFFFFFFFF;
 }
 
+static void MakeDirectoryTree(const std::string& path) {
+    std::string current;
+    for (size_t i = 0; i < path.length(); i++) {
+        current += path[i];
+        if (path[i] == '/' || i == path.length() - 1) {
+            mkdir(current.c_str(), 0777);
+        }
+    }
+}
+
+static uint32_t GetCurrentTick() {
+    auto now = std::chrono::steady_clock::now();
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
+}
+
 DLManager& DLManager::Instance() {
     static DLManager s_instance;
     return s_instance;
@@ -68,10 +88,14 @@ DLManager::DLManager()
     : m_serverPort(7777)
     , m_pRakClient(nullptr)
     , m_nextVirtualId(18631)
+    , m_bInitialized(false)
     , m_bDownloading(false)
     , m_bDownloadFinished(false)
     , m_totalModels(0)
     , m_downloadedModels(0)
+    , m_connectTime(0)
+    , m_finishTime(0)
+    , m_currentFileProgress(0.0f)
 {
 }
 
@@ -89,16 +113,24 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort, const st
     m_totalModels = 0;
     m_downloadedModels = 0;
     m_nextVirtualId = 18631;
+    m_connectTime = GetCurrentTick();
+    m_finishTime = 0;
 
-    // Cache structure: <storagePath>/SAMP/cache/<serverIp>.<serverPort>/
+    std::string cleanStorage = storagePath;
+    if (!cleanStorage.empty() && cleanStorage.back() != '/') {
+        cleanStorage += "/";
+    }
+
     char cacheDir[512];
-    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s.%d/", storagePath.c_str(), serverIp.c_str(), serverPort);
+    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s.%d/", cleanStorage.c_str(), serverIp.c_str(), serverPort);
     m_cachePath = cacheDir;
 
-    // Ensure cache directories exist
-    mkdir((storagePath + "SAMP").c_str(), 0777);
-    mkdir((storagePath + "SAMP/cache").c_str(), 0777);
-    mkdir(m_cachePath.c_str(), 0777);
+    MakeDirectoryTree(m_cachePath);
+    m_bInitialized = true;
+
+    if (pUI && pUI->chat()) {
+        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Model sync ready. Cache: %s.%d", serverIp.c_str(), serverPort);
+    }
 }
 
 void DLManager::Reset() {
@@ -108,10 +140,15 @@ void DLManager::Reset() {
     m_networkToVirtual.clear();
     m_virtualToNetwork.clear();
     m_nextVirtualId = 18631;
+    m_bInitialized = false;
     m_bDownloading = false;
     m_bDownloadFinished = false;
     m_totalModels = 0;
     m_downloadedModels = 0;
+    m_connectTime = 0;
+    m_finishTime = 0;
+    m_currentFileName.clear();
+    m_currentFileProgress = 0.0f;
 }
 
 std::string DLManager::GetModelPath(uint32_t crc, bool isDff) const {
@@ -140,7 +177,6 @@ int16_t DLManager::GetVirtualModelId(int32_t networkId) {
         return it->second;
     }
     if (m_nextVirtualId >= 19999) {
-        // Wrap around safe reserve slot
         m_nextVirtualId = 18631;
     }
     int16_t virtualId = m_nextVirtualId++;
@@ -158,10 +194,27 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
     return virtualId;
 }
 
+void DLManager::ProcessTick() {
+    if (!m_bInitialized.load() || m_bDownloadFinished.load()) {
+        return;
+    }
+
+    uint32_t now = GetCurrentTick();
+    if (m_totalModels.load() == 0 && (now - m_connectTime > 2500)) {
+        // Server has no custom models -> auto-ack so spawn is not blocked
+        m_bDownloadFinished = true;
+        m_finishTime = now;
+        SendFinishDownload();
+        if (pUI && pUI->chat()) {
+            pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Server has no custom models. Spawn unblocked.");
+        }
+    }
+}
+
 void DLManager::OnModelRequest(RPCParameters* rpcParams) {
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    int byteLength = bitLength / 8;
+    int byteLength = (bitLength / 8) + 1;
     if (byteLength < 39) return;
 
     RakNet::BitStream bs(data, byteLength, false);
@@ -198,6 +251,13 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
         }
     }
 
+    if (pUI && pUI->chat()) {
+        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Model [%d/%d] ID %d (%s) - %s",
+            info.poolID + 1, info.count, info.newId,
+            (info.type == 1) ? "Skin" : "Object",
+            (info.dffCached && info.txdCached) ? "Cached" : "Downloading");
+    }
+
     if (info.poolID + 1 == static_cast<uint32_t>(info.count)) {
         CheckPendingDownloads();
     }
@@ -207,7 +267,11 @@ void DLManager::CheckPendingDownloads() {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_requestQueue.empty()) {
         m_bDownloadFinished = true;
+        m_finishTime = GetCurrentTick();
         SendFinishDownload();
+        if (pUI && pUI->chat()) {
+            pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} All %d models synced from cache. Ready to play!", m_totalModels.load());
+        }
     } else {
         RequestNextFile();
     }
@@ -216,6 +280,7 @@ void DLManager::CheckPendingDownloads() {
 void DLManager::RequestNextFile() {
     if (m_requestQueue.empty()) {
         m_bDownloadFinished = true;
+        m_finishTime = GetCurrentTick();
         SendFinishDownload();
         return;
     }
@@ -225,6 +290,11 @@ void DLManager::RequestNextFile() {
 
     PendingFile pf = m_requestQueue.front();
     if (!m_pRakClient) return;
+
+    char hexName[64];
+    snprintf(hexName, sizeof(hexName), "0x%08X.%s", pf.crc, pf.isDff ? "dff" : "txd");
+    m_currentFileName = hexName;
+    m_currentFileProgress = 0.0f;
 
     RakNet::BitStream bs;
     bs.Write(pf.crc);
@@ -236,7 +306,7 @@ void DLManager::RequestNextFile() {
 void DLManager::OnModelFile(RPCParameters* rpcParams) {
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    int byteLength = bitLength / 8;
+    int byteLength = (bitLength / 8) + 1;
     if (byteLength < 6) return;
 
     RakNet::BitStream bs(data, byteLength, false);
@@ -352,7 +422,6 @@ void DLManager::DownloadWorker(const std::string& url, uint32_t crc, uint32_t ex
 
     send(sock, req, strlen(req), 0);
 
-    // Read response & separate headers from body
     char tempPath[512];
     snprintf(tempPath, sizeof(tempPath), "%s00000_%08X.temp", m_cachePath.c_str(), crc);
     FILE* outFp = fopen(tempPath, "wb");
@@ -366,6 +435,7 @@ void DLManager::DownloadWorker(const std::string& url, uint32_t crc, uint32_t ex
     bool inBody = false;
     std::string headerBuf;
     ssize_t bytes = 0;
+    size_t totalReceived = 0;
 
     while ((bytes = recv(sock, recvBuf, sizeof(recvBuf), 0)) > 0) {
         if (!inBody) {
@@ -377,21 +447,29 @@ void DLManager::DownloadWorker(const std::string& url, uint32_t crc, uint32_t ex
                 size_t bodyLen = headerBuf.size() - (headerEnd + 4);
                 if (bodyLen > 0) {
                     fwrite(bodyStart, 1, bodyLen, outFp);
+                    totalReceived += bodyLen;
                 }
             }
         } else {
             fwrite(recvBuf, 1, bytes, outFp);
+            totalReceived += bytes;
+        }
+        if (expectedSize > 0) {
+            m_currentFileProgress = static_cast<float>(totalReceived) / static_cast<float>(expectedSize);
         }
     }
     fclose(outFp);
     close(sock);
 
-    // Verify CRC & Size
     uint32_t actualCrc = CalculateFileCRC32(tempPath);
     if (actualCrc == crc) {
         std::string finalPath = GetModelPath(crc, isDff);
         rename(tempPath, finalPath.c_str());
         m_downloadedModels++;
+        if (pUI && pUI->chat()) {
+            pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Downloaded %s (0x%08X) [%d/%d]",
+                isDff ? "DFF" : "TXD", crc, m_downloadedModels.load(), m_totalModels.load());
+        }
     } else {
         unlink(tempPath);
     }
@@ -409,12 +487,98 @@ void DLManager::DownloadWorker(const std::string& url, uint32_t crc, uint32_t ex
 
 void DLManager::SendFinishDownload() {
     if (!m_pRakClient) return;
+    // Empty bitstream for 184 FinishDownload per protocol spec
     RakNet::BitStream bs;
-    uint8_t unused = 0x80;
-    bs.Write(unused);
     m_pRakClient->RPC(&RPC_FinishDownload, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+    if (pUI && pUI->chat()) {
+        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Sent RPC 184 FinishDownload to server.");
+    }
 }
 
 void DLManager::OnDownloadCompleted(RPCParameters* rpcParams) {
     m_bDownloadFinished = true;
+    m_finishTime = GetCurrentTick();
+    if (pUI && pUI->chat()) {
+        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Server confirmed: Artwork sync complete (RPC 185).");
+    }
+}
+
+void DLManager::RenderImGui() {
+    if (!m_bInitialized.load()) return;
+
+    uint32_t now = GetCurrentTick();
+    if (m_bDownloadFinished.load()) {
+        // Hide after 3.5 seconds once finished
+        if (m_finishTime > 0 && (now - m_finishTime > 3500)) {
+            return;
+        }
+    }
+
+    if (m_totalModels.load() == 0 && m_bDownloadFinished.load()) {
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    float cardWidth = 380.0f;
+    float cardHeight = 82.0f;
+    float posX = (io.DisplaySize.x - cardWidth) * 0.5f;
+    float posY = 24.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(cardWidth, cardHeight), ImGuiCond_Always);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                             ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoScrollbar |
+                             ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_NoFocusOnAppearing;
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.043f, 0.059f, 0.098f, 0.94f)); // #0B0F19
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.008f, 0.518f, 0.780f, 0.90f));   // #0284C7
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+
+    if (ImGui::Begin("##03DL_DownloadCard", nullptr, flags)) {
+        ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "0.3.DL SERVER ARTWORK"); // #38BDF8
+        ImGui::SameLine();
+        if (m_bDownloadFinished.load()) {
+            ImGui::TextColored(ImVec4(0.133f, 0.773f, 0.369f, 1.0f), "[Synchronized]");
+        } else if (m_bDownloading.load()) {
+            ImGui::TextColored(ImVec4(0.961f, 0.620f, 0.043f, 1.0f), "[Downloading]");
+        } else {
+            ImGui::TextColored(ImVec4(0.70f, 0.70f, 0.70f, 1.0f), "[Checking Cache]");
+        }
+
+        int total = m_totalModels.load();
+        int downloaded = m_downloadedModels.load();
+        float fraction = (total > 0) ? (static_cast<float>(downloaded) / static_cast<float>(total)) : 1.0f;
+        fraction = std::clamp(fraction, 0.0f, 1.0f);
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.008f, 0.518f, 0.780f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.11f, 0.17f, 1.0f));
+        
+        char progressOverlay[64];
+        if (total > 0) {
+            snprintf(progressOverlay, sizeof(progressOverlay), "%d / %d models (%.0f%%)", downloaded, total, fraction * 100.0f);
+        } else {
+            snprintf(progressOverlay, sizeof(progressOverlay), "No custom models");
+        }
+
+        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 18.0f), progressOverlay);
+        ImGui::PopStyleColor(2);
+
+        if (!m_currentFileName.empty() && m_bDownloading.load()) {
+            ImGui::TextDisabled("File: %s", m_currentFileName.c_str());
+        } else if (m_bDownloadFinished.load()) {
+            ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "All models loaded. Spawn enabled.");
+        } else {
+            ImGui::TextDisabled("Validating local asset integrity...");
+        }
+    }
+    ImGui::End();
+
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(2);
 }
