@@ -70,6 +70,7 @@ public:
 
 	stSettings& Get() { return m_Settings; }
 	void SaveDefenseButtonSettings();
+	void SaveVoiceButtonSettings();
 	
 private:
 	struct stSettings m_Settings;

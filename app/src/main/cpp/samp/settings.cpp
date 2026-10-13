@@ -131,3 +131,21 @@ void CSettings::SaveDefenseButtonSettings()
 	ini.SetValue("gui", "DefenseButtonScale", value);
 	ini.SaveFile(path);
 }
+
+void CSettings::SaveVoiceButtonSettings()
+{
+	char path[0x7F];
+	snprintf(path, sizeof(path), "%sSAMP/settings.ini", g_pszStorage);
+
+	CSimpleIniA ini;
+	ini.SetUnicode(false);
+	if (ini.LoadFile(path) < 0)
+		return;
+
+	char value[32];
+	snprintf(value, sizeof(value), "%.1f", m_Settings.fVoiceChatPosX);
+	ini.SetValue("gui", "VoiceChatPosX", value);
+	snprintf(value, sizeof(value), "%.1f", m_Settings.fVoiceChatPosY);
+	ini.SetValue("gui", "VoiceChatPosY", value);
+	ini.SaveFile(path);
+}

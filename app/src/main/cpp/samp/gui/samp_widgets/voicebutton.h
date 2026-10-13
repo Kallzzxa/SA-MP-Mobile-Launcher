@@ -7,7 +7,6 @@
 #include "../../settings.h"
 #include "util/CUtil.h"
 
-
 extern CSettings* pSettings;
 
 class VoiceButton : public Button
@@ -15,17 +14,29 @@ class VoiceButton : public Button
 public:
 	VoiceButton() : Button("TALK", UISettings::fontSize() / 2) {
 		m_recording = false;
-		/* 5:3 aspect ratio */
-		m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voiceactive"); //default
-		m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voicepassive"); //default
+		m_editMode = false;
+		m_dragging = false;
+		m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voiceactive");
+		m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voicepassive");
 	}
+
+	void toggleEditMode()
+	{
+		m_editMode = !m_editMode;
+		if (m_editMode) {
+			setRecording(0);
+		} else {
+			if (pSettings) {
+				pSettings->SaveVoiceButtonSettings();
+			}
+		}
+	}
+
+	bool isEditMode() const { return m_editMode; }
 
 	virtual void draw(ImGuiRenderer* renderer) override
 	{
 		if(!pSettings->Get().bVoiceChatEnable) return;
-
-		if (countdown > 0 && recording() == 1) countdown--;
-		if (countdown == 0 && recording() == 1) setRecording(0);
 
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 		ImVec2 pMin = absolutePosition();
@@ -33,19 +44,24 @@ public:
 		ImVec2 center = ImVec2((pMin.x + pMax.x) * 0.5f, (pMin.y + pMax.y) * 0.5f);
 		float radius = (size().x < size().y ? size().x : size().y) * 0.46f;
 
-		if (recording()) {
-			// Active recording: Glowing electric cyber-blue disc (NO RED)
-			drawList->AddCircle(center, radius + 2.5f, IM_COL32(56, 189, 248, 160), 32, 2.0f);
-			drawList->AddCircleFilled(center, radius, IM_COL32(2, 132, 199, 240), 32);
-			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 220), 32, 1.5f);
+		if (m_editMode) {
+			// EDIT MODE: Distinct Amber / Cyan Pulsing Ring
+			drawList->AddCircleFilled(center, radius, IM_COL32(15, 23, 42, 235), 32);
+			drawList->AddCircle(center, radius + 3.0f, IM_COL32(250, 204, 21, 230), 32, 2.0f);
+			drawList->AddCircle(center, radius, IM_COL32(56, 189, 248, 255), 32, 1.5f);
+		} else if (recording()) {
+			// ACTIVE RECORDING: Glowing Electric Cyber-Blue Disc (ZERO RED!)
+			drawList->AddCircle(center, radius + 3.0f, IM_COL32(56, 189, 248, 180), 32, 2.5f);
+			drawList->AddCircleFilled(center, radius, IM_COL32(2, 132, 199, 245), 32);
+			drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 230), 32, 1.5f);
 		} else {
-			// Idle: Deep slate navy circle with sleek electric blue rim
+			// IDLE: Deep slate navy circle with sleek electric blue rim
 			drawList->AddCircleFilled(center, radius, IM_COL32(15, 23, 42, 215), 32);
-			drawList->AddCircle(center, radius, IM_COL32(56, 189, 248, 130), 32, 1.5f);
+			drawList->AddCircle(center, radius, IM_COL32(56, 189, 248, 140), 32, 1.5f);
 		}
 
-		// Centered crisp vector microphone glyph (No text labels)
-		ImU32 glyphColor = IM_COL32(255, 255, 255, 245);
+		// Centered crisp vector microphone glyph
+		ImU32 glyphColor = (m_editMode) ? IM_COL32(250, 204, 21, 255) : IM_COL32(255, 255, 255, 245);
 		float micScale = radius * 0.36f;
 
 		// 1. Microphone Capsule (rounded body)
@@ -68,32 +84,43 @@ public:
 
 	void touchPopEvent() override
 	{
-		countdown = 500;
-		if (!m_dragging) {
-			setRecording(0);
+		if (m_editMode) {
+			m_dragging = false;
+			if (pSettings) {
+				pSettings->SaveVoiceButtonSettings();
+			}
+			return;
 		}
-		m_dragging = false;
+
+		// In normal mode: stop recording IMMEDIATELY when finger lifts!
+		setRecording(0);
 	}
 
 	void touchPushEvent() override
 	{
+		if (m_editMode) {
+			m_dragging = true;
+			return;
+		}
+
+		// In normal mode: start recording
 		setRecording(1);
-		countdown = 500;
-		m_dragging = false;
-		m_touchStartPos = absolutePosition();
 	}
 
 	void touchMoveEvent(const ImVec2& delta) override
 	{
-		// Live on-screen drag adjustment: allows easy repositioning with touch
-		m_dragging = true;
+		if (!m_editMode) {
+			// In normal mode, button is firmly locked in position!
+			return;
+		}
+
+		// In edit mode: smoothly drag and update position
 		ImVec2 newPos = position() + delta;
 
-		// Keep within screen bounds
 		ImVec2 dispSize = ImGui::GetIO().DisplaySize;
 		if (dispSize.x > 0.0f && dispSize.y > 0.0f) {
-			newPos.x = std::clamp(newPos.x, 10.0f, dispSize.x - size().x - 10.0f);
-			newPos.y = std::clamp(newPos.y, 10.0f, dispSize.y - size().y - 10.0f);
+			newPos.x = std::clamp(newPos.x, 5.0f, dispSize.x - size().x - 5.0f);
+			newPos.y = std::clamp(newPos.y, 5.0f, dispSize.y - size().y - 5.0f);
 		}
 
 		setPosition(newPos);
@@ -106,7 +133,7 @@ public:
 
 	void setRecording(bool recording) 
 	{ 
-		if (recording == 1) countdown = 200;
+		if (m_editMode && recording) return;
 		m_recording = recording;
 		this->setCaptionColor(m_recording ? ImColor(56, 189, 248) : ImColor(1.0f, 1.0f, 1.0f));
 	}
@@ -114,11 +141,11 @@ public:
 	bool recording() const { return m_recording; }
 
 private:
-	bool m_recording;
+	bool m_recording{ false };
+	bool m_editMode{ false };
 	bool m_dragging{ false };
-	ImVec2 m_touchStartPos{ 0.0f, 0.0f };
-	RwTexture* m_texture_micro_on;
-	RwTexture* m_texture_micro_off;
+	RwTexture* m_texture_micro_on{ nullptr };
+	RwTexture* m_texture_micro_off{ nullptr };
 public:
-	int countdown = 1000;
+	int countdown{ 0 };
 };

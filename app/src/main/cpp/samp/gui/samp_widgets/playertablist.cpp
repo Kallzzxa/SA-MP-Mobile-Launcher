@@ -160,7 +160,13 @@ void PlayerTabList::performLayout()
 void PlayerTabList::draw(ImGuiRenderer* renderer)
 {
 	renderer->pushClipRect(absolutePosition(), absolutePosition() + size(), true);
-	renderer->drawRect(absolutePosition(), absolutePosition() + size(), UISettings::dialogBackgroundColor(), true);
+	// Deep dark slate solid background
+	renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(11, 15, 25, 240), true);
+	// Crisp cyber-blue outer border
+	renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(2, 132, 199, 255), false, 1.8f);
+	// Top header separator line
+	float header_height = UISettings::padding() + UISettings::fontSize() + UISettings::padding();
+	renderer->drawLine(absolutePosition() + ImVec2(0.0f, header_height), absolutePosition() + ImVec2(size().x, header_height), ImColor(56, 189, 248, 160), 1.2f);
 	Widget::draw(renderer);
 	renderer->popClipRect();
 }

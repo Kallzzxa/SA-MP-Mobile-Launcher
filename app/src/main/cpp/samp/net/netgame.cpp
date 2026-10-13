@@ -1021,6 +1021,19 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
+	// Client-side command: Toggle interactive mic button drag mode (/editmic or /dragmic)
+	if (strcasecmp(cmd.c_str(), "/editmic") == 0 || strcasecmp(cmd.c_str(), "/dragmic") == 0) {
+		if (pUI && pUI->voicebutton()) {
+			pUI->voicebutton()->toggleEditMode();
+			if (pUI->voicebutton()->isEditMode()) {
+				if (pUI->chat()) pUI->chat()->addInfoMessage("[VOICE] Edit mode ON. Drag mic button with your finger, type /editmic again to save.");
+			} else {
+				if (pUI->chat()) pUI->chat()->addInfoMessage("[VOICE] Position saved & locked.");
+			}
+		}
+		return;
+	}
+
 	// Client-side command: Adjust mic button position (/micpos <x> <y>)
 	if (strncasecmp(cmd.c_str(), "/micpos", 7) == 0) {
 		float newX = 0.0f, newY = 0.0f;
@@ -1031,10 +1044,11 @@ void CNetGame::SendChatCommand(const char* szCommand)
 			if (pSettings) {
 				pSettings->Get().fVoiceChatPosX = newX;
 				pSettings->Get().fVoiceChatPosY = newY;
+				pSettings->SaveVoiceButtonSettings();
 			}
 			if (pUI) pUI->chat()->addInfoMessage("[VOICE] Position moved to X: %.0f, Y: %.0f", newX, newY);
 		} else {
-			if (pUI) pUI->chat()->addInfoMessage("Usage: /micpos <X> <Y> (e.g. /micpos 1500 450)");
+			if (pUI) pUI->chat()->addInfoMessage("Usage: /micpos <X> <Y> (e.g. /micpos 1500 450) or use /editmic");
 		}
 		return;
 	}

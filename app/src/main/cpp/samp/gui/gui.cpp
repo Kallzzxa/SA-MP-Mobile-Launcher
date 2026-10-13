@@ -143,8 +143,13 @@ bool UI::initialize()
 
 	m_voiceButton = new VoiceButton();
 	this->addChild(m_voiceButton);
-	m_voiceButton->setFixedSize(UISettings::buttonVoiceSize());
-	m_voiceButton->setPosition(UISettings::buttonVoicePos());
+	float vBtnDiameter = UISettings::fontSize() * 2.8f;
+	m_voiceButton->setFixedSize(ImVec2(vBtnDiameter, vBtnDiameter));
+	if (pSettings && pSettings->Get().fVoiceChatPosX > 0.0f && pSettings->Get().fVoiceChatPosY > 0.0f) {
+		m_voiceButton->setPosition(ImVec2(pSettings->Get().fVoiceChatPosX, pSettings->Get().fVoiceChatPosY));
+	} else {
+		m_voiceButton->setPosition(UISettings::buttonVoicePos());
+	}
 	m_voiceButton->setVisible(false);
 
 	m_spawn = new Spawn();
