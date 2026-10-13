@@ -99,7 +99,7 @@ private:
     ~DLManager();
 
     // --- RPC handshake side (runs on the RakNet update thread, never blocks) ---
-    void RequestFileFromServer(const DLFileTask& task);
+    void RequestFileFromServer(uint32_t crc, bool isDff);
     void ProcessRpcOutbox();
     void RecomputeProgress();
 
