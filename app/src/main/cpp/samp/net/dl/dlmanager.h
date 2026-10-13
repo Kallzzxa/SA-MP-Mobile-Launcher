@@ -68,6 +68,8 @@ public:
 
     void CheckPendingDownloads();
     void SendFinishDownload();
+    void ToggleOverlay();
+    bool IsOverlayForced() const { return m_bForceShowOverlay; }
 
 private:
     DLManager();
@@ -103,6 +105,7 @@ private:
 
     uint32_t m_connectTime{0};
     uint32_t m_finishTime{0};
+    bool m_bForceShowOverlay{false};
     std::string m_currentFileName;
     float m_currentFileProgress{0.0f};
 };

@@ -9,6 +9,7 @@
 #include "../voice_new/MicroIcon.h"
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/include/util/Render.h"
+#include "../net/dl/dlmanager.h"
 
 
 extern UI* pUI;
@@ -124,6 +125,7 @@ void ImGuiWrapper::render()
 	}
 
 	drawList();
+	DLManager::Instance().RenderImGui();
 	ImGui::EndFrame();
 	ImGui::Render();
 	renderDrawData(ImGui::GetDrawData());

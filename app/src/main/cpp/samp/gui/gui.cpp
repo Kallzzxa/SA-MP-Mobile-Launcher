@@ -211,8 +211,6 @@ void UI::render()
 
     ProcessPushedTextdraws();
 
-    DLManager::Instance().RenderImGui();
-
 	if (m_bNeedClearMousePos) {
 		ImGuiIO& io = ImGui::GetIO();
 		io.MousePos = ImVec2(-1, -1);

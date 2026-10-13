@@ -195,12 +195,25 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
 }
 
 void DLManager::ProcessTick() {
-    if (!m_bInitialized.load() || m_bDownloadFinished.load()) {
+    if (!m_bInitialized.load()) {
         return;
     }
 
     uint32_t now = GetCurrentTick();
-    if (m_totalModels.load() == 0 && (now - m_connectTime > 2500)) {
+
+    // Watchdog: If there are pending files and not downloading, poke request
+    if (!m_bDownloadFinished.load() && !m_bDownloading.load()) {
+        static uint32_t lastWatchdogTick = 0;
+        if (now - lastWatchdogTick > 1500) {
+            lastWatchdogTick = now;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_requestQueue.empty()) {
+                RequestNextFile();
+            }
+        }
+    }
+
+    if (!m_bDownloadFinished.load() && m_totalModels.load() == 0 && (now - m_connectTime > 5000)) {
         // Server has no custom models -> auto-ack so spawn is not blocked
         m_bDownloadFinished = true;
         m_finishTime = now;
@@ -258,7 +271,7 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
             (info.dffCached && info.txdCached) ? "Cached" : "Downloading");
     }
 
-    if (info.poolID + 1 == static_cast<uint32_t>(info.count)) {
+    if (info.poolID + 1 == static_cast<uint32_t>(info.count) || m_models.size() >= static_cast<size_t>(info.count)) {
         CheckPendingDownloads();
     }
 }
@@ -503,24 +516,36 @@ void DLManager::OnDownloadCompleted(RPCParameters* rpcParams) {
     }
 }
 
+void DLManager::ToggleOverlay() {
+    m_bForceShowOverlay = !m_bForceShowOverlay;
+    if (pUI && pUI->chat()) {
+        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Download Overlay: %s", m_bForceShowOverlay ? "Always ON" : "Auto-Hide");
+    }
+}
+
 void DLManager::RenderImGui() {
     if (!m_bInitialized.load()) return;
 
     uint32_t now = GetCurrentTick();
-    if (m_bDownloadFinished.load()) {
-        // Hide after 3.5 seconds once finished
-        if (m_finishTime > 0 && (now - m_finishTime > 3500)) {
-            return;
-        }
-    }
 
-    if (m_totalModels.load() == 0 && m_bDownloadFinished.load()) {
-        return;
-    }
+    // Visibility rules:
+    // 1. Force toggled by user (/dl or /models)
+    // 2. Currently downloading or in download queue
+    // 3. Models exist and not yet finished
+    // 4. First 10 seconds of connection (shows querying/initial state)
+    // 5. 8 seconds after finish (shows 100% synchronized state)
+    bool shouldShow = m_bForceShowOverlay;
+    if (m_bDownloading.load()) shouldShow = true;
+    if (!m_requestQueue.empty()) shouldShow = true;
+    if (m_totalModels.load() > 0 && !m_bDownloadFinished.load()) shouldShow = true;
+    if (now - m_connectTime < 10000) shouldShow = true;
+    if (m_finishTime > 0 && (now - m_finishTime < 8000)) shouldShow = true;
+
+    if (!shouldShow) return;
 
     ImGuiIO& io = ImGui::GetIO();
-    float cardWidth = 380.0f;
-    float cardHeight = 82.0f;
+    float cardWidth = std::clamp(io.DisplaySize.x * 0.48f, 380.0f, 540.0f);
+    float cardHeight = 92.0f;
     float posX = (io.DisplaySize.x - cardWidth) * 0.5f;
     float posY = 24.0f;
 
@@ -534,47 +559,61 @@ void DLManager::RenderImGui() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoFocusOnAppearing;
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.043f, 0.059f, 0.098f, 0.94f)); // #0B0F19
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.008f, 0.518f, 0.780f, 0.90f));   // #0284C7
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.035f, 0.051f, 0.086f, 0.96f)); // #090D16 Dark Cyber
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.008f, 0.518f, 0.780f, 0.95f));   // #0284C7 Cyber Blue
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 10.0f));
 
     if (ImGui::Begin("##03DL_DownloadCard", nullptr, flags)) {
-        ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "0.3.DL SERVER ARTWORK"); // #38BDF8
+        ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "0.3.DL CUSTOM MODELS"); // #38BDF8
         ImGui::SameLine();
         if (m_bDownloadFinished.load()) {
-            ImGui::TextColored(ImVec4(0.133f, 0.773f, 0.369f, 1.0f), "[Synchronized]");
+            ImGui::TextColored(ImVec4(0.133f, 0.773f, 0.369f, 1.0f), "[SYNCHRONIZED]");
         } else if (m_bDownloading.load()) {
-            ImGui::TextColored(ImVec4(0.961f, 0.620f, 0.043f, 1.0f), "[Downloading]");
+            ImGui::TextColored(ImVec4(0.961f, 0.620f, 0.043f, 1.0f), "[DOWNLOADING]");
+        } else if (m_totalModels.load() > 0) {
+            ImGui::TextColored(ImVec4(0.38f, 0.85f, 0.98f, 1.0f), "[CHECKING CACHE]");
         } else {
-            ImGui::TextColored(ImVec4(0.70f, 0.70f, 0.70f, 1.0f), "[Checking Cache]");
+            ImGui::TextColored(ImVec4(0.70f, 0.70f, 0.70f, 1.0f), "[INITIALIZING]");
         }
 
         int total = m_totalModels.load();
         int downloaded = m_downloadedModels.load();
-        float fraction = (total > 0) ? (static_cast<float>(downloaded) / static_cast<float>(total)) : 1.0f;
-        fraction = std::clamp(fraction, 0.0f, 1.0f);
-
-        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.008f, 0.518f, 0.780f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.11f, 0.17f, 1.0f));
-        
+        float fraction = 0.0f;
         char progressOverlay[64];
+
         if (total > 0) {
-            snprintf(progressOverlay, sizeof(progressOverlay), "%d / %d models (%.0f%%)", downloaded, total, fraction * 100.0f);
+            fraction = std::clamp(static_cast<float>(downloaded) / static_cast<float>(total), 0.0f, 1.0f);
+            snprintf(progressOverlay, sizeof(progressOverlay), "%d / %d Models (%.0f%%)", downloaded, total, fraction * 100.0f);
+        } else if (m_bDownloadFinished.load()) {
+            fraction = 1.0f;
+            snprintf(progressOverlay, sizeof(progressOverlay), "No custom models (Ready)");
         } else {
-            snprintf(progressOverlay, sizeof(progressOverlay), "No custom models");
+            static float pulse = 0.0f;
+            pulse += 0.02f;
+            if (pulse > 1.0f) pulse = 0.0f;
+            fraction = pulse;
+            snprintf(progressOverlay, sizeof(progressOverlay), "Querying server models...");
         }
 
-        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 18.0f), progressOverlay);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.008f, 0.518f, 0.780f, 1.0f)); // #0284C7
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.11f, 0.17f, 1.0f));         // Dark slate track
+        ImGui::ProgressBar(fraction, ImVec2(-1.0f, 20.0f), progressOverlay);
         ImGui::PopStyleColor(2);
 
         if (!m_currentFileName.empty() && m_bDownloading.load()) {
-            ImGui::TextDisabled("File: %s", m_currentFileName.c_str());
+            ImGui::TextDisabled("Downloading: %s", m_currentFileName.c_str());
         } else if (m_bDownloadFinished.load()) {
-            ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "All models loaded. Spawn enabled.");
+            if (total > 0) {
+                ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "All %d custom models loaded and ready.", total);
+            } else {
+                ImGui::TextColored(ImVec4(0.220f, 0.741f, 0.973f, 1.0f), "Standard game assets verified. Ready to spawn.");
+            }
+        } else if (total > 0) {
+            ImGui::TextDisabled("Validating cache for %d registered server models...", total);
         } else {
-            ImGui::TextDisabled("Validating local asset integrity...");
+            ImGui::TextDisabled("Connected to 0.3.DL network. Type /dl for status.");
         }
     }
     ImGui::End();

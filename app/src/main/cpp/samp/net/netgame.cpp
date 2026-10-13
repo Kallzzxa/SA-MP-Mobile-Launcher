@@ -1030,6 +1030,12 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
+	// Client-side command: Toggle 0.3.DL Model Downloader overlay (/dl or /models)
+	if (strcasecmp(cmd.c_str(), "/dl") == 0 || strcasecmp(cmd.c_str(), "/models") == 0) {
+		DLManager::Instance().ToggleOverlay();
+		return;
+	}
+
 	// Client-side command: Toggle interactive mic button drag mode (/editmic or /dragmic)
 	if (strcasecmp(cmd.c_str(), "/editmic") == 0 || strcasecmp(cmd.c_str(), "/dragmic") == 0) {
 		if (pUI && pUI->voicebutton()) {
