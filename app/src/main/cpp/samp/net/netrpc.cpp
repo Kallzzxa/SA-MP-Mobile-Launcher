@@ -4,6 +4,7 @@
 #include "../gui/gui.h"
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
+#include "dl/dlmanager.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -1552,8 +1553,6 @@ void EditObject(RPCParameters *rpcParams) {
 
 	FLog("RPC: EditObject %d", objectId);
 }
-
-#include "dl/dlmanager.h"
 
 void DL_ModelRequest(RPCParameters* rpcParams)
 {
