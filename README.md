@@ -19,3 +19,10 @@ Komponen integrasi open.mp / SA-MP:
 * `generate_manifest.py`: Script otomatis untuk menghitung sha256 checksum dan ukuran file menjadi `models_manifest.json`.
 * `models_manifest.json`: Endpoint manifest HTTP yang dibaca oleh client-side launcher sebelum player join.
 * `custom_models_loader.inc`: Modul Pawn untuk mendaftarkan model via `AddSimpleModel()` / `AddCharModel()`.
+
+---
+
+## 3. Upstream & Main Dev Source Code
+* **Original Main Dev Project:** [JohnPeriaX/KotlinJava-DSL-SampMobile-2.10](https://github.com/JohnPeriaX/KotlinJava-DSL-SampMobile-2.10)
+* **Dedicated Branch:** Source code original 100% dari main dev tersimpan dan dapat diakses langsung pada branch [`main-dev`](https://github.com/rezzylrn/samp-mobile-optimized/tree/main-dev).
+

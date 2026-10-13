@@ -9,7 +9,7 @@
                 android:radius="12.0dip" />
             <stroke
                 android:width="@dimen/_1sdp"
-                android:color="#FF0037" />
+                android:color="#0284C7" />
         </shape>
     </item>
 </layer-list>
