@@ -144,6 +144,51 @@ namespace cef
         if (attached)
             javaVM->DetachCurrentThread();
     }
+    static void callJavaServerEvent(const char* eventName, const char* eventDataJson)
+    {
+        if (!g_pJavaManager || !eventName)
+            return;
+
+        bool attached = false;
+        JNIEnv* env = getJNIEnv(attached);
+
+        if (!env)
+            return;
+
+        jclass cls = env->GetObjectClass(g_pJavaManager);
+
+        if (!cls) {
+            if (attached)
+                javaVM->DetachCurrentThread();
+            return;
+        }
+
+        jmethodID method = env->GetMethodID(
+            cls,
+            "dispatchServerEvent",
+            "(Ljava/lang/String;Ljava/lang/String;)V"
+        );
+
+        if (method) {
+            jstring jName = env->NewStringUTF(eventName);
+            jstring jData = env->NewStringUTF(eventDataJson ? eventDataJson : "[]");
+
+            env->CallVoidMethod(
+                g_pJavaManager,
+                method,
+                jName,
+                jData
+            );
+
+            env->DeleteLocalRef(jName);
+            env->DeleteLocalRef(jData);
+        }
+
+        env->DeleteLocalRef(cls);
+
+        if (attached)
+            javaVM->DetachCurrentThread();
+    }
     void setGamePath(const char* szPath)
     {
         if (!szPath) return;
@@ -417,6 +462,10 @@ namespace cef
                     eventName,
                     eventData
                 );
+
+                // Forward to the WebView so window.cef.on(...) handlers fire,
+                // exactly like omp-cef does on PC.
+                callJavaServerEvent(eventName, eventData);
 
                 break;
             }
