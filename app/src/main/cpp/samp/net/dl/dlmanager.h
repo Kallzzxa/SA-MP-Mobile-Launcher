@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <jni.h>
 #include <vector>
 #include <deque>
 #include <unordered_map>
@@ -190,3 +191,11 @@ private:
     std::atomic<int> m_rpc183DumpCount{0};
     std::string m_lastActivity;
 };
+
+// Called once from JNI_OnLoad (which runs with the app class loader context)
+// to cache the DLHttpClient class/method refs as global refs.
+// Worker threads must NEVER call FindClass for app classes: a thread attached
+// via AttachCurrentThread has no app class loader context, so FindClass
+// returns NULL with a pending exception — and DetachCurrentThread with a
+// pending exception aborts the VM (this was the 0.3.DL download crash).
+void DLManager_InitJniCache(JNIEnv* env);

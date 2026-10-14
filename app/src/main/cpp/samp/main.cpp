@@ -11,6 +11,7 @@
 #include "playertags.h"
 #include "audiostream.h"
 #include "java/jniutil.h"
+#include "net/dl/dlmanager.h"
 #include <dlfcn.h>
 #include "StackTrace.h"
 
@@ -381,6 +382,15 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 {
 	javaVM = vm;
 	LOGI("SA-MP library loaded! Build time: " __DATE__ " " __TIME__);
+
+	// Cache JNI refs for the 0.3.DL HTTPS downloader while we still have the
+	// app class loader context. Worker threads must never FindClass themselves.
+	{
+		JNIEnv* env = nullptr;
+		if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK && env) {
+			DLManager_InitJniCache(env);
+		}
+	}
 
 	g_libGTASA = CUtil::FindLib("libGTASA.so");
 	if (g_libGTASA == 0x00) {

@@ -627,16 +627,54 @@ void DLManager::WorkerLoop() {
 }
 
 // ---------------------------------------------------------------------------
+// Cached JNI refs for DLHttpClient. Populated once by DLManager_InitJniCache,
+// which MUST run on a thread with the app class loader context (JNI_OnLoad).
+// Worker threads only read these — never FindClass for app classes there.
+// ---------------------------------------------------------------------------
+namespace {
+jclass    g_dlHttpClientCls = nullptr;  // global ref
+jmethodID g_dlHttpClientMid = nullptr; // downloadFile(Ljava/lang/String;Ljava/lang/String;J)I
+}
+
+void DLManager_InitJniCache(JNIEnv* env) {
+    if (!env || g_dlHttpClientCls) return;  // already cached
+    jclass local = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
+    if (!local) {
+        if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+        return;
+    }
+    g_dlHttpClientCls = static_cast<jclass>(env->NewGlobalRef(local));
+    env->DeleteLocalRef(local);
+    if (!g_dlHttpClientCls) return;
+    g_dlHttpClientMid = env->GetStaticMethodID(g_dlHttpClientCls, "downloadFile",
+        "(Ljava/lang/String;Ljava/lang/String;J)I");
+    if (!g_dlHttpClientMid && env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // JNI HTTPS download: delegates https:// URLs to Android's HttpURLConnection
 // via com.sampmobile.xyvern.game.DLHttpClient. The JVM's TLS stack (system
 // trust store, full cert validation) is used — cert validation is NEVER
 // disabled. Worker threads attach/detach around the call.
+//
+// NOTE: the jclass/jmethodID are cached as global refs by DLManager_InitJniCache
+// (called from JNI_OnLoad). FindClass must NOT be called here: worker threads
+// attached via AttachCurrentThread have no app class loader context, so
+// FindClass returns NULL with a pending exception, and DetachCurrentThread
+// with a pending exception aborts the VM — that was the download crash.
 // Returns true and leaves a complete file at destPath on success.
 // ---------------------------------------------------------------------------
 static bool FetchViaJniHttps(const std::string& url, const std::string& destPath,
                              uint64_t maxBytes, std::string& outError) {
     if (!javaVM) {
         outError = "jni: no JVM";
+        return false;
+    }
+    if (!g_dlHttpClientCls || !g_dlHttpClientMid) {
+        outError = "jni: DLHttpClient refs not cached (JNI_OnLoad init missing)";
         return false;
     }
 
@@ -651,37 +689,34 @@ static bool FetchViaJniHttps(const std::string& url, const std::string& destPath
     }
 
     bool ok = false;
-    jclass cls = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
-    if (!cls) {
-        outError = "jni: DLHttpClient not found";
+    jstring jUrl = env->NewStringUTF(url.c_str());
+    jstring jPath = env->NewStringUTF(destPath.c_str());
+    if (!jUrl || !jPath) {
+        if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+        outError = "jni: NewStringUTF failed";
     } else {
-        jmethodID mid = env->GetStaticMethodID(cls, "downloadFile",
-            "(Ljava/lang/String;Ljava/lang/String;J)I");
-        if (!mid) {
-            outError = "jni: downloadFile not found";
+        jint result = env->CallStaticIntMethod(g_dlHttpClientCls, g_dlHttpClientMid,
+                                               jUrl, jPath,
+                                               static_cast<jlong>(maxBytes));
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            outError = "jni: exception in downloadFile";
+        } else if (result == 0) {
+            ok = true;
         } else {
-            jstring jUrl = env->NewStringUTF(url.c_str());
-            jstring jPath = env->NewStringUTF(destPath.c_str());
-            jint result = env->CallStaticIntMethod(cls, mid, jUrl, jPath,
-                                                   static_cast<jlong>(maxBytes));
-            if (env->ExceptionCheck()) {
-                env->ExceptionDescribe();
-                env->ExceptionClear();
-                outError = "jni: exception in downloadFile";
-            } else if (result == 0) {
-                ok = true;
-            } else {
-                char e[64];
-                snprintf(e, sizeof(e), "jni: download failed (%d)", static_cast<int>(result));
-                outError = e;
-            }
-            if (jUrl) env->DeleteLocalRef(jUrl);
-            if (jPath) env->DeleteLocalRef(jPath);
+            char e[64];
+            snprintf(e, sizeof(e), "jni: download failed (%d)", static_cast<int>(result));
+            outError = e;
         }
-        env->DeleteLocalRef(cls);
     }
+    if (jUrl) env->DeleteLocalRef(jUrl);
+    if (jPath) env->DeleteLocalRef(jPath);
 
     if (attached) {
+        // DetachCurrentThread with a pending exception aborts the VM —
+        // make sure the slate is clean before detaching.
+        if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
         javaVM->DetachCurrentThread();
     }
     return ok;
