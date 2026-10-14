@@ -5,6 +5,7 @@
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
 #include "dl/dlmanager.h"
+#include <cstdio>
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -1561,6 +1562,17 @@ void DL_ModelRequest(RPCParameters* rpcParams)
 
 void DL_ModelFile(RPCParameters* rpcParams)
 {
+	int idx = DLManager::Instance().Next183DumpIndex();
+	if (idx >= 0 && idx < 3) {
+		char hex[128];
+		int len = (rpcParams && rpcParams->input) ? static_cast<int>((rpcParams->numberOfBitsOfData + 7) / 8) : 0;
+		int n = (len > 12) ? 12 : len;
+		int pos = snprintf(hex, sizeof(hex), "183 raw:");
+		for (int i = 0; i < n && pos < (int)sizeof(hex) - 4; ++i) {
+			pos += snprintf(hex + pos, sizeof(hex) - pos, " %02X", rpcParams->input[i]);
+		}
+		DLManager::Instance().PushChat(hex);
+	}
 	DLManager::Instance().OnModelFile(rpcParams);
 }
 

@@ -111,6 +111,8 @@ public:
     void ToggleOverlay();
     void RequestRetryFailed();  // user action: re-arm all failed tasks for one more pass
     bool IsOverlayForced() const { return m_bForceShowOverlay; }
+    void PushChat(const std::string& line) const;  // thread-safe: queues for game thread
+    int Next183DumpIndex();
 
 private:
     DLManager();
@@ -129,8 +131,6 @@ private:
 
     // cache validation without deleting a file another worker owns
     bool ValidateOrPurge(const std::string& path, uint32_t crc, uint32_t expectedSize);
-
-    void PushChat(const std::string& line) const;  // thread-safe: queues for game thread
 
     std::string m_serverIp;
     int m_serverPort;
@@ -187,5 +187,6 @@ private:
     uint32_t m_finishTime{0};
     bool m_bForceShowOverlay{false};
     bool m_bReportedNoManifest{false};
+    std::atomic<int> m_rpc183DumpCount{0};
     std::string m_lastActivity;
 };

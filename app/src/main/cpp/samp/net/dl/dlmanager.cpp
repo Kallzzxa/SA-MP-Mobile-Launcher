@@ -248,6 +248,7 @@ void DLManager::Reset() {
     m_lastModelRequestTick = 0;
     m_finishTime = 0;
     m_bReportedNoManifest = false;
+    m_rpc183DumpCount = 0;
     m_lastActivity.clear();
 
     {
@@ -349,6 +350,14 @@ void DLManager::FlushChatQueue() {
     for (const auto& line : local) {
         pUI->chat()->addDebugMessage("%s", line.c_str());
     }
+}
+
+int DLManager::Next183DumpIndex() {
+    int c = m_rpc183DumpCount.load();
+    if (c < 3) {
+        return m_rpc183DumpCount.fetch_add(1);
+    }
+    return -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -882,6 +891,10 @@ void DLManager::ProcessRpcOutbox() {
         int rpcId = item.second ? RPC_RequestDff : RPC_RequestTxd;
         client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                     UNASSIGNED_NETWORK_ID, nullptr);
+
+        char msg[64];
+        snprintf(msg, sizeof(msg), "-> %d 0x%08X", rpcId, item.first);
+        PushChat(msg);
     }
 }
 
