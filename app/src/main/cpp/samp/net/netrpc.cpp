@@ -1556,19 +1556,16 @@ void EditObject(RPCParameters *rpcParams) {
 
 void DL_ModelRequest(RPCParameters* rpcParams)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} RPC 179 ModelRequest received.");
 	DLManager::Instance().OnModelRequest(rpcParams);
 }
 
 void DL_ModelFile(RPCParameters* rpcParams)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} RPC 183 ModelFile received.");
 	DLManager::Instance().OnModelFile(rpcParams);
 }
 
 void DL_DownloadCompleted(RPCParameters* rpcParams)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} RPC 185 DownloadCompleted received.");
 	DLManager::Instance().OnDownloadCompleted(rpcParams);
 }
 

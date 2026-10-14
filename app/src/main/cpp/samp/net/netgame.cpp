@@ -622,17 +622,10 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
     else
         bsSend.Write(SAMP_VERSION, byteClientVerLen);
 
-	// DIAGNOSTIC: prove what we advertise. A version other than 4062 means the
-	// server will never treat us as 0.3.DL and will never stream RPC 179.
-	if (pUI) {
-		pUI->chat()->addDebugMessage("[0.3.DL] join: ver=%d token=0x%08X cliver=\"%s\"",
-			iVersion, uiChallenge,
-			pSettings ? pSettings->Get().szVersion : SAMP_VERSION);
-		if (iVersion != 4062) {
-			pUI->chat()->addDebugMessage(
-				"{F59E0B}[0.3.DL]{FFFFFF} WARNING: advertising version %d, not 4062. "
-				"Artwork will be disabled by the server.", iVersion);
-		}
+	if (iVersion != 4062 && pUI) {
+		pUI->chat()->addDebugMessage(
+			"Custom models disabled: this server streams 0.3.DL artwork, but we joined as version %d. "
+			"Set the client version to 0.3.DL to enable it.", iVersion);
 	}
 
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
@@ -1043,9 +1036,17 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
-	// Client-side command: Toggle 0.3.DL Model Downloader overlay (/dl or /models)
+	// Client-side command: Toggle the model download indicator (/dl or /models).
+	// "/dl retry" re-arms failed downloads instead of toggling the indicator.
+	if (strncasecmp(cmd.c_str(), "/dl retry", 9) == 0 || strncasecmp(cmd.c_str(), "/dlr", 4) == 0) {
+		DLManager::Instance().RequestRetryFailed();
+		if (pUI) pUI->chat()->addInfoMessage("Retrying failed model downloads.");
+		return;
+	}
 	if (strcasecmp(cmd.c_str(), "/dl") == 0 || strcasecmp(cmd.c_str(), "/models") == 0) {
 		DLManager::Instance().ToggleOverlay();
+		if (pUI) pUI->chat()->addInfoMessage(DLManager::Instance().IsOverlayForced()
+			? "Model download indicator pinned." : "Model download indicator will auto-hide.");
 		return;
 	}
 
@@ -1114,7 +1115,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	// Client-side command: Show client help
 	if (strcasecmp(cmd.c_str(), "/cmds") == 0 || strcasecmp(cmd.c_str(), "/help") == 0) {
 		if (pUI) {
-			pUI->chat()->addInfoMessage("Client Commands: /q, /fps, /rec, /cc, /micpos <x y>, /vvol <0-100>");
+			pUI->chat()->addInfoMessage("Client commands: /q, /fps, /rec, /cc, /dl [retry], /micpos <x y>, /vvol <0-100>");
 		}
 		// Also allow server /help to pass through to server if connected
 	}

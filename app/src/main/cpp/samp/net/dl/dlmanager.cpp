@@ -13,23 +13,27 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <errno.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
 #include <chrono>
+#include <mutex>
 
 extern UI* pUI;
 
 // ---------------------------------------------------------------------------
-// CRC32 (IEEE 802.3, reflected, init 0xFFFFFFFF, xorout 0xFFFFFFFF)
+// CRC32 (IEEE 802.3, reflected, init 0xFFFFFFFF, xorout 0xFFFFFFFF).
+// Table init is once-only via call_once: the RakNet thread, the game thread and
+// the worker pool all reach it (audit A9).
 // ---------------------------------------------------------------------------
 static uint32_t s_crcTable[256];
-static bool s_crcTableInitialized = false;
+static std::once_flag s_crcOnce;
 
 static void InitCRC32Table() {
-    if (s_crcTableInitialized) return;
     for (uint32_t i = 0; i < 256; i++) {
         uint32_t c = i;
         for (int j = 0; j < 8; j++) {
@@ -37,11 +41,14 @@ static void InitCRC32Table() {
         }
         s_crcTable[i] = c;
     }
-    s_crcTableInitialized = true;
+}
+
+static inline void EnsureCRC32Table() {
+    std::call_once(s_crcOnce, InitCRC32Table);
 }
 
 uint32_t DLManager::CalculateCRC32(const void* data, size_t length) {
-    InitCRC32Table();
+    EnsureCRC32Table();
     const uint8_t* p = static_cast<const uint8_t*>(data);
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < length; i++) {
@@ -53,7 +60,7 @@ uint32_t DLManager::CalculateCRC32(const void* data, size_t length) {
 uint32_t DLManager::CalculateFileCRC32(const std::string& filepath) {
     FILE* fp = fopen(filepath.c_str(), "rb");
     if (!fp) return 0;
-    InitCRC32Table();
+    EnsureCRC32Table();
     uint32_t crc = 0xFFFFFFFF;
     uint8_t buffer[16384];
     size_t bytesRead = 0;
@@ -71,7 +78,7 @@ static void MakeDirectoryTree(const std::string& path) {
     for (size_t i = 0; i < path.length(); i++) {
         current += path[i];
         if (path[i] == '/' || i == path.length() - 1) {
-            mkdir(current.c_str(), 0777);
+            mkdir(current.c_str(), 0777); // EEXIST is fine; fopen reports hard failures
         }
     }
 }
@@ -82,30 +89,56 @@ static uint32_t GetCurrentTick() {
         std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
 }
 
-// Parse http://host[:port]/path into its components.
-static bool ParseHttpUrl(const std::string& url, std::string& host, int& port, std::string& path) {
-    const std::string prefix = "http://";
-    if (url.rfind(prefix, 0) != 0) return false;
+// DFF and TXD CRCs live in independent namespaces (audit A2): key tasks on both.
+static inline uint64_t TaskKey(uint32_t crc, bool isDff) {
+    return (static_cast<uint64_t>(crc) << 1) | (isDff ? 1u : 0u);
+}
 
-    std::string rest = url.substr(prefix.length());
+// ---------------------------------------------------------------------------
+// URL parsing (audit B1/B2): recognise http/https + optional port. We cannot
+// speak TLS in this tree, so https is rejected explicitly by the caller rather
+// than silently connecting to a bogus host and burning retries.
+// ---------------------------------------------------------------------------
+struct ParsedUrl {
+    bool        isHttps{false};
+    std::string host;
+    int         port{80};
+    std::string path{"/"};
+};
+
+static bool ParseHttpUrl(const std::string& url, ParsedUrl& out) {
+    std::string rest;
+    if (url.rfind("http://", 0) == 0) {
+        out.isHttps = false;
+        out.port = 80;
+        rest = url.substr(7);
+    } else if (url.rfind("https://", 0) == 0) {
+        out.isHttps = true;
+        out.port = 443;
+        rest = url.substr(8);
+    } else {
+        return false;
+    }
+    if (rest.empty()) return false;
+
     size_t slashPos = rest.find('/');
     if (slashPos == std::string::npos) {
-        path = "/";
+        out.host = rest;
+        out.path = "/";
     } else {
-        path = rest.substr(slashPos);
-        rest = rest.substr(0, slashPos);
+        out.path = rest.substr(slashPos);
+        out.host = rest.substr(0, slashPos);
     }
 
-    size_t colonPos = rest.find(':');
+    size_t colonPos = out.host.find(':');
     if (colonPos != std::string::npos) {
-        host = rest.substr(0, colonPos);
-        port = atoi(rest.substr(colonPos + 1).c_str());
-        if (port <= 0) port = 80;
-    } else {
-        host = rest;
-        port = 80;
+        std::string portStr = out.host.substr(colonPos + 1);
+        out.host = out.host.substr(0, colonPos);
+        char* end = nullptr;
+        long p = strtol(portStr.c_str(), &end, 10);
+        if (end && *end == '\0' && p > 0 && p <= 65535) out.port = static_cast<int>(p);
     }
-    return !host.empty();
+    return !out.host.empty();
 }
 
 DLManager& DLManager::Instance() {
@@ -134,8 +167,13 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     m_serverIp = serverIp;
     m_serverPort = serverPort;
     m_pRakClient = pRakClient;
-    m_nextVirtualId = 18631;
+    m_nextVirtualId = DL_VIRT_MIN;
+    m_bVirtualIdExhausted = false;
     m_connectTime = GetCurrentTick();
+    m_lastModelRequestTick = m_connectTime;
+    m_bReportedNoManifest = false;
+    m_bSawAnyModel = false;
+    m_bFinishSent = false;
 
     std::string cleanStorage = storagePath;
     if (!cleanStorage.empty() && cleanStorage.back() != '/') {
@@ -145,8 +183,11 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     char cacheDir[512];
     snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s.%d/",
              cleanStorage.c_str(), serverIp.c_str(), serverPort);
-    m_cachePath = cacheDir;
-    MakeDirectoryTree(m_cachePath);
+    {
+        std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_cachePath = cacheDir;
+    }
+    MakeDirectoryTree(cacheDir);
 
     m_bShutdown = false;
     m_bInitialized = true;
@@ -157,8 +198,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Model sync ready (%d parallel slots). Cache: %s.%d",
-                                     DL_MAX_CONCURRENT, serverIp.c_str(), serverPort);
+        pUI->chat()->addDebugMessage("Downloading custom models from %s:%d...", serverIp.c_str(), serverPort);
     }
 }
 
@@ -175,16 +215,26 @@ void DLManager::Reset() {
     m_workers.clear();
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    // Null the RakClient (audit C2): the caller destroys it right after Reset(),
+    // so a surviving outbox item must never dereference the old pointer.
+    m_pRakClient = nullptr;
+    m_serverIp.clear();
+    m_serverPort = 7777;
+
     m_models.clear();
     m_tasks.clear();
-    m_knownCrc.clear();
+    m_knownKey.clear();
+    m_taskIndex.clear();
     m_rpcOutbox.clear();
     m_networkToVirtual.clear();
     m_virtualToNetwork.clear();
-    m_nextVirtualId = 18631;
+    m_nextVirtualId = DL_VIRT_MIN;
+    m_bVirtualIdExhausted = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
     m_bFinishRequested = false;
+    m_bFinishSent = false;
+    m_bSawAnyModel = false;
     m_bShutdown = false;
     m_activeWorkers = 0;
     m_totalModels = 0;
@@ -195,8 +245,19 @@ void DLManager::Reset() {
     m_lastSpeedSampleTick = 0;
     m_lastSpeedSampleBytes = 0;
     m_connectTime = 0;
+    m_lastModelRequestTick = 0;
     m_finishTime = 0;
+    m_bReportedNoManifest = false;
     m_lastActivity.clear();
+
+    {
+        std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_cachePath.clear();
+    }
+    {
+        std::lock_guard<std::mutex> cm(m_chatMutex);
+        m_chatQueue.clear();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -205,18 +266,36 @@ void DLManager::Reset() {
 std::string DLManager::GetModelPath(uint32_t crc, bool isDff) const {
     char filename[64];
     snprintf(filename, sizeof(filename), "0x%08X.%s", crc, isDff ? "dff" : "txd");
-    return m_cachePath + filename;
+    std::string base;
+    {
+        std::lock_guard<std::mutex> lock(m_cachePathMutex);
+        base = m_cachePath;
+    }
+    return base + filename;
 }
 
 bool DLManager::IsModelCached(uint32_t crc, uint32_t expectedSize, bool isDff) const {
     std::string path = GetModelPath(crc, isDff);
     struct stat st;
     if (stat(path.c_str(), &st) != 0) return false;
-    if (expectedSize > 0 && static_cast<uint32_t>(st.st_size) != expectedSize) {
+    // CRC is the source of truth (audit A1). A size mismatch never deletes a
+    // CRC-correct file and never forces a re-download; only a CRC mismatch does.
+    if (CalculateFileCRC32(path) != crc) {
         unlink(path.c_str());
         return false;
     }
-    return CalculateFileCRC32(path) == crc;
+    return true;
+}
+
+bool DLManager::ValidateOrPurge(const std::string& path, uint32_t crc, uint32_t expectedSize) {
+    (void)expectedSize;
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return false;
+    if (CalculateFileCRC32(path) != crc) {
+        unlink(path.c_str());
+        return false;
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +306,15 @@ int16_t DLManager::GetVirtualModelId(int32_t networkId) {
     auto it = m_networkToVirtual.find(networkId);
     if (it != m_networkToVirtual.end()) return it->second;
 
-    if (m_nextVirtualId >= 19999) m_nextVirtualId = 18631;
+    // Do not wrap and alias a live slot (audit A8). On exhaustion, log once and
+    // hand back -1 so the caller keeps the base id.
+    if (m_nextVirtualId > DL_VIRT_MAX) {
+        if (!m_bVirtualIdExhausted) {
+            m_bVirtualIdExhausted = true;
+            PushChat("Virtual model slot pool exhausted; extra models use their base id.");
+        }
+        return -1;
+    }
     int16_t virtualId = m_nextVirtualId++;
     m_networkToVirtual[networkId] = virtualId;
     m_virtualToNetwork[virtualId] = networkId;
@@ -238,7 +325,30 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_virtualToNetwork.find(virtualId);
     if (it != m_virtualToNetwork.end()) return it->second;
-    return virtualId;
+    return -1; // sentinel: caller decides (audit A10)
+}
+
+// ---------------------------------------------------------------------------
+// Chat marshalling: safe from any thread, drained on the game thread in
+// ProcessTick. Prevents interleaved chat writes from the 5 worker threads and
+// from the RakNet callback thread (audit B14).
+// ---------------------------------------------------------------------------
+void DLManager::PushChat(const std::string& line) const {
+    std::lock_guard<std::mutex> lock(m_chatMutex);
+    if (m_chatQueue.size() < 256) m_chatQueue.push_back(line);
+}
+
+void DLManager::FlushChatQueue() {
+    std::deque<std::string> local;
+    {
+        std::lock_guard<std::mutex> lock(m_chatMutex);
+        if (m_chatQueue.empty()) return;
+        local.swap(m_chatQueue);
+    }
+    if (!(pUI && pUI->chat())) return;
+    for (const auto& line : local) {
+        pUI->chat()->addDebugMessage("%s", line.c_str());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,8 +359,10 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
 
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    int byteLength = (bitLength / 8) + 1;
-    if (byteLength < 39) return;
+    // Exact 39-byte fixed payload (audit A3): no "+1" fudge, no truncated parse.
+    if (bitLength < static_cast<int>(DL_RPC179_WIRE_BYTES * 8)) return;
+    int byteLength = bitLength / 8;
+    if (byteLength < static_cast<int>(DL_RPC179_WIRE_BYTES)) return;
 
     RakNet::BitStream bs(data, byteLength, false);
     DLModelInfo info{};
@@ -267,6 +379,8 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
     bs.Read(info.timeOn);
     bs.Read(info.timeOff);
 
+    if (info.type != 1 && info.type != 2) return; // 0 = undefined type: drop
+
     info.virtualModelId = GetVirtualModelId(info.newId);
     info.dffCached = IsModelCached(info.dffChecksum, info.dffSize, true);
     info.txdCached = IsModelCached(info.txdChecksum, info.txdSize, false);
@@ -275,10 +389,21 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_totalModels = info.count;
         m_models.push_back(info);
+        m_bSawAnyModel = true;
+        m_lastModelRequestTick = GetCurrentTick();
+
+        // A manifest arriving after we already sent 184 (audit A6): re-arm.
+        if (m_bFinishSent) {
+            m_bFinishSent = false;
+            m_bFinishRequested = false;
+            m_bDownloadFinished = false;
+        }
 
         auto enqueue = [&](uint32_t crc, uint32_t size, bool isDff) {
-            if (crc == 0 || m_knownCrc.count(crc)) return;
-            m_knownCrc.insert(crc);
+            if (crc == 0) return;
+            uint64_t key = TaskKey(crc, isDff);   // audit A2: DFF/TXD namespaced
+            if (m_knownKey.count(key)) return;
+            m_knownKey.insert(key);
             DLFileTask t;
             t.crc = crc;
             t.size = size;
@@ -304,8 +429,8 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
 
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    int byteLength = (bitLength / 8) + 1;
-    if (byteLength < 6) return;
+    if (bitLength < static_cast<int>(DL_RPC183_MIN_BYTES * 8)) return;
+    int byteLength = bitLength / 8;
 
     RakNet::BitStream bs(data, byteLength, false);
     uint8_t  arg = 0;        // 6 = HTTP transport
@@ -318,21 +443,33 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     bs.Read(fileChecksum);
     bs.Read(urlLen);
 
+    // Only the HTTP-URL prefix is handled here; in-band RakNet chunking (arg=1)
+    // is a different transport and is out of scope.
+    if (arg != 6) return;
+    if (fileChecksum == 0) return;
+
+    const bool isDff = (fileType == 1);
+
     std::string url;
     if (urlLen > 0) {
-        char urlBuffer[512] = {0};
-        size_t toRead = (urlLen < sizeof(urlBuffer) - 1) ? urlLen : sizeof(urlBuffer) - 1;
-        bs.Read(urlBuffer, toRead);
-        urlBuffer[toRead] = '\0';
-        url = urlBuffer;
+        // Bound the read by what actually arrived (audit A4): 4 (arg/type/crc) +
+        // 1 (urlLen) bytes of prefix precede the URL body.
+        const size_t available = (byteLength > 5) ? static_cast<size_t>(byteLength - 5) : 0u;
+        size_t toRead = std::min<size_t>({ urlLen, available, DL_MAX_URL_BYTES });
+        if (toRead > 0) {
+            char urlBuffer[512] = {0};
+            bs.Read(urlBuffer, toRead);
+            urlBuffer[toRead] = '\0';
+            url = urlBuffer;
+        }
     }
 
-    if (url.empty() || fileChecksum == 0) return;
+    if (url.empty()) return;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (auto& t : m_tasks) {
-            if (t.crc == fileChecksum) {
+            if (t.crc == fileChecksum && t.isDff == isDff) {
                 t.url = url;
                 break;
             }
@@ -347,9 +484,6 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
 void DLManager::OnDownloadCompleted(RPCParameters* /*rpcParams*/) {
     m_bDownloadFinished = true;
     m_finishTime = GetCurrentTick();
-    if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Server confirmed artwork sync complete (RPC 185).");
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -381,30 +515,25 @@ void DLManager::WorkerLoop() {
                     if (!t.done && !t.failed) { anyPending = true; break; }
                 }
             }
-            if (!anyPending) {
-                std::unique_lock<std::mutex> lock(m_workMutex);
-                m_workCv.wait_for(lock, std::chrono::milliseconds(200));
-            } else {
-                // Slots are busy waiting for their RPC 183 URL.
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            }
+            // Predicate-ish wait with a bounded backstop (audit B12): no 50 Hz spin.
+            std::unique_lock<std::mutex> lock(m_workMutex);
+            m_workCv.wait_for(lock, std::chrono::milliseconds(anyPending ? 250 : 500));
             continue;
         }
 
         // 2. Request the URL from the server (RPC 181/182) via the outbox.
         RequestFileFromServer(pickedCrc, pickedIsDff);
 
-        // 3. Wait (bounded, ~10s) for RPC 183 to deliver the URL.
+        // 3. Wait (bounded) for RPC 183 to deliver the URL.
         std::string url;
         uint32_t expectedSize = 0;
         bool isDff = pickedIsDff;
-        bool retry = false;
-        for (int waited = 0; waited < 400 && !m_bShutdown.load(); ++waited) {
+        for (uint32_t waited = 0; waited < DL_URL_WAIT_MS && !m_bShutdown.load(); waited += 25) {
             bool gotUrl = false;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 for (auto& t : m_tasks) {
-                    if (t.crc != pickedCrc) continue;
+                    if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
                     if (!t.url.empty()) {
                         url = t.url;
                         expectedSize = t.size;
@@ -421,20 +550,18 @@ void DLManager::WorkerLoop() {
         if (url.empty()) {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
-                if (t.crc != pickedCrc) continue;
-                if (++t.attempts >= 3) {
+                if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                t.lastError = "no url (RPC 183 timeout)";
+                if (++t.attempts >= DL_MAX_ATTEMPTS) {
                     t.failed = true;
                     m_failedModels++;
-                    m_lastActivity = t.hexName + " no url";
                 } else {
                     t.started = false;
-                    m_lastActivity = t.hexName + " retry";
                 }
                 break;
             }
-            retry = true;
+            continue;
         }
-        if (retry) continue;
 
         // 4. Fetch over HTTP.
         DLFileTask local;
@@ -446,7 +573,8 @@ void DLManager::WorkerLoop() {
 
         m_activeWorkers++;
         uint64_t bytes = 0;
-        bool ok = FetchToFile(local, bytes);
+        std::string error;
+        bool ok = FetchToFile(local, bytes, error);
         m_activeWorkers--;
         m_totalBytesRx += bytes;
 
@@ -454,19 +582,18 @@ void DLManager::WorkerLoop() {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
-                if (t.crc != pickedCrc) continue;
+                if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
                 if (ok) {
                     t.done = true;
                     t.url.clear();
-                    m_lastActivity = t.hexName + " done";
-                } else if (++t.attempts >= 3) {
+                } else if (++t.attempts >= DL_MAX_ATTEMPTS) {
                     t.failed = true;
+                    t.lastError = error;
                     m_failedModels++;
-                    m_lastActivity = t.hexName + " failed";
                 } else {
                     t.started = false;
                     t.url = url;   // keep the URL so a retry skips the RPC round-trip
-                    m_lastActivity = t.hexName + " error, retry";
+                    t.lastError = error;
                 }
                 break;
             }
@@ -476,119 +603,253 @@ void DLManager::WorkerLoop() {
     }
 }
 
-bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes) {
+// ---------------------------------------------------------------------------
+// HTTP GET hardening: full request write, header cap, redirect following,
+// 2xx-only, chunked/encoding rejection, stall-based timeout, size cap,
+// fsync-then-atomic-rename. No TLS in this tree: https/CDN redirect targets are
+// reported as an explicit error rather than a silent connect failure.
+// ---------------------------------------------------------------------------
+bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::string& outError) {
     outBytes = 0;
-    std::string host, path;
-    int port = 80;
-    if (!ParseHttpUrl(task.url, host, port, path)) return false;
 
-    struct addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo* res = nullptr;
-    char portStr[16];
-    snprintf(portStr, sizeof(portStr), "%d", port);
-
-    if (getaddrinfo(host.c_str(), portStr, &hints, &res) != 0 || !res) return false;
-
-    int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock < 0) { freeaddrinfo(res); return false; }
-
-    int one = 1;
-    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-
-    struct timeval tv{ 8, 0 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-    if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
-        close(sock);
-        freeaddrinfo(res);
+    ParsedUrl pu;
+    if (!ParseHttpUrl(task.url, pu)) {
+        outError = "bad url";
         return false;
     }
-    freeaddrinfo(res);
+    if (pu.isHttps) {
+        outError = "https (TLS) unsupported";
+        return false;
+    }
 
-    char req[1024];
-    snprintf(req, sizeof(req),
-        "GET %s HTTP/1.1\r\n"
-        "Host: %s:%d\r\n"
-        "User-Agent: SAMP/0.3\r\n"
-        "Accept: */*\r\n"
-        "Connection: close\r\n\r\n",
-        path.c_str(), host.c_str(), port);
+    std::string host = pu.host;
+    int         port = pu.port;
+    std::string path = pu.path;
 
-    if (send(sock, req, strlen(req), 0) <= 0) { close(sock); return false; }
+    const std::string finalPath = GetModelPath(task.crc, task.isDff);
+    const uint64_t hardCap = (task.size > 0)
+        ? (static_cast<uint64_t>(task.size) + (static_cast<uint64_t>(task.size) / 2) + 65536ull)
+        : (64ull * 1024ull * 1024ull); // 64 MiB ceiling when the server gave no size
 
-    char tempPath[512];
-    snprintf(tempPath, sizeof(tempPath), "%s%08X.temp", m_cachePath.c_str(), task.crc);
-    FILE* outFp = fopen(tempPath, "wb");
-    if (!outFp) { close(sock); return false; }
+    bool ok = false;
+    uint64_t totalWritten = 0;
 
-    char recvBuf[16384];
-    std::string headerBuf;
-    bool inBody = false;
-    bool httpOk = true;
-    ssize_t bytes = 0;
+    for (size_t redirect = 0; redirect <= DL_MAX_REDIRECTS && !ok; ++redirect) {
+        struct addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        struct addrinfo* res = nullptr;
+        char portStr[16];
+        snprintf(portStr, sizeof(portStr), "%d", port);
 
-    while ((bytes = recv(sock, recvBuf, sizeof(recvBuf), 0)) > 0) {
-        if (!inBody) {
-            headerBuf.append(recvBuf, static_cast<size_t>(bytes));
-            size_t headerEnd = headerBuf.find("\r\n\r\n");
-            if (headerEnd != std::string::npos) {
-                // open.mp answers 401 when User-Agent is wrong - treat as failure.
-                if (headerBuf.rfind("HTTP/1.1 200", 0) != 0 &&
-                    headerBuf.rfind("HTTP/1.0 200", 0) != 0) {
-                    httpOk = false;
+        if (getaddrinfo(host.c_str(), portStr, &hints, &res) != 0 || !res) {
+            outError = "dns: " + host;
+            return false;
+        }
+
+        int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (sock < 0) { freeaddrinfo(res); outError = "socket"; return false; }
+
+        int one = 1;
+        setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+
+        // Non-blocking connect with an explicit deadline (audit B11): shutdown and
+        // Reset stay responsive instead of blocking the join on connect().
+        int flags = fcntl(sock, F_GETFL, 0);
+        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+        int rc = connect(sock, res->ai_addr, res->ai_addrlen);
+        if (rc < 0 && errno != EINPROGRESS) {
+            close(sock); freeaddrinfo(res);
+            outError = "connect";
+            return false;
+        }
+        freeaddrinfo(res);
+
+        if (rc < 0) {
+            struct pollfd pfd{ sock, POLLOUT, 0 };
+            int pr = poll(&pfd, 1, static_cast<int>(DL_CONNECT_TIMEOUT_MS));
+            if (pr <= 0 || !(pfd.revents & POLLOUT)) {
+                close(sock); outError = "connect timeout"; return false;
+            }
+            int soErr = 0; socklen_t slen = sizeof(soErr);
+            if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &soErr, &slen) != 0 || soErr != 0) {
+                close(sock); outError = "connect refused"; return false;
+            }
+        }
+        fcntl(sock, F_SETFL, flags);
+
+        char req[1200];
+        int reqLen = snprintf(req, sizeof(req),
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "User-Agent: SAMP/0.3\r\n"
+            "Accept: */*\r\n"
+            "Connection: close\r\n\r\n",
+            path.c_str(), host.c_str());
+
+        // Full request write (audit B8): loop until the whole request is sent.
+        size_t sent = 0;
+        bool sendOk = true;
+        while (sent < static_cast<size_t>(reqLen)) {
+            ssize_t n = send(sock, req + sent, reqLen - sent, 0);
+            if (n <= 0) { if (errno == EINTR) continue; sendOk = false; break; }
+            sent += static_cast<size_t>(n);
+        }
+        if (!sendOk) { close(sock); outError = "send"; return false; }
+
+        // Unique temp path per pid (audit B9).
+        char tempPath[600];
+        snprintf(tempPath, sizeof(tempPath), "%s%08X.%d.temp",
+                 GetCachePath().c_str(), task.crc, static_cast<int>(getpid()));
+
+        FILE* outFp = fopen(tempPath, "wb");
+        if (!outFp) { close(sock); outError = "open temp"; return false; }
+
+        std::string headerBuf;
+        bool inBody = false;
+        bool httpOk = false;
+        int  statusCode = 0;
+        std::string redirectTo;
+        bool fatal = false;
+        uint32_t lastProgress = GetCurrentTick();
+
+        char buf[16384];
+        for (;;) {
+            if (m_bShutdown.load()) { fatal = true; outError = "shutdown"; break; }
+
+            struct pollfd pfd{ sock, POLLIN, 0 };
+            int pr = poll(&pfd, 1, 500);   // 500 ms slices keep shutdown responsive
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                outError = "poll"; fatal = true; break;
+            }
+            if (pr == 0) {
+                // Stall-based timeout (audit B7): only abort if NO bytes for a while.
+                if (GetCurrentTick() - lastProgress > DL_HTTP_STALL_MS) {
+                    outError = "stalled"; fatal = true; break;
+                }
+                continue;
+            }
+
+            ssize_t n = recv(sock, buf, sizeof(buf), 0);
+            if (n == 0) break;            // clean EOF
+            if (n < 0) {
+                if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                outError = "recv"; fatal = true; break;
+            }
+            lastProgress = GetCurrentTick();
+
+            if (!inBody) {
+                if (headerBuf.size() + static_cast<size_t>(n) > DL_MAX_HTTP_HEADER) {
+                    outError = "header too large"; fatal = true; break; // audit B4
+                }
+                headerBuf.append(buf, static_cast<size_t>(n));
+                size_t headerEnd = headerBuf.find("\r\n\r\n");
+                if (headerEnd == std::string::npos) continue;
+
+                size_t sp = headerBuf.find(' ');
+                if (sp != std::string::npos) statusCode = atoi(headerBuf.c_str() + sp + 1);
+
+                std::string lower = headerBuf;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+                // Redirects (audit B6): follow Location, or fail with a reason.
+                if (statusCode >= 300 && statusCode < 400) {
+                    size_t lp = lower.find("\nlocation:");
+                    if (lp != std::string::npos) {
+                        size_t vs = lp + strlen("\nlocation:");
+                        while (vs < headerBuf.size() && (headerBuf[vs] == ' ' || headerBuf[vs] == '\t')) vs++;
+                        size_t ve = headerBuf.find("\r\n", vs);
+                        if (ve != std::string::npos) redirectTo = headerBuf.substr(vs, ve - vs);
+                    }
+                    if (redirectTo.empty()) outError = "redirect without location";
                     break;
                 }
+
+                if (statusCode < 200 || statusCode >= 300) {
+                    char e[64];
+                    snprintf(e, sizeof(e), "http %d", statusCode);
+                    outError = e; fatal = true; break;
+                }
+                httpOk = true;
+
+                // Reject transfer encodings we cannot decode (audit B5).
+                if (lower.find("transfer-encoding: chunked") != std::string::npos) {
+                    outError = "chunked encoding"; fatal = true; break;
+                }
+
                 inBody = true;
                 const char* bodyStart = headerBuf.data() + headerEnd + 4;
                 size_t bodyLen = headerBuf.size() - (headerEnd + 4);
                 if (bodyLen > 0) {
-                    fwrite(bodyStart, 1, bodyLen, outFp);
-                    outBytes += bodyLen;
+                    if (fwrite(bodyStart, 1, bodyLen, outFp) != bodyLen) {
+                        outError = "disk write"; fatal = true; break;
+                    }
+                    totalWritten += bodyLen;
+                    if (totalWritten > hardCap) { outError = "size cap"; fatal = true; break; } // B3
+                }
+            } else {
+                if (fwrite(buf, 1, static_cast<size_t>(n), outFp) != static_cast<size_t>(n)) {
+                    outError = "disk write"; fatal = true; break;
+                }
+                totalWritten += static_cast<uint64_t>(n);
+                if (totalWritten > hardCap) { outError = "size cap"; fatal = true; break; }
+            }
+        }
+
+        // Durability before the atomic rename (audit B10).
+        if (outFp) {
+            fflush(outFp);
+            int fd = fileno(outFp);
+            if (fd >= 0) fsync(fd);
+            fclose(outFp);
+        }
+        close(sock);
+
+        if (fatal) { unlink(tempPath); return false; }
+
+        if (httpOk && inBody) {
+            // Content-addressed cache: the file name IS its CRC32, so verify it.
+            if (CalculateFileCRC32(tempPath) != task.crc) {
+                unlink(tempPath);
+                outError = "crc mismatch";
+                return false;
+            }
+            if (task.size > 0) {
+                struct stat st;
+                if (stat(tempPath, &st) == 0 &&
+                    static_cast<uint32_t>(st.st_size) != task.size) {
+                    unlink(tempPath);
+                    outError = "size mismatch";
+                    return false;
                 }
             }
-        } else {
-            fwrite(recvBuf, 1, static_cast<size_t>(bytes), outFp);
-            outBytes += static_cast<uint64_t>(bytes);
+            if (rename(tempPath, finalPath.c_str()) != 0) {
+                unlink(tempPath);
+                outError = "rename";
+                return false;
+            }
+            outBytes = totalWritten;
+            ok = true;
+            break;
         }
-    }
 
-    fclose(outFp);
-    close(sock);
-
-    if (!httpOk || !inBody) {
         unlink(tempPath);
-        return false;
-    }
 
-    // Content-addressed cache: the file name IS its CRC32, so verify it.
-    if (CalculateFileCRC32(tempPath) != task.crc) {
-        unlink(tempPath);
-        return false;
-    }
-
-    if (task.size > 0) {
-        struct stat st;
-        if (stat(tempPath, &st) == 0 && static_cast<uint32_t>(st.st_size) != task.size) {
-            unlink(tempPath);
-            return false;
+        if (!redirectTo.empty()) {
+            ParsedUrl np;
+            if (!ParseHttpUrl(redirectTo, np) || np.isHttps) {
+                outError = "redirect target unsupported";
+                return false;
+            }
+            host = np.host; port = np.port; path = np.path;
+            totalWritten = 0;
+            continue;
         }
-    }
-
-    std::string finalPath = GetModelPath(task.crc, task.isDff);
-    if (rename(tempPath, finalPath.c_str()) != 0) {
-        unlink(tempPath);
         return false;
     }
 
-    if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} %s cached (%u KB)",
-                                     task.hexName.c_str(),
-                                     static_cast<unsigned>(outBytes / 1024));
-    }
-    return true;
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,9 +861,14 @@ void DLManager::RequestFileFromServer(uint32_t crc, bool isDff) {
 }
 
 void DLManager::ProcessRpcOutbox() {
-    if (!m_pRakClient) return;
+    RakClientInterface* client;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        client = m_pRakClient;   // may have been nulled by Reset (audit C2)
+    }
+    if (!client) return;
 
-    for (int guard = 0; guard < 16; ++guard) {
+    for (int guard = 0; guard < 32; ++guard) {
         std::pair<uint32_t, bool> item{0, false};
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -614,14 +880,15 @@ void DLManager::ProcessRpcOutbox() {
         RakNet::BitStream bs;
         bs.Write(item.first);
         int rpcId = item.second ? RPC_RequestDff : RPC_RequestTxd;
-        m_pRakClient->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
-                          UNASSIGNED_NETWORK_ID, nullptr);
+        client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
+                    UNASSIGNED_NETWORK_ID, nullptr);
     }
 }
 
 void DLManager::ProcessTick() {
     if (!m_bInitialized.load()) return;
 
+    FlushChatQueue();
     ProcessRpcOutbox();
 
     const uint32_t now = GetCurrentTick();
@@ -637,15 +904,12 @@ void DLManager::ProcessTick() {
         m_lastSpeedSampleBytes = cur;
     }
 
-    // Diagnostic heartbeat: prove whether the server ever talks 0.3.DL at us.
-    static bool s_bReportedNoManifest = false;
-    if (!s_bReportedNoManifest && (now - m_connectTime > 9000) && m_totalModels.load() == 0) {
-        s_bReportedNoManifest = true;
-        if (pUI && pUI->chat()) {
-            pUI->chat()->addDebugMessage(
-                "{F59E0B}[0.3.DL]{FFFFFF} No model manifest received (RPC 179 never arrived). "
-                "Server may not expose artwork to this client.");
-        }
+    // Tell the player, once per connection, if a server never offered models.
+    // Per-instance + reset on reconnect (audit D5) instead of a process-global.
+    if (!m_bReportedNoManifest && !m_bSawAnyModel &&
+        m_connectTime > 0 && (now - m_connectTime > 9000) && m_totalModels.load() == 0) {
+        m_bReportedNoManifest = true;
+        PushChat("This server has no custom models. Joining...");
     }
 
     if (m_bDownloadFinished.load()) return;
@@ -656,20 +920,20 @@ void DLManager::ProcessTick() {
     const bool allSettled = (queued == 0 && active == 0);
     const bool haveManifest = (m_totalModels.load() > 0);
 
-    if (haveManifest && allSettled && !m_bFinishRequested.load()) {
+    if (haveManifest && allSettled && failed == 0 && !m_bFinishRequested.load()) {
+        // Every announced file verified (audit A7): only now assert completion.
         m_bFinishRequested = true;
         m_finishTime = now;
         m_bDownloadFinished = true;
         SendFinishDownload();
-    } else if (!haveManifest && (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
-        // Server sent no model manifest at all: do not hold the player in class selection.
+    } else if (!haveManifest && !m_bSawAnyModel &&
+               (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
+        // No manifest at all: do not hold the player in class selection. Gated on
+        // "no RPC 179 ever" so a slow manifest cannot race us (audit A6).
         m_bFinishRequested = true;
         m_finishTime = now;
         m_bDownloadFinished = true;
         SendFinishDownload();
-        if (pUI && pUI->chat()) {
-            pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} No custom models announced. Spawn unblocked.");
-        }
     }
 }
 
@@ -679,7 +943,7 @@ void DLManager::GetProgressStats(size_t& queued, size_t& active, size_t& done, s
     for (const auto& t : m_tasks) {
         if (t.done) { ++done; continue; }
         if (t.failed) { ++failed; continue; }
-        if (t.started && !t.url.empty()) { ++active; continue; }
+        if (t.started) { ++active; continue; }   // claimed: awaiting URL or fetching
         ++queued;
     }
 }
@@ -692,29 +956,60 @@ void DLManager::RecomputeProgress() {
     }
 }
 
+void DLManager::RequestRetryFailed() {
+    int rearmed = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& t : m_tasks) {
+            if (!t.failed) continue;
+            t.failed = false;
+            t.started = false;
+            t.attempts = 0;
+            t.lastError.clear();
+            ++rearmed;
+        }
+        if (rearmed > 0) {
+            m_failedModels = 0;
+            m_bFinishRequested = false;
+            m_bFinishSent = false;
+            m_bDownloadFinished = false;
+            m_finishTime = 0;
+        }
+    }
+    if (rearmed > 0) {
+        m_workCv.notify_all();
+        PushChat("Retrying failed model downloads...");
+    }
+}
+
 void DLManager::SendFinishDownload() {
-    if (!m_pRakClient) return;
+    RakClientInterface* client;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        client = m_pRakClient;
+        m_bFinishSent = true;
+    }
+    if (!client) return;
     // RPC 184 must carry a zero-length bitstream (no dummy bytes).
     RakNet::BitStream bs;
-    m_pRakClient->RPC(&RPC_FinishDownload, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
-                      UNASSIGNED_NETWORK_ID, nullptr);
-    if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} RPC 184 FinishDownload sent. Spawn enabled.");
-    }
+    client->RPC(&RPC_FinishDownload, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
+                UNASSIGNED_NETWORK_ID, nullptr);
 }
 
 void DLManager::ToggleOverlay() {
     m_bForceShowOverlay = !m_bForceShowOverlay;
-    if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("{38BDF8}[0.3.DL]{FFFFFF} Download overlay: %s",
-                                     m_bForceShowOverlay ? "pinned" : "auto-hide");
-    }
 }
 
 // ---------------------------------------------------------------------------
-// UI - drawn straight onto the foreground draw list, the same path the FPS
-// label uses. Classic ImGui windows are unreliable here because the game UI
-// owns its own draw list and frame ordering.
+// UI - a quiet HUD line, not a panel. Drawn on the same draw list the FPS label
+// uses (classic ImGui windows fight the game for frame ordering).
+//
+// House style (kept from the minimal-UI pass): bottom-left, one short lowercase
+// sentence, the stock outlined HUD font, a hairline progress bar, no card, no
+// border, no brand colour, no counters the player cannot act on.
+//
+// Hardening: sizes measured via calculateTextSize (not a 0.58 guess), laid out
+// bottom-left against the real screen size, and failures are actionable.
 // ---------------------------------------------------------------------------
 void DLManager::RenderImGui() {
     if (!m_bInitialized.load()) return;
@@ -729,110 +1024,60 @@ void DLManager::RenderImGui() {
     const int      total    = m_totalModels.load();
     const bool     finished = m_bDownloadFinished.load();
     const uint32_t now      = GetCurrentTick();
-    const size_t   pending  = queued + active;
 
-    const bool shouldShow = m_bForceShowOverlay ||
-                            active > 0 ||
-                            (total > 0 && !finished) ||
-                            (total == 0 && (now - m_connectTime) < 8000) ||
-                            (m_finishTime > 0 && (now - m_finishTime) < 6000);
-    if (!shouldShow) return;
+    const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
+    const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
+    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && done < (size_t)total));
 
-    const ImVec2 screen = ImGui::GetIO().DisplaySize;
-    const float pad     = 12.0f;
-    const float cardW   = std::min(std::clamp(screen.x * 0.46f, 300.0f, 440.0f),
-                                   std::max(screen.x - 32.0f, 200.0f));
-    const float cardH   = 78.0f;
-    const float x0      = (screen.x - cardW) * 0.5f;
-    const float y0      = 14.0f;
-    const ImVec2 tl(x0, y0);
-    const ImVec2 br(x0 + cardW, y0 + cardH);
+    // Visible while there is real work, while the manifest is still expected,
+    // or for a beat after finishing. The /dl command pins it open.
+    if (!m_bForceShowOverlay && !busy && !waiting && !(finished && showDone)) return;
 
-    const ImColor kCyberBlue(2, 132, 199, 255);    // #0284C7
-    const ImColor kSky      (56, 189, 248, 255);   // #38BDF8
-    const ImColor kDark     (9, 13, 22, 235);      // #090D16
-    const ImColor kTrack    (18, 24, 38, 255);
-    const ImColor kGreen    (34, 197, 94, 255);
-    const ImColor kAmber    (245, 158, 11, 255);
-    const ImColor kRed      (239, 68, 68, 255);
-    const ImColor kGrey     (148, 163, 184, 255);
-
-    // Panel: filled body + 1px accent border.
-    r->drawRect(tl, br, kDark, true);
-    r->drawRect(tl, br, kCyberBlue, false, 1.5f);
-
-    const float fs = std::max(UISettings::fontSize() * 0.8f, 11.0f);
-    const float lh = fs + 6.0f;
-
-    // ---- Line 1: title + status
-    r->drawText(ImVec2(x0 + pad, y0 + 8.0f), kSky, "CUSTOM MODELS", true, fs);
-
-    char status[64];
-    ImColor statusColor = kGrey;
-    if (failed > 0) {
-        snprintf(status, sizeof(status), "// %zu FAILED", failed);
-        statusColor = kRed;
-    } else if (finished) {
-        snprintf(status, sizeof(status), "// READY");
-        statusColor = kGreen;
-    } else if (active > 0) {
-        snprintf(status, sizeof(status), "// %zu/%d SLOTS", active, DL_MAX_CONCURRENT);
-        statusColor = kAmber;
-    } else if (total > 0) {
-        snprintf(status, sizeof(status), "// VERIFYING");
-        statusColor = kSky;
-    } else {
-        snprintf(status, sizeof(status), "// HANDSHAKE");
-    }
-    // Right-align the status by measuring the longest plausible string.
-    const float statusX = br.x - pad - (strlen(status) * fs * 0.58f);
-    r->drawText(ImVec2(std::max(statusX, x0 + pad + 120.0f), y0 + 8.0f), statusColor, status, true, fs);
-
-    // ---- Line 2: progress track + fill
+    // ---- Compose the one line the player needs.
+    char label[96];
+    bool showBar = false;
     float fraction = 0.0f;
-    if (total > 0) {
-        fraction = std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.0f, 1.0f);
+
+    if (failed > 0 && !busy) {
+        snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
     } else if (finished) {
+        snprintf(label, sizeof(label), "Models ready");
         fraction = 1.0f;
-    }
-
-    const float barY  = y0 + 8.0f + lh;
-    const float barH  = 12.0f;
-    const float barX0 = x0 + pad;
-    const float barX1 = br.x - pad;
-    if (barX1 > barX0) {
-        r->drawRect(ImVec2(barX0, barY), ImVec2(barX1, barY + barH), kTrack, true);
-        const float fillW = (barX1 - barX0) * fraction;
-        if (fillW > 0.5f) {
-            r->drawRect(ImVec2(barX0, barY), ImVec2(barX0 + fillW, barY + barH), kCyberBlue, true);
-        }
-        r->drawRect(ImVec2(barX0, barY), ImVec2(barX1, barY + barH), kCyberBlue, false, 1.0f);
-
-        char overlay[80];
-        if (total > 0) {
-            snprintf(overlay, sizeof(overlay), "%zu / %d  (%.0f%%)", done, total, fraction * 100.0f);
-        } else if (finished) {
-            snprintf(overlay, sizeof(overlay), "no custom models");
-        } else {
-            snprintf(overlay, sizeof(overlay), "waiting for manifest...");
-        }
-        const float txtW = strlen(overlay) * fs * 0.58f;
-        r->drawText(ImVec2((barX0 + barX1 - txtW) * 0.5f, barY - 1.0f),
-                    kSky, overlay, true, fs * 0.92f);
-    }
-
-    // ---- Line 3: detail stats
-    char detail[128];
-    if (total > 0 && !finished) {
-        snprintf(detail, sizeof(detail), "pending %zu  |  slots %zu/%d  |  %.0f KB/s  |  cached %zu",
-                 pending, active, DL_MAX_CONCURRENT, m_speedKBps.load(), done);
-    } else if (finished) {
-        snprintf(detail, sizeof(detail), "%s",
-                 failed > 0 ? "finished with errors - rejoin to retry"
-                            : "all assets verified - spawn enabled");
+        showBar = total > 0;
+    } else if (total > 0) {
+        fraction = std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.0f, 1.0f);
+        snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+        showBar = true;
     } else {
-        snprintf(detail, sizeof(detail), "connected - no 0.3.DL artwork received yet");
+        snprintf(label, sizeof(label), "Downloading models");
     }
-    r->drawText(ImVec2(x0 + pad, barY + barH + 6.0f), kGrey, detail, true, fs * 0.9f);
-}
 
+    // ---- Layout: bottom-left, measured, scaled by screen size.
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+    const float  fs     = std::max(UISettings::fontSize() * 0.85f, 11.0f);
+    const float  margin = std::max(screen.y * 0.03f, 16.0f);
+    const float  barH   = std::max(fs * 0.14f, 3.0f);
+    const float  gap    = fs * 0.35f;
+
+    const ImVec2 labelSize = r->calculateTextSize(label, fs);
+    const float  barW      = std::min(std::max(screen.x * 0.28f, labelSize.x), fs * 22.0f);
+    const float  totalH    = labelSize.y + (showBar ? gap + barH : 0.0f);
+
+    const float x = margin;
+    const float y = screen.y - margin - totalH;
+
+    // Stock HUD colours: white pair with the black outline, flat grey bar.
+    const ImColor kText (245, 245, 245, 255);
+    const ImColor kTrack(0, 0, 0, 110);
+    const ImColor kFill (235, 235, 235, 235);
+
+    r->drawText(ImVec2(x, y), kText, label, true, fs);
+
+    if (showBar) {
+        const float by0 = y + labelSize.y + gap;
+        r->drawRect(ImVec2(x, by0), ImVec2(x + barW, by0 + barH), kTrack, true);
+        if (fraction > 0.0f) {
+            r->drawRect(ImVec2(x, by0), ImVec2(x + barW * fraction, by0 + barH), kFill, true);
+        }
+    }
+}
