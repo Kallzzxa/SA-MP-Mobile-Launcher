@@ -3,6 +3,7 @@
 #include "netgame.h"
 #include "../audiostream.h"
 #include "game/BuildingRemoval.h"
+#include "../java/editobject.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -429,6 +430,21 @@ void ScrSetObjectMaterial(RPCParameters* rpcParams)
 			}
 		}
 	}
+}
+
+void ScrEditObject(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+	uint16_t wObjectID;
+	bsData.Read(wObjectID);
+
+	FLog("RPC_ScrEditObject(%d)", (int)wObjectID);
+
+	CObjectEditor::startEditObject(wObjectID);
 }
 
 void ScrRemoveBuilding(RPCParameters *rpcParams)
@@ -2068,6 +2084,7 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInterpolateCamera, ScrInterpolateCamera);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ClickTextDraw, ScrSelectTextDraw);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetObjectMaterial, ScrSetObjectMaterial);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrEditObject, ScrEditObject);
 
 	// RPC_ScrObjectNoCameraCol
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrApplyActorAnimation, ScrApplyActorAnimation);
@@ -2089,6 +2106,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetGravity);
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrCreateObject);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrEditObject);
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrTogglePlayerSpectating);
 

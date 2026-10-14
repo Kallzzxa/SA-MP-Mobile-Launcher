@@ -143,6 +143,7 @@ extern int RPC_ScrVehicleParamsEx;
 extern int RPC_ScrInterpolateCamera;
 extern int RPC_ScrRemoveBuilding;
 extern int RPC_ScrSetObjectMaterial;
+extern int RPC_ScrEditObject;
 extern int RPC_ScrSetArmedWeapon;
 extern int RPC_ScrSetActorFacingAngle;
 extern int RPC_ScrSetActorPos;
