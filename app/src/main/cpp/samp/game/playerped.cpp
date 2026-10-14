@@ -756,6 +756,9 @@ void CPlayerPed::SetFightingStyle(int iStyle)
 {
 	if (m_pPed) {
 		ScriptCommand(&set_fighting_style, m_dwGTAId, iStyle, 6);
+		// Ensure melee stays enabled whenever fighting style changes
+		// (called on spawn + when server sends fighting style RPC)
+		m_pPed->m_nAllowedAttackMoves = (char)0xFF;
 	}
 }
 

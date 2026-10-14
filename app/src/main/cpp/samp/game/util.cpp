@@ -3,6 +3,7 @@
 #include "RW/RenderWare.h"
 #include <cmath>
 #include "../net/netgame.h"
+#include "../net/dl/dlmanager.h"
 #include "World.h"
 
 extern CNetGame* pNetGame;
@@ -1961,7 +1962,12 @@ int GetModelRefCounts(int iModel)
 
 bool IsValidPedModel(uint modelID)
 {
-    if (modelID >= 18631 && modelID < 20000) return true; // 0.3.DL Virtual Custom Ped range
+    // 0.3.DL virtual custom model range: only valid if actually registered
+    // with the game engine (via DLManager::RegisterCustomModels). An
+    // unregistered virtual ID must fall back to the base model, never crash.
+    if (modelID >= 18631 && modelID < 20000) {
+        return DLManager::Instance().IsModelRegistered((int16_t)modelID);
+    }
     if (modelID > 20000) return false;
     auto dwModelArray = CModelInfo::ms_modelInfoPtrs;
     if (!dwModelArray) return false;

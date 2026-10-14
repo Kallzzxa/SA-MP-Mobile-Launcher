@@ -1,6 +1,9 @@
 #include "dlmanager.h"
+#include "dl_imgpack.h"
 #include "../../main.h"
 #include "../../gui/gui.h"
+#include "../../game/Streaming.h"
+#include "../../game/Models/ModelInfo.h"
 #include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
@@ -237,6 +240,8 @@ void DLManager::Reset() {
     m_virtualToNetwork.clear();
     m_nextVirtualId = DL_VIRT_MIN;
     m_bVirtualIdExhausted = false;
+    m_registeredModels.clear();
+    m_bModelsRegistered = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
     m_bFinishRequested = false;
@@ -334,6 +339,133 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
     auto it = m_virtualToNetwork.find(virtualId);
     if (it != m_virtualToNetwork.end()) return it->second;
     return -1; // sentinel: caller decides (audit A10)
+}
+
+bool DLManager::IsModelRegistered(int16_t virtualId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_registeredModels.find(virtualId) != m_registeredModels.end();
+}
+
+// ---------------------------------------------------------------------------
+// Custom model registration (0.3.DL PR #3).
+// Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
+// and allocates CModelInfo slots so the game can actually load the models.
+// MUST run on the game thread (called from ProcessTick).
+// ---------------------------------------------------------------------------
+bool DLManager::RegisterCustomModels() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_bModelsRegistered) return !m_registeredModels.empty();
+    }
+
+    // Collect models that have both DFF and TXD files on disk.
+    struct ModelFiles {
+        int16_t virtualId;
+        uint8_t type; // 1=Skin, 2=Object
+        uint32_t dffCrc;
+        uint32_t txdCrc;
+        std::string dffPath;
+        std::string txdPath;
+        std::string dffArcName;
+        std::string txdArcName;
+    };
+    std::vector<ModelFiles> toRegister;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const auto& m : m_models) {
+            if (m.virtualModelId < DL_VIRT_MIN || m.virtualModelId > DL_VIRT_MAX)
+                continue;
+            // Both files must exist (downloader CRC-validates on fetch).
+            std::string dffPath = GetModelPath(m.dffChecksum, true);
+            std::string txdPath = GetModelPath(m.txdChecksum, false);
+            struct stat st;
+            if (stat(dffPath.c_str(), &st) != 0) continue;
+            if (stat(txdPath.c_str(), &st) != 0) continue;
+
+            char dffName[32], txdName[32];
+            snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
+            snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
+            toRegister.push_back({m.virtualModelId, m.type, m.dffChecksum,
+                                  m.txdChecksum, dffPath, txdPath,
+                                  dffName, txdName});
+        }
+    }
+
+    if (toRegister.empty()) {
+        PushChat("No custom models to register.");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Pack into IMG.
+    std::string cacheBase;
+    {
+        std::lock_guard<std::mutex> lock(m_cachePathMutex);
+        cacheBase = m_cachePath;
+    }
+    std::string imgPath = cacheBase + "custom_dl.img";
+
+    std::vector<DLImgPack::ImgEntry> entries;
+    entries.reserve(toRegister.size() * 2);
+    for (const auto& mf : toRegister) {
+        entries.push_back({mf.dffPath, mf.dffArcName});
+        entries.push_back({mf.txdPath, mf.txdArcName});
+    }
+
+    std::string packError;
+    if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
+                 packError.c_str());
+        PushChat(msg);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Register IMG with the streaming system.
+    // Note: path format follows the game's CdStreamOpen expectations.
+    int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
+    if (imgIndex < 0) {
+        PushChat("Failed to register custom IMG with streaming.");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Register each model slot.
+    int registered = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const auto& mf : toRegister) {
+            CBaseModelInfo* pInfo = nullptr;
+            if (mf.type == 1) { // Skin -> ped model
+                pInfo = CModelInfo::AddPedModel(mf.virtualId);
+            } else { // Object -> atomic model
+                pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+            }
+            if (!pInfo) continue;
+
+            // DFF name (without extension) for streaming lookup.
+            // Matches the arc name "0x<CRC>.dff" so the IMG directory hash aligns.
+            char dffBase[32], txdBase[32];
+            snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
+            snprintf(txdBase, sizeof(txdBase), "0x%08X", mf.txdCrc);
+            pInfo->SetModelName(dffBase);
+            pInfo->SetTexDictionary(txdBase, "custom_dl");
+
+            m_registeredModels.insert(mf.virtualId);
+            ++registered;
+        }
+        m_bModelsRegistered = true;
+    }
+
+    char msg[128];
+    snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
+    PushChat(msg);
+    return registered > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,9 +1214,10 @@ void DLManager::ProcessRpcOutbox() {
         client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                     UNASSIGNED_NETWORK_ID, nullptr);
 
-        char msg[64];
-        snprintf(msg, sizeof(msg), "-> %d 0x%08X", rpcId, item.first);
-        PushChat(msg);
+        // Diagnostic per-RPC chat log removed (was commit b978e39): with 325+
+        // models it spams hundreds of "-> 181/182" lines that look like a retry
+        // loop but are normal initial traffic. The skip logic in WorkerLoop
+        // (needRpc = url.empty()) already prevents redundant re-sends.
     }
 }
 
@@ -1138,6 +1271,10 @@ void DLManager::ProcessTick() {
                      done, failed);
             PushChat(msg);
         }
+        // Register downloaded models with the game engine BEFORE telling the
+        // server we're ready. Must run on the game thread (ProcessTick is
+        // called from CNetGame::Process).
+        RegisterCustomModels();
         SendFinishDownload();
     } else if (!haveManifest && !m_bSawAnyModel &&
                (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
