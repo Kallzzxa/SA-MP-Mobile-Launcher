@@ -8,6 +8,10 @@
 
 CVehicleModelInfo* CModelInfo::AddVehicleModel(int index)
 {
+    // Bounds check: don't overflow the store (game uses ~270 of 270).
+    if (CModelInfo::ms_vehicleModelInfoStore.IsFull()) {
+        return nullptr;
+    }
     auto& pInfo = CModelInfo::ms_vehicleModelInfoStore.AddItem();
 
     ((void(*)(CVehicleModelInfo*))(g_libGTASA + (VER_x32 ? 0x386E98 + 1 : 0x45DF50)))(&pInfo); // CBaseModelInfo::CBaseModelInfo();
@@ -22,7 +26,11 @@ CVehicleModelInfo* CModelInfo::AddVehicleModel(int index)
 
 CPedModelInfo* CModelInfo::AddPedModel(int index)
 {
-
+    // Bounds check: game fills 315 slots during init; custom DL skins use the +2000 headroom.
+    // Return nullptr instead of corrupting the heap if full.
+    if (CModelInfo::ms_pedModelInfoStore.IsFull()) {
+        return nullptr;
+    }
     auto& pInfo = CModelInfo::ms_pedModelInfoStore.AddItem();
 
     ((void(*)(CPedModelInfo*))(g_libGTASA + (VER_x32 ? 0x00384FD8 + 1 : 0x45B3BC)))(&pInfo); // CBaseModelInfo::CBaseModelInfo();
@@ -42,6 +50,11 @@ CDamageAtomicModelInfo* CModelInfo::AddDamageAtomicModel(int32 index)
 
 CAtomicModelInfo* CModelInfo::AddAtomicModel(int index)
 {
+    // Bounds check: game uses ~19000 of 22000; custom DL objects use the headroom.
+    // Return nullptr instead of corrupting the heap if full.
+    if (ms_atomicModelInfoStore.IsFull()) {
+        return nullptr;
+    }
     auto& pInfo = ms_atomicModelInfoStore.AddItem();
 
     ((void(*)(CAtomicModelInfo*))(g_libGTASA + (VER_x32 ? 0x00384FD8 + 1 : 0x45B3BC)))(&pInfo);

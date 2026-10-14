@@ -317,10 +317,12 @@ void CTaskComplexLeaveCar_hook(uintptr_t** thiz, CVehicleGTA* pVehicle, int iTar
 	{
 		if (pNetGame)
 		{
-			if ((CVehicleGTA*)GamePool_FindPlayerPed()->pVehicle == pVehicle)
+			// GamePool_FindPlayerPed() can be null (player ped not yet created/destroyed).
+			CPedGTA* pPlayerPedGTA = GamePool_FindPlayerPed();
+			if (pPlayerPedGTA && (CVehicleGTA*)pPlayerPedGTA->pVehicle == pVehicle)
 			{
 				CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-				VEHICLEID VehicleID = pVehiclePool->FindIDFromGtaPtr((CVehicleGTA*)GamePool_FindPlayerPed()->pVehicle);
+				VEHICLEID VehicleID = pVehiclePool->FindIDFromGtaPtr((CVehicleGTA*)pPlayerPedGTA->pVehicle);
 				if (VehicleID != INVALID_VEHICLE_ID)
 				{
 					CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
@@ -510,7 +512,12 @@ uint32_t(*CWeapon__FireInstantHit)(CWeapon* thiz, CPedGTA* pFiringEntity, CVecto
 uint32_t CWeapon__FireInstantHit_hook(CWeapon* thiz, CPedGTA* pFiringEntity, CVector* vecOrigin, CVector* muzzlePosn, CEntityGTA* targetEntity,
 									 CVector* target, CVector* originForDriveBy, bool arg6, bool muzzle)
 {
-	if (pNetGame && pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed)		// CWeapon::Fire
+	// Null-guard the full chain: GetPlayerPool/GetLocalPlayer/GetPlayerPed can all
+	// be null during spawn/death/disconnect transition windows.
+	CPlayerPool* pPool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+	CLocalPlayer* pLocal = pPool ? pPool->GetLocalPlayer() : nullptr;
+	CPlayerPed* pPed = pLocal ? pLocal->GetPlayerPed() : nullptr;
+	if (pPed && pPed->m_pPed)		// CWeapon::Fire
     {
        	if(pFiringEntity != GamePool_FindPlayerPed())
 			return muzzle;
@@ -707,7 +714,9 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	}
 
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	if (!pPlayerPool) return false;
 	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
+	if (!pLocalPlayer) return false;
 	PLAYERID PlayerID;
 
 	if (isLocalPed)
@@ -727,7 +736,8 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 											  calculator->m_fDamageFactor,
 											  calculator->m_weaponType,
 											  calculator->m_pedPieceType);
-			if (pPlayerPool->GetAt(PlayerID)->IsNPC())
+			CRemotePlayer* pDamagedPlayer = pPlayerPool->GetAt(PlayerID);
+			if (pDamagedPlayer && pDamagedPlayer->IsNPC())
 				return true;
 		}
 		else
@@ -747,10 +757,17 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	// :check_friendly_fire
 	if (!pNetGame->m_pNetSet->bFriendlyFire)
 		return false;
-	uint8_t byteTeam = pPlayerPool->GetLocalPlayer()->m_byteTeam;
-	if (byteTeam == NO_TEAM ||
-		PlayerID == INVALID_PLAYER_ID ||
-		pPlayerPool->GetAt(PlayerID)->m_byteTeam != byteTeam) {
+	// INVALID_PLAYER_ID must be checked BEFORE GetAt (GetAt would return null).
+	if (PlayerID == INVALID_PLAYER_ID)
+		return false;
+	// pLocalPlayer was null-checked at function entry; re-fetch defensively.
+	CLocalPlayer* pLocal = pPlayerPool->GetLocalPlayer();
+	if (!pLocal) return false;
+	uint8_t byteTeam = pLocal->m_byteTeam;
+	if (byteTeam == NO_TEAM)
+		return false;
+	CRemotePlayer* pTargetPlayer = pPlayerPool->GetAt(PlayerID);
+	if (!pTargetPlayer || pTargetPlayer->m_byteTeam != byteTeam) {
 		return false;
 	}
 

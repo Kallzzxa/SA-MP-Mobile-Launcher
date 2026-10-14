@@ -429,7 +429,17 @@ bool DLManager::RegisterCustomModels() {
     // Note: path format follows the game's CdStreamOpen expectations.
     int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
     if (imgIndex < 0) {
-        PushChat("Failed to register custom IMG with streaming.");
+        PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+    // Verify the IMG was actually registered in the returned slot.
+    // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
+    //  not a stale entry or an out-of-bounds index.)
+    if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
+        PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -437,6 +447,7 @@ bool DLManager::RegisterCustomModels() {
 
     // Register each model slot.
     int registered = 0;
+    int skippedFull = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const auto& mf : toRegister) {
@@ -446,7 +457,12 @@ bool DLManager::RegisterCustomModels() {
             } else { // Object -> atomic model
                 pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
             }
-            if (!pInfo) continue;
+            if (!pInfo) {
+                // Store is full (shouldn't happen with enlarged capacities,
+                // but never crash: skip this model, it will use fallback).
+                ++skippedFull;
+                continue;
+            }
 
             // DFF name (without extension) for streaming lookup.
             // Matches the arc name "0x<CRC>.dff" so the IMG directory hash aligns.
@@ -465,6 +481,13 @@ bool DLManager::RegisterCustomModels() {
     char msg[128];
     snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
     PushChat(msg);
+    if (skippedFull > 0) {
+        char warn[128];
+        snprintf(warn, sizeof(warn),
+                 "Warning: %d models skipped (model store full).",
+                 skippedFull);
+        PushChat(warn);
+    }
     return registered > 0;
 }
 

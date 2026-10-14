@@ -238,7 +238,11 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     }
 
     if (fileIndex >= TOTAL_IMG_ARCHIVES) {
-        assert("AddImageToList");
+        // No free slot: return -1 instead of writing out of bounds.
+        // (The old code had assert() here, which is a no-op in release builds,
+        //  leading to heap corruption via ms_files[fileIndex].)
+        // Callers MUST check for < 0.
+        return -1;
     }
 
     // free slot found, load the IMG file

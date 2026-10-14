@@ -18,10 +18,12 @@ public:
 
     static void injectHooks();
 
-    static constexpr int32_t NUM_PED_MODEL_INFOS = 315;
+    static constexpr int32_t NUM_PED_MODEL_INFOS = 315 + 2000; // 315 game peds + 2000 custom DL skins
     static inline CStore<CPedModelInfo, NUM_PED_MODEL_INFOS> ms_pedModelInfoStore;
 
-    static inline CStore<CAtomicModelInfo, 20000> ms_atomicModelInfoStore;
+    // Enlarged for 0.3.DL custom models: game uses ~19000 of 20000.
+    // +2000 headroom for custom DL objects.
+    static inline CStore<CAtomicModelInfo, 22000> ms_atomicModelInfoStore;
 
     static constexpr int32 NUM_VEHICLE_MODEL_INFOS = 270;
     static inline CStore<CVehicleModelInfo, NUM_VEHICLE_MODEL_INFOS> ms_vehicleModelInfoStore;
@@ -35,7 +37,14 @@ public:
     static CBaseModelInfo* GetModelInfo(int index) { return ms_modelInfoPtrs[index]; }
     static auto GetPedModelInfo(int32_t index) { return GetModelInfo(index)->AsPedModelInfoPtr(); }
     static auto GetVehicleModelInfo(int32_t index) { return GetModelInfo(index)->AsVehicleModelInfoPtr(); }
-    static void SetModelInfo(int index, CBaseModelInfo* pInfo) { ms_modelInfoPtrs[index] = pInfo; }
+    static void SetModelInfo(int index, CBaseModelInfo* pInfo) {
+        // Bounds check: never write outside ms_modelInfoPtrs.
+        // Invalid index = programming error; ignore instead of corrupting memory.
+        if (index < 0 || index >= NUM_MODEL_INFOS) {
+            return;
+        }
+        ms_modelInfoPtrs[index] = pInfo;
+    }
 
     static void Initialise();
 };
