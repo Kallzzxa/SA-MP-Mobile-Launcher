@@ -738,7 +738,7 @@ void DLManager::RenderImGui() {
                             (m_finishTime > 0 && (now - m_finishTime) < 6000);
     if (!shouldShow) return;
 
-    const ImVec2 screen = pUI->displaySize();
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
     const float pad     = 12.0f;
     const float cardW   = std::min(std::clamp(screen.x * 0.46f, 300.0f, 440.0f),
                                    std::max(screen.x - 32.0f, 200.0f));
