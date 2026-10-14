@@ -622,6 +622,19 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
     else
         bsSend.Write(SAMP_VERSION, byteClientVerLen);
 
+	// DIAGNOSTIC: prove what we advertise. A version other than 4062 means the
+	// server will never treat us as 0.3.DL and will never stream RPC 179.
+	if (pUI) {
+		pUI->chat()->addDebugMessage("[0.3.DL] join: ver=%d token=0x%08X cliver=\"%s\"",
+			iVersion, uiChallenge,
+			pSettings ? pSettings->Get().szVersion : SAMP_VERSION);
+		if (iVersion != 4062) {
+			pUI->chat()->addDebugMessage(
+				"{F59E0B}[0.3.DL]{FFFFFF} WARNING: advertising version %d, not 4062. "
+				"Artwork will be disabled by the server.", iVersion);
+		}
+	}
+
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);

@@ -1,0 +1,1914 @@
+[
+ {
+  "file": "samp/CFPSFix.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/audiostream.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimAssocDescriptions.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Animation/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendAssocGroup.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendAssociation.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendClumpData.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Animation/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendHierarchy.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendNode.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendSequence.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimBlendStaticAssociation.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Animation/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Animation/AnimManager.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Animation/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/BuildingRemoval.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/CFileMgr.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/COcclusion.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Cam.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Camera.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/CdStreamInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/BoundingBox.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/Box.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColBox.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColDisk.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColLine.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColModel.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColPoint.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColSphere.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColStore.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColTriangle.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/ColTrianglePlane.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/Collision.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/CollisionData.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/Quaternion.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Collision/Sphere.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/ColourSet.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/CompressedVector.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/EntryInfoList.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/EntryInfoNode.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/KeyGen.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/List_c.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Matrix.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/MatrixLink.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/MatrixLinkList.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Pool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/PtrList.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/PtrListDoubleLink.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/PtrListSingleLink.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/PtrNodeDoubleLink.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/PtrNodeSingleLink.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Quaternion.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/RQVector.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Rect.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Vector.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Core/Vector2D.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Coronas.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/CrossHair.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/ES2VertexBuffer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/ES2VertexBuffer.h:7:10: fatal error: GLES3/gl32.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/Building.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/CEntityGTA.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/CPedGTA.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/CPhysical.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/CVehicleGTA.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/Dummy.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/Object.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/Placeable.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Entity/PlayerPedGta.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Entity/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Events/Event.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Events/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Events/EventGroup.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Events/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Events/EventHandler.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Events/EventHandlerHistory.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/FileLoader.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/General.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/IplStore.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Lines.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/MemoryMgr.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Models/AtomicModelInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Models/BaseModelInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Models/ClumpModelInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Models/ModelInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Models/VehicleModelInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Collision/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/PedIK.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/PedIntelligence.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pickup.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pickups.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pipelines/CustomBuilding/CustomBuildingDNPipeline.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pipelines/CustomBuilding/CustomBuildingRenderer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Pipelines/CustomBuilding/../../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pipelines/CustomCar/CustomCarEnvMapPipeline.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pipelines/RxPipeline.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/PlayerPedData.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Plugins/NodeNamePlugin/NodeName.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Plugins/RpAnimBlendPlugin/RpAnimBlend.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Plugins/RpAnimBlendPlugin/../../Animation/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Pools.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RGB.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RQ_Commands.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/RenderWare.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/RwHelper.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:22: error: expected primary-expression before \u2018*\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:25: error: \u2018__cdecl\u2019 was not declared in this scope; did you mean \u2018__ceil\u2019?",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:33: error: expected primary-expression before \u2018)\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:42: error: expected primary-expression before \u2018*\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:43: error: expected primary-expression before \u2018,\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:53: error: expected primary-expression before \u2018*\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:54: error: expected primary-expression before \u2018,\u2019 token",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/RwHelper.cpp:57:56: error: expected primary-expression before \u2018bool\u2019"
+  ]
+ },
+ {
+  "file": "samp/game/RW/pipe/p2core.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/pipe/p2define.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rphanim.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rpskin.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rpworld.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rtanim.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rtquat.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rwcore.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RW/rwplcore.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/RW/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RealTimeShadow.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RealTimeShadowManager.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/References.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/RegisteredCorona.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Renderer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Scene.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/ShadowCamera.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Shadows.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Core/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/SimpleTransform.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Streaming.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/StreamingInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/Task.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/TaskComplex.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/Task.h:32:24: error: \u2018size_t\u2019 has not been declared",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/Task.h:32:11: error: \u2018operator new\u2019 takes type \u2018size_t\u2019 (\u2018long unsigned int\u2019) as first parameter [-fpermissive]"
+  ]
+ },
+ {
+  "file": "samp/game/Tasks/TaskManager.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/TaskSimple.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/Task.h:32:24: error: \u2018size_t\u2019 has not been declared",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/Task.h:32:11: error: \u2018operator new\u2019 takes type \u2018size_t\u2019 (\u2018long unsigned int\u2019) as first parameter [-fpermissive]"
+  ]
+ },
+ {
+  "file": "samp/game/Tasks/TaskTimer.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/../Timer.h:23:29: error: expected \u2018)\u2019 before \u2018*\u2019 token"
+  ]
+ },
+ {
+  "file": "samp/game/Tasks/TaskTypes/TaskComplexEnterCar.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/TaskTypes/TaskComplexEnterCarAsDriver.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/TaskTypes/TaskSimpleAnim.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/TaskTypes/../Task.h:32:24: error: \u2018size_t\u2019 has not been declared",
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Tasks/TaskTypes/../Task.h:32:11: error: \u2018operator new\u2019 takes type \u2018size_t\u2019 (\u2018long unsigned int\u2019) as first parameter [-fpermissive]"
+  ]
+ },
+ {
+  "file": "samp/game/Tasks/TaskTypes/TaskSimpleRunNamedAnim.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Tasks/TaskTypes/TaskSimpleSlideToCoord.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Textures/TextureDatabase.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Textures/TextureDatabaseEntry.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Textures/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Textures/TextureDatabaseRuntime.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Textures/TextureListing.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Textures/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Textures/TextureListingContainer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Textures/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/TimeCycle.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Timer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/TxdStore.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/VisibilityPlugins.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/AdjustableButton.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/AdjustableHUD.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/TouchInterface.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Widgets/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/WidgetButton.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/WidgetGta.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/WidgetRadar.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/Widgets/../common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/WidgetRegion.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/Widgets/WidgetRegionLook.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/World.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/World_Helper.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/actor.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/aimstuff.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/events.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/font.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/game.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/hooks.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/hooks.cpp:1:10: fatal error: GLES2/gl2.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/materialtextgenerator.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/multitouch.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/object.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/opengl.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/pad.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/patches.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/playerped.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/radarcolors.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/rgba.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/rgba.cpp:8:10: fatal error: RGBA.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/scripting.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/snapshothelper.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/sprite2d.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/textdraw.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/util.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game/vehicle.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/game/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/game_sa/CTextureDatabaseRuntime.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/gui.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/imguirenderer.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/imguirenderer.h:33:66: error: \u2018uint8_t\u2019 has not been declared"
+  ]
+ },
+ {
+  "file": "samp/gui/imguiwrapper.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/buttonpanel.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/chat.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/content.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/dialog.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/inputwidget.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/listwidget.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/msgbox.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/dialogs/tablistwidget.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/dialogs/../../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/keyboard.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/playertablist.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/spawn.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/samp_widgets/splashscreen.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/uisettings.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widget.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/button.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/editbox.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/image.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/label.cpp",
+  "rc": 1,
+  "missing_headers": [],
+  "syntax_errors": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/..//imguirenderer.h:33:66: error: \u2018uint8_t\u2019 has not been declared"
+  ]
+ },
+ {
+  "file": "samp/gui/widgets/layout.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/listbox.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/progressbar.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/gui/widgets/scrollpanel.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/gui/widgets/../samp_widgets/keyboard.h:4:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/java/editobject.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/java/editobject.h:6:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/java/jniutil.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/log.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/main.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/main.cpp:1:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/actorpool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/dl/dlmanager.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/dl/../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/gangzonepool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/localplayer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/menupool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/netgame.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/netrpc.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/objectpool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/pickuppool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/playerbubblepool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/playerpool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/remoteplayer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/scriptrpc.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/textdrawpool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/textlabelpool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/net/vehiclepool.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/net/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/nv_event.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/nv_event.h:44:10: fatal error: jni.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/playertags.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/settings.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/util/CUtil.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/util/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Channel.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/ControlPacket.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Effect.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/GlobalStream.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/LocalStream.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/MicroIcon.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Network.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Parameter.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Playback.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Plugin.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/PluginConfig.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Record.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/Record.h:4:10: fatal error: SLES/OpenSLES.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/RecordBuffer.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/SetController.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/SlideController.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../game/common.h:18:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/SpeakerList.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/Stream.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/StreamAtObject.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/StreamAtPlayer.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/StreamAtPoint.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/StreamAtVehicle.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/StreamInfo.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/VoicePacket.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/include/util/KeyFilter.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/voice_new/include/util/../../../log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/include/util/Render.cpp",
+  "rc": 1,
+  "missing_headers": [
+   "/home/hatch/workspace/SA-MP-Mobile-Launcher/app/src/main/cpp/samp/log.h:5:10: fatal error: android/log.h: No such file or directory"
+  ],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/include/util/Samp.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ },
+ {
+  "file": "samp/voice_new/include/util/Timer.cpp",
+  "rc": 0,
+  "missing_headers": [],
+  "syntax_errors": []
+ }
+]
