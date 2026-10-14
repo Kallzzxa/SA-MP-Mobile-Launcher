@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
+#include <csignal>
 
 #include <cstdio>
 #include <cstdlib>
@@ -191,6 +192,12 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
 
     m_bShutdown = false;
     m_bInitialized = true;
+
+    // Never let a TCP RST kill the process mid-download: without this, a
+    // send() on a reset socket raises SIGPIPE and the OS terminates the app.
+    // (FetchToFile's send() also uses MSG_NOSIGNAL; this is belt and braces.)
+    // Idempotent across reconnects.
+    signal(SIGPIPE, SIG_IGN);
 
     // Spawn the SA-MP PC style pool: DL_MAX_CONCURRENT parallel transfer slots.
     for (int i = 0; i < DL_MAX_CONCURRENT; ++i) {
@@ -495,6 +502,20 @@ void DLManager::OnDownloadCompleted(RPCParameters* /*rpcParams*/) {
     m_finishTime = GetCurrentTick();
 }
 
+// RAII guard: keeps m_activeWorkers paired even if the fetch throws.
+// Without this, an exception would leak the counter and the UI would show
+// phantom active workers forever.
+struct ActiveWorkerGuard {
+    explicit ActiveWorkerGuard(std::atomic<int>& counter) : m_counter(counter) {
+        m_counter.fetch_add(1, std::memory_order_relaxed);
+    }
+    ~ActiveWorkerGuard() { m_counter.fetch_sub(1, std::memory_order_relaxed); }
+    ActiveWorkerGuard(const ActiveWorkerGuard&) = delete;
+    ActiveWorkerGuard& operator=(const ActiveWorkerGuard&) = delete;
+private:
+    std::atomic<int>& m_counter;
+};
+
 // ---------------------------------------------------------------------------
 // Worker pool: each slot claims a file, asks the server for its URL through the
 // RPC outbox, waits for RPC 183, fetches it over HTTP, validates CRC32 and
@@ -530,97 +551,107 @@ void DLManager::WorkerLoop() {
             continue;
         }
 
-        // 2. Request the URL from the server (RPC 181/182) via the outbox —
-        // but skip the round-trip when a previous attempt already cached it.
-        // (Fix: blindly re-sending 181/182 on every retry caused the RPC spam
-        // seen in the 0/325 stuck state.)
-        bool needRpc = false;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            for (const auto& t : m_tasks) {
-                if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                needRpc = t.url.empty();
-                break;
-            }
-        }
-        if (needRpc) {
-            RequestFileFromServer(pickedCrc, pickedIsDff);
-        }
-
-        // 3. Wait (bounded) for RPC 183 to deliver the URL.
-        std::string url;
-        uint32_t expectedSize = 0;
-        bool isDff = pickedIsDff;
-        for (uint32_t waited = 0; waited < DL_URL_WAIT_MS && !m_bShutdown.load(); waited += 25) {
-            bool gotUrl = false;
+        // 2-5. Per-package error boundary. NOTHING in here may escape the
+        // worker thread as an exception: the build uses -fexceptions, so an
+        // uncaught throw (e.g. std::bad_alloc under memory pressure while
+        // pulling 325 files) calls std::terminate and the whole app
+        // force-closes mid-download. A package that fails — even after
+        // DL_MAX_ATTEMPTS — is marked failed/skipped: it NEVER blocks the
+        // loop and NEVER kills the app.
+        bool fetchOk = false;
+        std::string fetchError;
+        uint64_t bytes = 0;
+        try {
+            // 2. Request the URL from the server (RPC 181/182) via the outbox —
+            // but skip the round-trip when a previous attempt already cached it.
+            bool needRpc = false;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                for (auto& t : m_tasks) {
+                for (const auto& t : m_tasks) {
                     if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                    if (!t.url.empty()) {
-                        url = t.url;
-                        expectedSize = t.size;
-                        isDff = t.isDff;
-                        gotUrl = true;
-                    }
+                    needRpc = t.url.empty();
                     break;
                 }
             }
-            if (gotUrl) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(25));
-        }
-
-        if (url.empty()) {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            for (auto& t : m_tasks) {
-                if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                t.lastError = "no url (RPC 183 timeout)";
-                if (++t.attempts >= DL_MAX_ATTEMPTS) {
-                    t.failed = true;
-                    m_failedModels++;
-                } else {
-                    t.started = false;
-                }
-                break;
+            if (needRpc) {
+                RequestFileFromServer(pickedCrc, pickedIsDff);
             }
-            continue;
+
+            // 3. Wait (bounded) for RPC 183 to deliver the URL.
+            std::string url;
+            uint32_t expectedSize = 0;
+            bool isDff = pickedIsDff;
+            for (uint32_t waited = 0; waited < DL_URL_WAIT_MS && !m_bShutdown.load(); waited += 25) {
+                bool gotUrl = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    for (auto& t : m_tasks) {
+                        if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                        if (!t.url.empty()) {
+                            url = t.url;
+                            expectedSize = t.size;
+                            isDff = t.isDff;
+                            gotUrl = true;
+                        }
+                        break;
+                    }
+                }
+                if (gotUrl) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            }
+
+            if (url.empty()) {
+                fetchError = "no url (RPC 183 timeout)";
+            } else {
+                // 4. Fetch over HTTP(S). The guard keeps m_activeWorkers paired
+                // even if FetchToFile throws.
+                DLFileTask local;
+                local.crc = pickedCrc;
+                local.size = expectedSize;
+                local.isDff = isDff;
+                local.url = url;
+
+                ActiveWorkerGuard activeGuard(m_activeWorkers);
+                fetchOk = FetchToFile(local, bytes, fetchError);
+                m_totalBytesRx += bytes;
+            }
+        } catch (const std::exception& e) {
+            fetchOk = false;
+            fetchError = std::string("c++ exception: ") + e.what();
+        } catch (...) {
+            fetchOk = false;
+            fetchError = "unknown c++ exception";
         }
 
-        // 4. Fetch over HTTP.
-        DLFileTask local;
-        local.crc = pickedCrc;
-        local.size = expectedSize;
-        local.isDff = isDff;
-        local.url = url;
-        local.hexName = GetModelPath(pickedCrc, isDff);
-
-        m_activeWorkers++;
-        uint64_t bytes = 0;
-        std::string error;
-        bool ok = FetchToFile(local, bytes, error);
-        m_activeWorkers--;
-        m_totalBytesRx += bytes;
-
-        // 5. Commit result.
+        // 5. Commit result. Failure (after DL_MAX_ATTEMPTS) marks the task
+        // failed = skipped with its reason logged; the worker ALWAYS moves on
+        // to the next package.
+        std::string skipLog;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
                 if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                if (ok) {
+                if (fetchOk) {
                     t.done = true;
                     t.url.clear();
                 } else if (++t.attempts >= DL_MAX_ATTEMPTS) {
                     t.failed = true;
-                    t.lastError = error;
+                    t.lastError = fetchError;
                     m_failedModels++;
+                    char msg[192];
+                    snprintf(msg, sizeof(msg), "Skipped %s (%s)",
+                             t.hexName.c_str(), fetchError.c_str());
+                    skipLog = msg;
                 } else {
                     t.started = false;
-                    t.url = url;   // keep the URL so a retry skips the RPC round-trip
-                    t.lastError = error;
+                    // t.url is never cleared on failure, so a retry keeps it
+                    // and skips the RPC round-trip.
+                    t.lastError = fetchError;
                 }
                 break;
             }
         }
+        if (!skipLog.empty()) PushChat(skipLog);
 
         RecomputeProgress();
     }
@@ -847,10 +878,12 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
             path.c_str(), host.c_str());
 
         // Full request write (audit B8): loop until the whole request is sent.
+        // MSG_NOSIGNAL: a RST from the server must surface as EPIPE (handled
+        // below), never as a SIGPIPE that terminates the whole app.
         size_t sent = 0;
         bool sendOk = true;
         while (sent < static_cast<size_t>(reqLen)) {
-            ssize_t n = send(sock, req + sent, reqLen - sent, 0);
+            ssize_t n = send(sock, req + sent, reqLen - sent, MSG_NOSIGNAL);
             if (n <= 0) { if (errno == EINTR) continue; sendOk = false; break; }
             sent += static_cast<size_t>(n);
         }
@@ -1090,11 +1123,21 @@ void DLManager::ProcessTick() {
     const bool allSettled = (queued == 0 && active == 0);
     const bool haveManifest = (m_totalModels.load() > 0);
 
-    if (haveManifest && allSettled && failed == 0 && !m_bFinishRequested.load()) {
-        // Every announced file verified (audit A7): only now assert completion.
+    if (haveManifest && allSettled && !m_bFinishRequested.load()) {
+        // Every task settled: downloaded or skipped-after-failures. A failed
+        // package NEVER holds the player on the download screen — it is
+        // skipped (the game falls back to base models) and /dlr stays
+        // available for a manual retry pass.
         m_bFinishRequested = true;
         m_finishTime = now;
         m_bDownloadFinished = true;
+        if (failed > 0) {
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                     "Model download finished: %zu ok, %zu skipped (use /dlr to retry)",
+                     done, failed);
+            PushChat(msg);
+        }
         SendFinishDownload();
     } else if (!haveManifest && !m_bSawAnyModel &&
                (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
@@ -1208,15 +1251,28 @@ void DLManager::RenderImGui() {
     bool showBar = false;
     float fraction = 0.0f;
 
-    if (failed > 0 && !busy) {
+    // Progress counts settled work: downloaded + skipped. The bar must always
+    // be able to reach 100% — failures are skipped, never stuck.
+    const size_t settled = done + failed;
+
+    if (failed > 0 && !busy && !finished) {
         snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
     } else if (finished) {
-        snprintf(label, sizeof(label), "Models ready");
+        if (failed > 0) {
+            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
+        } else {
+            snprintf(label, sizeof(label), "Models ready");
+        }
         fraction = 1.0f;
         showBar = total > 0;
     } else if (total > 0) {
-        fraction = std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.0f, 1.0f);
-        snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+        fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
+        if (failed > 0) {
+            snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
+                     settled, total, failed);
+        } else {
+            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+        }
         showBar = true;
     } else {
         snprintf(label, sizeof(label), "Downloading models");
