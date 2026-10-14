@@ -2,6 +2,7 @@ package com.sampmobile.xyvern.game;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -10,10 +11,13 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.sampmobile.xyvern.R;
 
 import org.json.JSONObject;
 
@@ -53,7 +57,7 @@ public final class GameDataManager {
     private static final String KEY_DATA_VERSION = "data_version";
     private static final String MARKER = "SAMP/.data_ready";
 
-    private static final int BLUE = Color.rgb(78, 126, 255);
+    private static final int ACCENT = Color.rgb(240, 180, 41); // emas/amber modern (#F0B429)
     private static final int CARD = Color.rgb(29, 35, 52);
     private static final int WHITE = Color.rgb(245, 247, 255);
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -167,9 +171,9 @@ public final class GameDataManager {
     private static void dismissLoading() { try { if (loadingDialog != null && loadingDialog.isShowing()) loadingDialog.dismiss(); } catch(Exception ignored) {} loadingDialog=null; }
 
     private static void showMaintenance(Activity a) {
-        if (a.isFinishing()) return; dismissLoading();
+        if (a.isFinishing()) return; dismissLoading(); setImmersive(a, false);
         LinearLayout root = panel(a); root.setPadding(dp(a,24),dp(a,24),dp(a,24),dp(a,22));
-        TextView icon=text(a,"⚙",32,true); icon.setTextColor(BLUE); icon.setGravity(Gravity.CENTER);
+        ImageView icon=iconView(a,R.drawable.ic_gear,56);
         TextView title=text(a,"M-SAMP Maintenance",22,true); title.setGravity(Gravity.CENTER);
         TextView msg=text(a,"Client SAMP sedang maintenance untuk update.",14,false); msg.setTextColor(Color.LTGRAY); msg.setGravity(Gravity.CENTER);
         Button exit=button(a,"KELUAR"); exit.setOnClickListener(v -> { a.finishAffinity(); android.os.Process.killProcess(android.os.Process.myPid()); });
@@ -178,7 +182,7 @@ public final class GameDataManager {
     }
 
     private static void showNetworkError(Activity a, String detail, ReadyCallback cb) {
-        if (a.isFinishing()) return; dismissLoading();
+        if (a.isFinishing()) return; dismissLoading(); setImmersive(a, false);
         new AlertDialog.Builder(a).setTitle("Gagal memuat data game")
                 .setMessage("Tidak bisa membaca app.json. Periksa internet lalu coba lagi.\n\n" + (detail == null ? "" : detail))
                 .setCancelable(false).setPositiveButton("COBA LAGI", (d,w) -> checkAndPrepare(a,cb))
@@ -186,9 +190,9 @@ public final class GameDataManager {
     }
 
     private static void showDownloadOffer(Activity a, DataInfo info, ReadyCallback cb) {
-        if (a.isFinishing()) return; dismissLoading();
+        if (a.isFinishing()) return; dismissLoading(); setImmersive(a, true);
         LinearLayout root=panel(a); root.setPadding(dp(a,22),dp(a,22),dp(a,22),dp(a,20));
-        TextView icon=text(a,"📦",34,true); icon.setGravity(Gravity.CENTER);
+        ImageView icon=iconView(a,R.drawable.ic_package,56);
         TextView title=text(a,"Download Game Data",22,true); title.setGravity(Gravity.CENTER);
         String sizeTxt = info.size > 0 ? " • " + fmtBytes(info.size) : "";
         TextView sub=text(a,"Paket data lengkap" + sizeTxt + "\nVersi " + info.version + " — cukup download sekali.",14,false);
@@ -208,14 +212,17 @@ public final class GameDataManager {
     }
 
     private static ProgressUi showProgress(Activity a, DataInfo info) {
+        setImmersive(a, true);
         LinearLayout root=panel(a); root.setPadding(dp(a,22),dp(a,22),dp(a,24),dp(a,20));
-        TextView title=text(a,"Menyiapkan Game Data",21,true);
+        ImageView pic=iconView(a,R.drawable.ic_download,48);
+        TextView title=text(a,"Menyiapkan Game Data",21,true); title.setGravity(Gravity.CENTER);
         TextView phase=text(a,"Menghubungkan...",14,false); phase.setTextColor(Color.LTGRAY);
         ProgressBar bar=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);
         bar.setMax(1000); bar.setProgress(0);
+        bar.setProgressTintList(ColorStateList.valueOf(ACCENT));
         TextView detail=text(a,"",13,false); detail.setTextColor(Color.LTGRAY);
         TextView speed=text(a,"",13,false); speed.setTextColor(Color.LTGRAY);
-        root.addView(title); addGap(a,root,10); root.addView(phase); addGap(a,root,12);
+        root.addView(pic); addGap(a,root,6); root.addView(title); addGap(a,root,10); root.addView(phase); addGap(a,root,12);
         root.addView(bar); addGap(a,root,8); root.addView(detail); addGap(a,root,2); root.addView(speed);
         AlertDialog d=new AlertDialog.Builder(a).setView(root).setCancelable(false).create();
         d.show(); styleWindow(a,d);
@@ -257,6 +264,7 @@ public final class GameDataManager {
 
                 MAIN.post(() -> {
                     if (ui.dialog.isShowing()) ui.dialog.dismiss();
+                    setImmersive(a, false);
                     Toast.makeText(a, "Game data siap dimainkan", Toast.LENGTH_SHORT).show();
                     if (!a.isFinishing()) cb.onReady();
                 });
@@ -265,6 +273,7 @@ public final class GameDataManager {
                 final File zf = zipFile;
                 MAIN.post(() -> {
                     if (ui.dialog.isShowing()) ui.dialog.dismiss();
+                    setImmersive(a, false);
                     if (a.isFinishing()) return;
                     new AlertDialog.Builder(a).setTitle("Download gagal")
                             .setMessage(e.getMessage() == null ? "Silakan coba lagi." : e.getMessage())
@@ -436,7 +445,33 @@ public final class GameDataManager {
 
     private static LinearLayout panel(Activity a) { LinearLayout l=new LinearLayout(a); l.setOrientation(LinearLayout.VERTICAL); l.setGravity(Gravity.CENTER_HORIZONTAL); l.setBackground(shape(CARD,22)); return l; }
     private static TextView text(Activity a,String s,int size,boolean bold) { TextView t=new TextView(a); t.setText(s); t.setTextColor(WHITE); t.setTextSize(size); if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD); return t; }
-    private static Button button(Activity a,String s) { Button b=new Button(a); b.setText(s); b.setTextColor(Color.WHITE); b.setTextSize(15); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT,Typeface.BOLD); b.setBackground(shape(BLUE,14)); b.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,10)); b.setMinHeight(dp(a,52)); return b; }
+    private static Button button(Activity a,String s) { Button b=new Button(a); b.setText(s); b.setTextColor(Color.rgb(20,24,31)); b.setTextSize(15); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT,Typeface.BOLD); b.setBackground(shape(ACCENT,14)); b.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,10)); b.setMinHeight(dp(a,52)); return b; }
+    /** Ikon SVG (VectorDrawable) yang di-tint warna aksen emas. */
+    private static ImageView iconView(Activity a,int resId,int sizeDp) {
+        ImageView iv=new ImageView(a); iv.setImageResource(resId); iv.setColorFilter(ACCENT);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(a,sizeDp),dp(a,sizeDp));
+        lp.gravity=Gravity.CENTER_HORIZONTAL; iv.setLayoutParams(lp); return iv;
+    }
+    /** Sembunyikan/tampilkan navigation bar (sticky immersive) selama layar download tampil. */
+    private static void setImmersive(Activity a, boolean on) {
+        if (a == null || a.isFinishing()) return;
+        MAIN.post(() -> {
+            try {
+                android.view.Window w = a.getWindow();
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    android.view.WindowInsetsController c = w.getInsetsController();
+                    if (c != null) {
+                        if (on) { c.hide(android.view.WindowInsets.Type.navigationBars()); c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE); }
+                        else { c.show(android.view.WindowInsets.Type.navigationBars()); }
+                    }
+                } else {
+                    android.view.View d = w.getDecorView();
+                    if (on) d.setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+                    else d.setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_VISIBLE);
+                }
+            } catch (Exception ignored) {}
+        });
+    }
     private static GradientDrawable shape(int color,int radius) { GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); return d; }
     private static void addGap(Activity a,LinearLayout l,int h) { View v=new View(a); l.addView(v,new LinearLayout.LayoutParams(1,dp(a,h))); }
     private static int dp(Activity a,int n) { return (int)(n*a.getResources().getDisplayMetrics().density+0.5f); }

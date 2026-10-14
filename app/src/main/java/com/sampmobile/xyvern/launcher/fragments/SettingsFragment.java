@@ -48,7 +48,7 @@ public class SettingsFragment extends Fragment {
     TextView mFPSText;
 
 
-    String[] titles = {"0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
+    String[] titles = {"0.3.7", "0.3.7-R5"};
 
     Spinner autoCompleteTextView;
     ArrayAdapter<String> adapter;
@@ -82,6 +82,14 @@ public class SettingsFragment extends Fragment {
         adapter = new ArrayAdapter<String>(getActivity(), R.layout.spinner_item, titles);
         adapter.setDropDownViewResource(R.layout.spinner_item);
         autoCompleteTextView.setAdapter(adapter);
+
+        // Migrasi sekali: petakan nilai VERSION lama (0-4) ke skema baru (0-1).
+        // 4 (dulu R5) -> 1, nilai > 1 lainnya -> 0. Disimpan permanen.
+        SharedPreferenceCore versionPrefs = new SharedPreferenceCore();
+        int rawVersion = versionPrefs.getInt(requireContext().getApplicationContext(), "VERSION", 0);
+        if (rawVersion > 1) {
+            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", rawVersion == 4 ? 1 : 0);
+        }
 
         File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
         try {

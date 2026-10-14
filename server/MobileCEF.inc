@@ -79,6 +79,14 @@ enum e_CefRpc
 #define CEF_UI_CHUNK_RAW            (1536)   // -> 2048 base64 chars per chunk
 #define CEF_UI_CHUNKS_PER_TICK      (6)
 
+// strcpy/strncmp bukan native SA-MP: sediakan versi lokal.
+stock Cef_StrCpy(dest[], const src[], len = sizeof dest)
+{
+    dest[0] = EOS;
+    strcat(dest, src, len);
+    return 1;
+}
+
 static stock
     cef_packet_id = CEF_DEFAULT_PACKET_ID,
     bool:cef_player_ready[MAX_PLAYERS char],
@@ -109,7 +117,7 @@ stock Cef_SetPacketId(packetid = CEF_DEFAULT_PACKET_ID)
 }
 #define CefSetPacketId Cef_SetPacketId
 
-static stock Cef_BitStream(e_CefRpc:rpcid)
+static stock BitStream:Cef_BitStream(e_CefRpc:rpcid)
 {
     new BitStream:bs = BS_New();
     BS_WriteValue(bs, PR_UINT16, cef_packet_id, PR_UINT32, _:rpcid);
@@ -130,7 +138,7 @@ stock CefInitBrowser(playerid, const url[])
 {
     new BitStream:bs = Cef_BitStream(RPC_InitBrowser);
     Cef_SendString(bs, url);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -138,7 +146,7 @@ stock CefInitBrowser(playerid, const url[])
 stock CefDestroyBrowser(playerid)
 {
     new BitStream:bs = Cef_BitStream(RPC_DestroyBrowser);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -146,7 +154,7 @@ stock CefDestroyBrowser(playerid)
 stock CefShowBrowser(playerid)
 {
     new BitStream:bs = Cef_BitStream(RPC_ShowBrowser);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -154,7 +162,7 @@ stock CefShowBrowser(playerid)
 stock CefHideBrowser(playerid)
 {
     new BitStream:bs = Cef_BitStream(RPC_HideBrowser);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -163,7 +171,7 @@ stock CefSetBrowserUrl(playerid, const url[])
 {
     new BitStream:bs = Cef_BitStream(RPC_SetBrowserUrl);
     Cef_SendString(bs, url);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -172,7 +180,7 @@ stock CefChangeBrowserFocus(playerid, bool:focus)
 {
     new BitStream:bs = Cef_BitStream(RPC_ChangeBrowserFocus);
     BS_WriteValue(bs, PR_BOOL, focus);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -191,7 +199,7 @@ stock CefSendEvent(playerid, const event_name[], const event_data[])
     new BitStream:bs = Cef_BitStream(RPC_ServerEvent);
     Cef_SendString(bs, event_name);
     Cef_SendString(bs, event_data);
-    BS_Send(bs, playerid);
+    PR_SendPacket(bs, playerid);
     BS_Delete(bs);
     return 1;
 }
@@ -202,18 +210,18 @@ stock CefSendEvent(playerid, const event_name[], const event_data[])
 stock CefRegisterEventCallback(const event_name[], const callback[])
 {
     // __cefui_* is reserved for the built-in UI sync, do not override it
-    if (!strncmp(event_name, "__cefui_", 8, true)) return 0;
+    if (!strcmp(event_name, "__cefui_", true, 8)) return 0;
     for (new i = 0; i < cef_cb_count; i++)
     {
         if (!strcmp(cef_cb_event[i], event_name, true))
         {
-            strcpy(cef_cb_func[i], callback, 64);
+            Cef_StrCpy(cef_cb_func[i], callback, 64);
             return 1;
         }
     }
     if (cef_cb_count >= CEF_MAX_CALLBACKS) return 0;
-    strcpy(cef_cb_event[cef_cb_count], event_name, CEF_MAX_EVENT_NAME_LEN);
-    strcpy(cef_cb_func[cef_cb_count], callback, 64);
+    Cef_StrCpy(cef_cb_event[cef_cb_count], event_name, CEF_MAX_EVENT_NAME_LEN);
+    Cef_StrCpy(cef_cb_func[cef_cb_count], callback, 64);
     cef_cb_count++;
     return 1;
 }
@@ -252,7 +260,7 @@ static stock Cef_Base64Encode(const data[], len, out[], outsize)
 // ---------------------------------------------------------------------------
 static stock Cef_UIReadVersion(out[], outsize = sizeof out)
 {
-    strcpy(out, "1", outsize);
+    Cef_StrCpy(out, "1", outsize);
     if (!fexist("scriptfiles/cef/version.txt")) return 0;
     new File:f = fopen("scriptfiles/cef/version.txt", io_read);
     if (!f) return 0;
@@ -264,7 +272,7 @@ static stock Cef_UIReadVersion(out[], outsize = sizeof out)
         while (line[s] == ' ' || line[s] == '\t' || line[s] == '\r' || line[s] == '\n') s++;
         while (e > s && (line[e - 1] == ' ' || line[e - 1] == '\t' || line[e - 1] == '\r' || line[e - 1] == '\n')) e--;
         line[e] = EOS;
-        if (e > s) strcpy(out, line[s], outsize);
+        if (e > s) Cef_StrCpy(out, line[s], outsize);
     }
     fclose(f);
     return 1;
@@ -295,7 +303,7 @@ static stock Cef_UIReadManifest(playerid)
                 }
                 clean[c] = EOS;
                 if (c == 0 || strfind(clean, "..") != -1) continue;
-                strcpy(cefUiFile[playerid][cefUiFileCount[playerid]], clean, 64);
+                Cef_StrCpy(cefUiFile[playerid][cefUiFileCount[playerid]], clean, 64);
                 cefUiFileCount[playerid]++;
             }
             fclose(f);
@@ -303,7 +311,7 @@ static stock Cef_UIReadManifest(playerid)
     }
     if (cefUiFileCount[playerid] == 0)
     {
-        strcpy(cefUiFile[playerid][0], "index.html", 64);
+        Cef_StrCpy(cefUiFile[playerid][0], "index.html", 64);
         cefUiFileCount[playerid] = 1;
     }
 }
@@ -328,7 +336,7 @@ stock CefSyncUI(playerid)
     }
     Cef_UIRegisterInternal();
     Cef_UIReadManifest(playerid);
-    strcpy(cefUiVer[playerid], ver, 32);
+    Cef_StrCpy(cefUiVer[playerid], ver, 32);
     cefUiIdx[playerid] = 0;
     cefUiSending[playerid] = false;
     cefUiReady[playerid] = false;
@@ -350,8 +358,8 @@ static stock Cef_UIRegisterInternal()
         for (new j = 0; j < cef_cb_count; j++) if (!strcmp(cef_cb_event[j], ev[i], true)) { exists = 1; break; }
         if (!exists && cef_cb_count < CEF_MAX_CALLBACKS)
         {
-            strcpy(cef_cb_event[cef_cb_count], ev[i], CEF_MAX_EVENT_NAME_LEN);
-            strcpy(cef_cb_func[cef_cb_count], fn[i], 64);
+            Cef_StrCpy(cef_cb_event[cef_cb_count], ev[i], CEF_MAX_EVENT_NAME_LEN);
+            Cef_StrCpy(cef_cb_func[cef_cb_count], fn[i], 64);
             cef_cb_count++;
         }
     }

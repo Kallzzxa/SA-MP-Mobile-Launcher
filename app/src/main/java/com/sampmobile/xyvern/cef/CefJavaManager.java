@@ -59,6 +59,20 @@ public class CefJavaManager {
     public static void setWebViewEnabled(boolean enabled) { sWebViewEnabled = enabled; }
     public static boolean isWebViewEnabled() { return sWebViewEnabled; }
 
+    /**
+     * WebView overlay HUD: sentuhan TEMBUS ke game di bawahnya saat tidak ada
+     * dialog HTML terbuka. JS mengaktifkan interaksi lewat cef.set_focus(true).
+     */
+    private static final class CefHudWebView extends WebView {
+        private volatile boolean mInteractionEnabled = false;
+        CefHudWebView(android.content.Context ctx) { super(ctx); }
+        void setInteractionEnabled(boolean enabled) { mInteractionEnabled = enabled; }
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            if (!mInteractionEnabled) return false; // tembus ke game di bawahnya
+            return super.onTouchEvent(event);
+        }
+    }
+
     /** Device folder where server-synced CEF UI files are cached. */
     private File getUiDir() {
         File dir = new File(mActivity.getExternalFilesDir(null), "SAMP/cef_ui");
@@ -231,8 +245,8 @@ public class CefJavaManager {
     private void initWebView() {
         if (mWebView != null) return;
 
-        // Keep normal WebView touch dispatch enabled so HTML controls can be clicked.
-        mWebView = new WebView(mActivity);
+        // Pakai CefHudWebView: sentuhan tembus ke game kecuali dialog HTML sedang fokus.
+        mWebView = new CefHudWebView(mActivity);
         mWebView.setFocusable(true);
         mWebView.setFocusableInTouchMode(true);
         mWebView.setClickable(true);
@@ -515,6 +529,7 @@ public class CefJavaManager {
                 } else {
                     mWebView.clearFocus();
                 }
+                if (mWebView instanceof CefHudWebView) ((CefHudWebView) mWebView).setInteractionEnabled(focused);
             });
         }
 
