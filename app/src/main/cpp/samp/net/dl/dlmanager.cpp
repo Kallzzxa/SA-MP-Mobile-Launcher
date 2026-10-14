@@ -530,8 +530,22 @@ void DLManager::WorkerLoop() {
             continue;
         }
 
-        // 2. Request the URL from the server (RPC 181/182) via the outbox.
-        RequestFileFromServer(pickedCrc, pickedIsDff);
+        // 2. Request the URL from the server (RPC 181/182) via the outbox —
+        // but skip the round-trip when a previous attempt already cached it.
+        // (Fix: blindly re-sending 181/182 on every retry caused the RPC spam
+        // seen in the 0/325 stuck state.)
+        bool needRpc = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (const auto& t : m_tasks) {
+                if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                needRpc = t.url.empty();
+                break;
+            }
+        }
+        if (needRpc) {
+            RequestFileFromServer(pickedCrc, pickedIsDff);
+        }
 
         // 3. Wait (bounded) for RPC 183 to deliver the URL.
         std::string url;
@@ -613,10 +627,72 @@ void DLManager::WorkerLoop() {
 }
 
 // ---------------------------------------------------------------------------
+// JNI HTTPS download: delegates https:// URLs to Android's HttpURLConnection
+// via com.sampmobile.xyvern.game.DLHttpClient. The JVM's TLS stack (system
+// trust store, full cert validation) is used — cert validation is NEVER
+// disabled. Worker threads attach/detach around the call.
+// Returns true and leaves a complete file at destPath on success.
+// ---------------------------------------------------------------------------
+static bool FetchViaJniHttps(const std::string& url, const std::string& destPath,
+                             uint64_t maxBytes, std::string& outError) {
+    if (!javaVM) {
+        outError = "jni: no JVM";
+        return false;
+    }
+
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    if (javaVM->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        if (javaVM->AttachCurrentThread(&env, nullptr) != JNI_OK || !env) {
+            outError = "jni: attach failed";
+            return false;
+        }
+        attached = true;
+    }
+
+    bool ok = false;
+    jclass cls = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
+    if (!cls) {
+        outError = "jni: DLHttpClient not found";
+    } else {
+        jmethodID mid = env->GetStaticMethodID(cls, "downloadFile",
+            "(Ljava/lang/String;Ljava/lang/String;J)I");
+        if (!mid) {
+            outError = "jni: downloadFile not found";
+        } else {
+            jstring jUrl = env->NewStringUTF(url.c_str());
+            jstring jPath = env->NewStringUTF(destPath.c_str());
+            jint result = env->CallStaticIntMethod(cls, mid, jUrl, jPath,
+                                                   static_cast<jlong>(maxBytes));
+            if (env->ExceptionCheck()) {
+                env->ExceptionDescribe();
+                env->ExceptionClear();
+                outError = "jni: exception in downloadFile";
+            } else if (result == 0) {
+                ok = true;
+            } else {
+                char e[64];
+                snprintf(e, sizeof(e), "jni: download failed (%d)", static_cast<int>(result));
+                outError = e;
+            }
+            if (jUrl) env->DeleteLocalRef(jUrl);
+            if (jPath) env->DeleteLocalRef(jPath);
+        }
+        env->DeleteLocalRef(cls);
+    }
+
+    if (attached) {
+        javaVM->DetachCurrentThread();
+    }
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
 // HTTP GET hardening: full request write, header cap, redirect following,
 // 2xx-only, chunked/encoding rejection, stall-based timeout, size cap,
-// fsync-then-atomic-rename. No TLS in this tree: https/CDN redirect targets are
-// reported as an explicit error rather than a silent connect failure.
+// fsync-then-atomic-rename. Plain-HTTP only: https:// URLs are delegated to
+// Android's HttpURLConnection via JNI (FetchViaJniHttps) at the top of
+// FetchToFile, which uses the system TLS stack with full cert validation.
 // ---------------------------------------------------------------------------
 bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::string& outError) {
     outBytes = 0;
@@ -626,19 +702,58 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
         outError = "bad url";
         return false;
     }
-    if (pu.isHttps) {
-        outError = "https (TLS) unsupported";
-        return false;
-    }
-
-    std::string host = pu.host;
-    int         port = pu.port;
-    std::string path = pu.path;
 
     const std::string finalPath = GetModelPath(task.crc, task.isDff);
     const uint64_t hardCap = (task.size > 0)
         ? (static_cast<uint64_t>(task.size) + (static_cast<uint64_t>(task.size) / 2) + 65536ull)
         : (64ull * 1024ull * 1024ull); // 64 MiB ceiling when the server gave no size
+
+    // HTTPS: the native raw-socket client cannot speak TLS, so delegate to
+    // Android's HttpURLConnection via JNI (system trust store, full cert
+    // validation). The downloaded temp file goes through the same CRC32 /
+    // size validation and atomic rename as the plain-HTTP path below.
+    if (pu.isHttps) {
+        char tempPath[600];
+        snprintf(tempPath, sizeof(tempPath), "%s%08X.%d.temp",
+                 GetCachePath().c_str(), task.crc, static_cast<int>(getpid()));
+
+        if (!FetchViaJniHttps(task.url, tempPath, hardCap, outError)) {
+            unlink(tempPath);
+            return false;
+        }
+        if (CalculateFileCRC32(tempPath) != task.crc) {
+            unlink(tempPath);
+            outError = "crc mismatch";
+            return false;
+        }
+        if (task.size > 0) {
+            struct stat st;
+            if (stat(tempPath, &st) == 0 &&
+                static_cast<uint32_t>(st.st_size) != task.size) {
+                unlink(tempPath);
+                outError = "size mismatch";
+                return false;
+            }
+        }
+        // Durability before the atomic rename.
+        {
+            FILE* fp = fopen(tempPath, "rb");
+            if (fp) { int fd = fileno(fp); if (fd >= 0) fsync(fd); fclose(fp); }
+        }
+        if (rename(tempPath, finalPath.c_str()) != 0) {
+            unlink(tempPath);
+            outError = "rename";
+            return false;
+        }
+        struct stat st;
+        outBytes = (stat(finalPath.c_str(), &st) == 0)
+            ? static_cast<uint64_t>(st.st_size) : 0ull;
+        return true;
+    }
+
+    std::string host = pu.host;
+    int         port = pu.port;
+    std::string path = pu.path;
 
     bool ok = false;
     uint64_t totalWritten = 0;
@@ -847,9 +962,16 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
 
         if (!redirectTo.empty()) {
             ParsedUrl np;
-            if (!ParseHttpUrl(redirectTo, np) || np.isHttps) {
+            if (!ParseHttpUrl(redirectTo, np)) {
                 outError = "redirect target unsupported";
                 return false;
+            }
+            if (np.isHttps) {
+                // Redirect target is HTTPS: delegate the remainder to the JNI
+                // downloader (same validation path as a direct HTTPS URL).
+                DLFileTask httpsTask = task;
+                httpsTask.url = redirectTo;
+                return FetchToFile(httpsTask, outBytes, outError);
             }
             host = np.host; port = np.port; path = np.path;
             totalWritten = 0;
