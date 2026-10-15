@@ -4,11 +4,8 @@
 //
 
 #include "gizmo.h"
-#include "game/common.h"
-#include "editobject.h"
-#include "net/netgame.h"
 
-extern CNetGame* pNetGame;
+CGizmo::eAxis CGizmo::s_activeAxis = CGizmo::AXIS_X;
 
 // Warna axis: X=merah, Y=hijau, Z=biru (konvensi standar)
 static uint32_t GetAxisColor(CGizmo::eAxis axis, bool active) {
@@ -50,25 +47,10 @@ void CGizmo::Render(const CVector& pos, eAxis activeAxis) {
     }
 }
 
-// Dipanggil setiap frame saat edit mode aktif.
-// Harus dipanggil dari dalam render loop 3D.
-void CGizmo::RenderIfEditing() {
-    if (!CObjectEditor::bIsToggle) return;
-    if (CObjectEditor::editType != CObjectEditor::TYPE_OBJECT) return;
-    if (!pNetGame) return;
-
-    auto pObject = pNetGame->GetObjectPool()->GetAt(CObjectEditor::iEditedId);
-    if (!pObject || !pObject->m_pEntity) return;
-
-    RwMatrix mat = pObject->m_pEntity->GetMatrix().ToRwMatrix();
-    CVector pos(mat.pos.x, mat.pos.y, mat.pos.z);
-
-    // Tentukan axis aktif dari state Java (disimpan di C++ via setter)
-    Render(pos, s_activeAxis);
-}
-
-CGizmo::eAxis CGizmo::s_activeAxis = CGizmo::AXIS_X;
-
 void CGizmo::SetActiveAxis(eAxis axis) {
     s_activeAxis = axis;
+}
+
+CGizmo::eAxis CGizmo::GetActiveAxis() {
+    return s_activeAxis;
 }

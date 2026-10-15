@@ -23,11 +23,9 @@ public:
     // Render gizmo di posisi object. activeAxis = axis yang sedang aktif (highlight)
     static void Render(const CVector& pos, eAxis activeAxis);
 
-    // Dipanggil setiap frame saat edit mode aktif (dari render loop)
-    static void RenderIfEditing();
-
-    // Set axis aktif (dipanggil dari Java via JNI saat user ganti mode)
+    // Set/get axis aktif (dipanggil dari Java via JNI saat user ganti mode)
     static void SetActiveAxis(eAxis axis);
+    static eAxis GetActiveAxis();
 
 private:
     static eAxis s_activeAxis;
