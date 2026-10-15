@@ -344,6 +344,22 @@ Java_com_sampmobile_xyvern_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
     CObjectEditor::time = 0;
 }
 
+// Render gizmo 3D di posisi object yang sedang diedit.
+// Dipanggil tiap frame dari CNetGame::Process() saat edit mode aktif.
+void CObjectEditor::ProcessGizmo() {
+    if (!bIsToggle) return;
+    if (editType != TYPE_OBJECT) return;
+    if (!pNetGame) return;
+
+    CObject *pObject = pNetGame->GetObjectPool()->GetAt(iEditedId);
+    if (!pObject || !pObject->m_pEntity) return;
+
+    RwMatrix mat = pObject->m_pEntity->GetMatrix().ToRwMatrix();
+    CVector pos(mat.pos.x, mat.pos.y, mat.pos.z);
+
+    CGizmo::Render(pos, CGizmo::GetActiveAxis());
+}
+
 // JNI: set gizmo active axis dari Java (0=X, 1=Y, 2=Z, -1=none)
 extern "C"
 JNIEXPORT void JNICALL

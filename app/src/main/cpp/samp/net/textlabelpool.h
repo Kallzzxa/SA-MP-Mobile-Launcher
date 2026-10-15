@@ -6,6 +6,7 @@
 typedef struct _TEXT_LABEL
 {
 	std::string text;
+	std::string textWithoutColors;
 	uint32_t dwColor;
 	CVector vecPos;
 	float fDistance;

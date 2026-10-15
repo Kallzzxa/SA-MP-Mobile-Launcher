@@ -10,6 +10,7 @@
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
+#include "../java/editobject.h"
 
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
@@ -226,6 +227,7 @@ void CNetGame::Process()
 
 	if (GetGameState() == GAMESTATE_CONNECTED) {
 		ProcessPools();
+		CObjectEditor::ProcessGizmo();
 	}
 	else {
 		ProcessLoadingScreen();
