@@ -2699,7 +2699,7 @@ RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject)
 
 RpAtomic* ObjectMaterialTextCallBack(RpAtomic* rpAtomic, CObject* pObject)
 {
-    if(!pObject->m_MaterialTextTexture || rpAtomic->object.object.type != 1) return rpAtomic;
+    if(rpAtomic->object.object.type != 1) return rpAtomic;
 
     int iTotalEntries = rpAtomic->geometry->matList.numMaterials;
     if (iTotalEntries > 16) iTotalEntries = 16; // fix fucking bug :|

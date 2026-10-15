@@ -38,7 +38,8 @@ void MaterialTextGenerator::Render(const char* text, const ImVec2& size, int fon
 	if (pUI) {
 		ImGui::NewFrame();
 
-		auto info = Encoding::cp2utf(text).c_str();
+		std::string utfText = Encoding::cp2utf(text);
+		const char* info = utfText.c_str();
 
 		pUI->renderer()->drawRect(ImVec2(0.0f, 0.0f), size, background_color, true);
 		ImVec2 text_size = pUI->renderer()->calculateTextSize(info, font_size);
