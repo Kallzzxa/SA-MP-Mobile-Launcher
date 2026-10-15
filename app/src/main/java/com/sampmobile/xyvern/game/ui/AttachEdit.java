@@ -38,7 +38,7 @@ public class AttachEdit {
     private ConstraintLayout attach_rotX;
     private ConstraintLayout attach_rotY;
     private ConstraintLayout attach_rotZ;
-    //private TextView attach_text_description;
+    private TextView attach_text_description;
     private Button attach_left_butt;
     private Button attach_right_button;
 
@@ -62,7 +62,7 @@ public class AttachEdit {
         attach_right_button = activity.findViewById(R.id.attach_right_button);
         attach_right_button.setOnTouchListener(touchListener);
 
-        //attach_text_description = activity.findViewById(R.id.attach_text_description);
+        attach_text_description = activity.findViewById(R.id.attach_text_description);
 
         attach_save_butt = activity.findViewById(R.id.attach_save_butt);
         attach_save_butt.setOnClickListener(view -> {
@@ -79,48 +79,48 @@ public class AttachEdit {
         attach_leftright = activity.findViewById(R.id.attach_leftright);
         attach_leftright.setOnClickListener(view -> {
             active_button = POSITION_X;
-            //attach_text_description.setText("Установите смещение по оси X");
+            attach_text_description.setText("Atur posisi X (geser kiri/kanan)");
             SelectetItem(view);
         });
 
         attach_topbott = activity.findViewById(R.id.attach_topbott);
         attach_topbott.setOnClickListener(view -> {
             active_button = POSITION_Y;
-            //attach_text_description.setText("Установите смещение по оси Y");
+            attach_text_description.setText("Atur posisi Y (geser depan/belakang)");
             SelectetItem(view);
         });
 
         attach_pushpull = activity.findViewById(R.id.attach_pushpull);
         attach_pushpull.setOnClickListener(view -> {
             active_button = POSITION_Z;
-            //attach_text_description.setText("Установите смещение по оси Z");
+            attach_text_description.setText("Atur posisi Z (naik/turun)");
             SelectetItem(view);
         });
 
         attach_scale = activity.findViewById(R.id.attach_scale);
         attach_scale.setOnClickListener(view -> {
-            //attach_text_description.setText("Установите размер");
+            attach_text_description.setText("Atur ukuran object");
             active_button = BUTTON_SCALE;
             SelectetItem(view);
         });
 
         attach_rotX = activity.findViewById(R.id.attach_rotX);
         attach_rotX.setOnClickListener(view -> {
-            //attach_text_description.setText("Установите поворот X");
+            attach_text_description.setText("Atur rotasi X");
             active_button = BUTTON_ROT_X;
             SelectetItem(view);
         });
 
         attach_rotY = activity.findViewById(R.id.attach_rotY);
         attach_rotY.setOnClickListener(view -> {
-            //attach_text_description.setText("Установите поворот Y");
+            attach_text_description.setText("Atur rotasi Y");
             active_button = BUTTON_ROT_Y;
             SelectetItem(view);
         });
 
         attach_rotZ = activity.findViewById(R.id.attach_rotZ);
         attach_rotZ.setOnClickListener(view -> {
-            //attach_text_description.setText("Установите поворот Z");
+            attach_text_description.setText("Atur rotasi Z");
             active_button = BUTTON_ROT_Z;
             SelectetItem(view);
         });
