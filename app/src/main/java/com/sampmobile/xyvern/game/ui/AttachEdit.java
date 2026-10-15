@@ -11,12 +11,12 @@ import android.widget.TextView;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
-import com.google.android.material.button.MaterialButton;
 import com.joom.paranoid.Obfuscate;
 import com.sampmobile.xyvern.R;
 import com.sampmobile.xyvern.launcher.util.Util;
 @Obfuscate
 public class AttachEdit {
+    // Native button types (must match C++ AttachClick handler)
     private final int POSITION_Y = 0;
     private final int POSITION_Z = 1;
     private final int POSITION_X = 2;
@@ -25,19 +25,35 @@ public class AttachEdit {
     private final int BUTTON_ROT_Y = 5;
     private final int BUTTON_ROT_Z = 6;
 
-    private int active_button = -1;
+    // UI modes (PC-style edit object)
+    private final int MODE_POS = 0;
+    private final int MODE_ROT = 1;
+    private final int MODE_SCALE = 2;
+
+    private int active_mode = -1;
+    private int pos_axis = 0; // 0=X, 1=Y, 2=Z
+    private int rot_axis = 0; // 0=X, 1=Y, 2=Z
+
+    private final int[] POS_BUTTONS = {POSITION_X, POSITION_Y, POSITION_Z};
+    private final int[] ROT_BUTTONS = {BUTTON_ROT_X, BUTTON_ROT_Y, BUTTON_ROT_Z};
+    private final String[] POS_NAMES = {"X", "Y", "Z"};
+    private final String[] POS_DESC = {
+        "Atur posisi X (geser kiri/kanan)",
+        "Atur posisi Y (geser depan/belakang)",
+        "Atur posisi Z (naik/turun)"
+    };
+    private final String[] ROT_DESC = {
+        "Atur rotasi X",
+        "Atur rotasi Y",
+        "Atur rotasi Z"
+    };
 
     private Activity activity;
     private ConstraintLayout attach_main_layot;
-    private Button attach_exit_butt;
-    private Button attach_save_butt;
-    private ConstraintLayout attach_leftright;
-    private ConstraintLayout attach_topbott;
-    private ConstraintLayout attach_pushpull;
-    private ConstraintLayout attach_scale;
-    private ConstraintLayout attach_rotX;
-    private ConstraintLayout attach_rotY;
-    private ConstraintLayout attach_rotZ;
+    private Button attach_mode_pos;
+    private Button attach_mode_rot;
+    private Button attach_mode_scale;
+    private Button attach_mode_save;
     private TextView attach_text_description;
     private Button attach_left_butt;
     private Button attach_right_button;
@@ -45,7 +61,7 @@ public class AttachEdit {
     native void Exit();
     native void AttachClick(int buttonType, boolean buttonID);
     native void Save();
-    
+
     public boolean isShow;
 
     @SuppressLint("ClickableViewAccessibility")
@@ -56,73 +72,46 @@ public class AttachEdit {
         ConstraintLayout layout = (ConstraintLayout) activity.getLayoutInflater().inflate(R.layout.attachedit, null);
         activity.addContentView(layout, new ConstraintLayout.LayoutParams(-1, -1));
 
+        attach_mode_pos = activity.findViewById(R.id.attach_mode_pos);
+        attach_mode_rot = activity.findViewById(R.id.attach_mode_rot);
+        attach_mode_scale = activity.findViewById(R.id.attach_mode_scale);
+        attach_mode_save = activity.findViewById(R.id.attach_mode_save);
+        attach_text_description = activity.findViewById(R.id.attach_text_description);
         attach_left_butt = activity.findViewById(R.id.attach_left_butt);
-        attach_left_butt.setOnTouchListener(touchListener);
-
         attach_right_button = activity.findViewById(R.id.attach_right_button);
+
+        attach_left_butt.setOnTouchListener(touchListener);
         attach_right_button.setOnTouchListener(touchListener);
 
-        attach_text_description = activity.findViewById(R.id.attach_text_description);
+        attach_mode_pos.setOnClickListener(view -> {
+            if (active_mode == MODE_POS) {
+                // Cycle axis X -> Y -> Z
+                pos_axis = (pos_axis + 1) % 3;
+            } else {
+                active_mode = MODE_POS;
+            }
+            updateModeUI();
+        });
 
-        attach_save_butt = activity.findViewById(R.id.attach_save_butt);
-        attach_save_butt.setOnClickListener(view -> {
+        attach_mode_rot.setOnClickListener(view -> {
+            if (active_mode == MODE_ROT) {
+                // Cycle axis X -> Y -> Z
+                rot_axis = (rot_axis + 1) % 3;
+            } else {
+                active_mode = MODE_ROT;
+            }
+            updateModeUI();
+        });
+
+        attach_mode_scale.setOnClickListener(view -> {
+            active_mode = MODE_SCALE;
+            updateModeUI();
+        });
+
+        attach_mode_save.setOnClickListener(view -> {
             Util.HideLayout(attach_main_layot, true);
+            isShow = false;
             Save();
-        });
-
-        attach_exit_butt = activity.findViewById(R.id.attach_exit_butt);
-        attach_exit_butt.setOnClickListener(view -> {
-            Util.HideLayout(attach_main_layot, true);
-            Exit();
-        });
-
-        attach_leftright = activity.findViewById(R.id.attach_leftright);
-        attach_leftright.setOnClickListener(view -> {
-            active_button = POSITION_X;
-            attach_text_description.setText("Atur posisi X (geser kiri/kanan)");
-            SelectetItem(view);
-        });
-
-        attach_topbott = activity.findViewById(R.id.attach_topbott);
-        attach_topbott.setOnClickListener(view -> {
-            active_button = POSITION_Y;
-            attach_text_description.setText("Atur posisi Y (geser depan/belakang)");
-            SelectetItem(view);
-        });
-
-        attach_pushpull = activity.findViewById(R.id.attach_pushpull);
-        attach_pushpull.setOnClickListener(view -> {
-            active_button = POSITION_Z;
-            attach_text_description.setText("Atur posisi Z (naik/turun)");
-            SelectetItem(view);
-        });
-
-        attach_scale = activity.findViewById(R.id.attach_scale);
-        attach_scale.setOnClickListener(view -> {
-            attach_text_description.setText("Atur ukuran object");
-            active_button = BUTTON_SCALE;
-            SelectetItem(view);
-        });
-
-        attach_rotX = activity.findViewById(R.id.attach_rotX);
-        attach_rotX.setOnClickListener(view -> {
-            attach_text_description.setText("Atur rotasi X");
-            active_button = BUTTON_ROT_X;
-            SelectetItem(view);
-        });
-
-        attach_rotY = activity.findViewById(R.id.attach_rotY);
-        attach_rotY.setOnClickListener(view -> {
-            attach_text_description.setText("Atur rotasi Y");
-            active_button = BUTTON_ROT_Y;
-            SelectetItem(view);
-        });
-
-        attach_rotZ = activity.findViewById(R.id.attach_rotZ);
-        attach_rotZ.setOnClickListener(view -> {
-            attach_text_description.setText("Atur rotasi Z");
-            active_button = BUTTON_ROT_Z;
-            SelectetItem(view);
         });
 
         attach_main_layot = activity.findViewById(R.id.attach_main_layot);
@@ -131,15 +120,45 @@ public class AttachEdit {
         Util.HideLayout(attach_main_layot, true);
     }
 
+    private int getActiveButtonType() {
+        if (active_mode == MODE_POS) return POS_BUTTONS[pos_axis];
+        if (active_mode == MODE_ROT) return ROT_BUTTONS[rot_axis];
+        if (active_mode == MODE_SCALE) return BUTTON_SCALE;
+        return -1;
+    }
+
+    private void updateModeUI() {
+        int red = Color.parseColor("#C62828");
+        int dark = Color.parseColor("#212121");
+
+        attach_mode_pos.setBackgroundTintList(ColorStateList.valueOf(active_mode == MODE_POS ? red : dark));
+        attach_mode_rot.setBackgroundTintList(ColorStateList.valueOf(active_mode == MODE_ROT ? red : dark));
+        attach_mode_scale.setBackgroundTintList(ColorStateList.valueOf(active_mode == MODE_SCALE ? red : dark));
+
+        if (active_mode == MODE_POS) {
+            attach_text_description.setText("Position mode — " + POS_DESC[pos_axis]);
+        } else if (active_mode == MODE_ROT) {
+            attach_text_description.setText("Rotation mode — " + ROT_DESC[rot_axis]);
+        } else if (active_mode == MODE_SCALE) {
+            attach_text_description.setText("Scale mode — Atur ukuran object");
+        }
+    }
+
     public void show()
     {
         isShow = true;
+        // Default to position mode like PC edit object
+        active_mode = MODE_POS;
+        pos_axis = 0;
+        rot_axis = 0;
+        updateModeUI();
         Util.ShowLayout(attach_main_layot, true);
     }
 
     public void hide()
     {
         isShow = false;
+        active_mode = -1;
         Util.HideLayout(attach_main_layot, true);
     }
 
@@ -153,36 +172,11 @@ public class AttachEdit {
         attach_main_layot.setVisibility(View.GONE);
     }
 
-    public void SelectetItem(View view){
-        attach_leftright.getChildAt(0).setBackgroundTintList(null);
-        //attach_leftright.getChildAt(2).setBackgroundTintList(null);
-
-        attach_topbott.getChildAt(0).setBackgroundTintList(null);
-        //attach_topbott.getChildAt(2).setBackgroundTintList(null);
-
-        attach_pushpull.getChildAt(0).setBackgroundTintList(null);
-        //attach_pushpull.getChildAt(2).setBackgroundTintList(null);
-
-        attach_scale.getChildAt(0).setBackgroundTintList(null);
-        //attach_scale.getChildAt(2).setBackgroundTintList(null);
-
-        attach_rotX.getChildAt(0).setBackgroundTintList(null);
-        //attach_rotX.getChildAt(2).setBackgroundTintList(null);
-
-        attach_rotY.getChildAt(0).setBackgroundTintList(null);
-        //attach_rotY.getChildAt(2).setBackgroundTintList(null);
-
-        attach_rotZ.getChildAt(0).setBackgroundTintList(null);
-        //attach_rotZ.getChildAt(2).setBackgroundTintList(null);
-
-        ConstraintLayout tmp = (ConstraintLayout) view;
-        tmp.getChildAt(0).setBackgroundTintList(ColorStateList.valueOf(activity.getResources().getColor(R.color.colorAccent)));
-        //tmp.getChildAt(2).setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#000000")));
-    }
-    //
     int fix_move = 0;
     private View.OnTouchListener touchListener = new View.OnTouchListener() {
         @Override public boolean onTouch(View view, MotionEvent event) {
+            int btnType = getActiveButtonType();
+            if (btnType < 0) return true;
 
             switch (event.getAction() & MotionEvent.ACTION_MASK) {
                 case MotionEvent.ACTION_DOWN: {
@@ -191,9 +185,9 @@ public class AttachEdit {
                 }
                 case MotionEvent.ACTION_UP: {
                     if (view == attach_left_butt) {
-                        AttachClick(active_button, false);
+                        AttachClick(btnType, false);
                     } else {
-                        AttachClick(active_button, true);
+                        AttachClick(btnType, true);
                     }
                     break;
                 }
@@ -203,9 +197,9 @@ public class AttachEdit {
                         if(fix_move > 0)return true;
                     }
                     if(view == attach_left_butt){
-                        AttachClick(active_button, false);
+                        AttachClick(btnType, false);
                     }else{
-                        AttachClick(active_button, true);
+                        AttachClick(btnType, true);
                     }
                     break;
                 }
