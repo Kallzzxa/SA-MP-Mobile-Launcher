@@ -3,6 +3,7 @@
 //
 
 #include "editobject.h"
+#include "gizmo.h"
 #include <jni.h>
 #include "main.h"
 #include "../game/Timer.h"
@@ -341,4 +342,11 @@ Java_com_sampmobile_xyvern_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
     CObjectEditor::bIsToggle = false;
     pJavaWrapper->HideEditObject();
     CObjectEditor::time = 0;
+}
+
+// JNI: set gizmo active axis dari Java (0=X, 1=Y, 2=Z, -1=none)
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sampmobile_xyvern_game_ui_AttachEdit_SetGizmoAxis(JNIEnv *env, jobject thiz, jint axis) {
+    CGizmo::SetActiveAxis((CGizmo::eAxis)axis);
 }

@@ -61,6 +61,7 @@ public class AttachEdit {
     native void Exit();
     native void AttachClick(int buttonType, boolean buttonID);
     native void Save();
+    native void SetGizmoAxis(int axis);
 
     public boolean isShow;
 
@@ -135,13 +136,18 @@ public class AttachEdit {
         attach_mode_rot.setBackgroundTintList(ColorStateList.valueOf(active_mode == MODE_ROT ? red : dark));
         attach_mode_scale.setBackgroundTintList(ColorStateList.valueOf(active_mode == MODE_SCALE ? red : dark));
 
+        int gizmoAxis = -1;
         if (active_mode == MODE_POS) {
             attach_text_description.setText("Position mode — " + POS_DESC[pos_axis]);
+            gizmoAxis = pos_axis; // 0=X, 1=Y, 2=Z
         } else if (active_mode == MODE_ROT) {
             attach_text_description.setText("Rotation mode — " + ROT_DESC[rot_axis]);
+            gizmoAxis = rot_axis;
         } else if (active_mode == MODE_SCALE) {
             attach_text_description.setText("Scale mode — Atur ukuran object");
+            gizmoAxis = -1;
         }
+        try { SetGizmoAxis(gizmoAxis); } catch (UnsatisfiedLinkError e) { /* native not loaded */ }
     }
 
     public void show()

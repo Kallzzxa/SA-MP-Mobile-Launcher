@@ -10,6 +10,7 @@
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
+#include "../java/gizmo.h"
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
@@ -225,6 +226,7 @@ void CNetGame::Process()
 
 	if (GetGameState() == GAMESTATE_CONNECTED) {
 		ProcessPools();
+		CGizmo::RenderIfEditing();
 	}
 	else {
 		ProcessLoadingScreen();
