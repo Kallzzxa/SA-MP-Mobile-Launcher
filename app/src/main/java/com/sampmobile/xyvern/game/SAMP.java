@@ -1,5 +1,9 @@
 package com.sampmobile.xyvern.game;
 
+import android.widget.FrameLayout;
+
+import com.sampmobile.xyvern.cef.CefClientManager;
+import com.sampmobile.xyvern.cef.CefJavaManager;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -36,7 +40,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private AttachEdit mAttachEdit;
     private LoadingScreen mLoadingScreen;
-
+    private CefClientManager mCefClientManager;
+    private CefJavaManager mCefJavaManager;
     public static SAMP getInstance() {
         return instance;
     }
@@ -180,6 +185,31 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mLoadingScreen = new LoadingScreen(this);
         instance = this;
 
+        // ============================================================
+        // SA:MP MOBILE CEF (can be toggled in launcher Settings)
+        // ============================================================
+        try {
+            android.content.SharedPreferences cefPrefs = getSharedPreferences(
+                    com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
+            boolean cefEnabled = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
+            com.sampmobile.xyvern.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
+            if (!cefEnabled) {
+                Log.i(TAG, "SA:MP Mobile CEF disabled in settings");
+            } else {
+                FrameLayout rootLayout = findViewById(android.R.id.content);
+
+                mCefClientManager = new CefClientManager(this);
+                mCefJavaManager = new CefJavaManager(rootLayout, this);
+
+                mCefClientManager.setJavaManager(mCefJavaManager);
+                mCefJavaManager.setClientManager(mCefClientManager);
+
+                Log.i(TAG, "SA:MP Mobile CEF initialized");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize SA:MP Mobile CEF", e);
+        }
+
         // 1. Nhận thông tin IP & Port từ Intent
         String ip = getIntent().getStringExtra("ip");
         int port = getIntent().getIntExtra("port", 7777);
@@ -187,24 +217,18 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         try {
             initAssetManager(getAssets());
-
-            runOnUiThread(() -> mLoadingScreen.setProgress(50));
-
-            updateSettingsIni(ip, port);
-
-            String storagePath = getExternalFilesDir(null).getAbsolutePath();
-            if (!storagePath.endsWith("/")) {
-                storagePath += "/";
-            }
-
-            runOnUiThread(() -> mLoadingScreen.setProgress(100));
-
-            initializeSAMP(storagePath);
-        } catch (UnsatisfiedLinkError e5) {
-            Log.e(TAG, e5.getMessage());
-        } catch (Exception e) {
-            Log.e(TAG, "Gagal inisialisasi game: " + e.getMessage());
+        } catch (UnsatisfiedLinkError e) {
+            Log.e(TAG, "initAssetManager failed", e);
         }
+
+        final String finalIp = ip;
+        final int finalPort = port;
+        GameDataManager.checkAndPrepare(this, new GameDataManager.ReadyCallback() {
+            @Override public void onReady() {
+                if (isFinishing() || isDestroyed()) return;
+                startGameAfterDataReady(finalIp, finalPort);
+            }
+        });
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -215,6 +239,36 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 setEnabled(true);
             }
         });
+    }
+
+    private void startGameAfterDataReady(String ip, int port) {
+        mLoadingScreen.setProgress(0);
+        new Thread(() -> {
+            for (int i = 0; i <= 100; i++) {
+                final int progress = i;
+                runOnUiThread(() -> mLoadingScreen.setProgress(progress));
+                try { Thread.sleep(25); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); return; }
+            }
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                try {
+                    updateSettingsIni(ip, port);
+                    File external = getExternalFilesDir(null);
+                    if (external == null) {
+                        Log.e(TAG, "External files directory unavailable");
+                        Toast.makeText(this, "Storage unavailable", Toast.LENGTH_LONG).show();
+                        finish();
+                        return;
+                    }
+                    String storagePath = external.getAbsolutePath();
+                    if (!storagePath.endsWith("/")) storagePath += "/";
+                    initializeSAMP(storagePath);
+                } catch (Exception e) {
+                    Log.e(TAG, "Gagal inisialisasi game", e);
+                    Toast.makeText(this, "Gagal memulai game: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     private void updateSettingsIni(String ip, int port) {
@@ -230,7 +284,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             String nickname = sp.getString("nickname", "AndroidUser"); 
             if (nickname.length() > 24) nickname = nickname.substring(0, 24);
             
-            String[] versions = {"0.3.DL-R1", "0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
+            String[] versions = {"0.3.DL-R1", "0.3.7", "0.3.7-R5"};
             int vIdx = spCore.getInt(ctx, "VERSION", 0);
             String version = (vIdx >= 0 && vIdx < versions.length) ? versions[vIdx] : "0.3.DL-R1";
 

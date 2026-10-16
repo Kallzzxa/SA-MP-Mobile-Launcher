@@ -140,6 +140,7 @@ int RPC_ScrUpdate3DTextLabel = 58;
 int RPC_ScrInterpolateCamera = 82;
 int RPC_ScrRemoveBuilding = 43;
 int RPC_ScrSetObjectMaterial = 84;
+int RPC_ScrEditObject = 27;
 int RPC_ScrSelectTextDraw = 83;
 int RPC_ScrSetVehicleTireStatus = 98;
 int RPC_ScrSetArmedWeapon = 67;

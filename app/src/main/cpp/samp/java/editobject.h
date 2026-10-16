@@ -26,6 +26,8 @@ public:
     static inline int       iEditedId   = INVALID_EDITED_SLOT;
     static inline eEditType editType    = TYPE_NONE;
     static inline bool      bIsToggle   = false;
+
+    static void ProcessGizmo();  // render gizmo 3D tiap frame
     static inline bool      bPlayerObj  = false; // hueta by samp
     static inline uint32_t  time = 0;
 

@@ -40,7 +40,7 @@ public class SettingsFragment extends Fragment {
     SwitchCompat mVoiceSwitch;
     SwitchCompat mModifySwitch;
     SwitchCompat mAMLSwitch;
-    SwitchCompat mCLEOSwitch;
+    SwitchCompat mCefSwitch;
     SwitchCompat mFPSSwitch;
     SeekBar mMessagesSeekBar;
     TextView mMessagesText;
@@ -48,7 +48,7 @@ public class SettingsFragment extends Fragment {
     TextView mFPSText;
 
 
-    String[] titles = {"0.3.DL-R1", "0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
+    String[] titles = {"0.3.DL-R1", "0.3.7", "0.3.7-R5"};
 
     Spinner autoCompleteTextView;
     ArrayAdapter<String> adapter;
@@ -72,10 +72,7 @@ public class SettingsFragment extends Fragment {
         mAMLSwitch.setChecked(requireContext()
             .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
-        mCLEOSwitch = view.findViewById(R.id.cleo_switch);
-        mCLEOSwitch.setChecked(requireContext()
-            .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
-            .getBoolean("cleo_enabled", true));
+        mCefSwitch = view.findViewById(R.id.cef_switch);
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -85,6 +82,14 @@ public class SettingsFragment extends Fragment {
         adapter = new ArrayAdapter<String>(getActivity(), R.layout.spinner_item, titles);
         adapter.setDropDownViewResource(R.layout.spinner_item);
         autoCompleteTextView.setAdapter(adapter);
+
+        // Migrasi sekali: petakan nilai VERSION lama (0-4) ke skema baru (0-1).
+        // 4 (dulu R5) -> 1, nilai > 1 lainnya -> 0. Disimpan permanen.
+        SharedPreferenceCore versionPrefs = new SharedPreferenceCore();
+        int rawVersion = versionPrefs.getInt(requireContext().getApplicationContext(), "VERSION", 0);
+        if (rawVersion > 1) {
+            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", rawVersion == 4 ? 1 : 0);
+        }
 
         File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
         try {
@@ -153,12 +158,12 @@ public class SettingsFragment extends Fragment {
             Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
         });
 
-        mCLEOSwitch.setOnCheckedChangeListener((buttonView, enabled) -> {
-            requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("cleo_enabled", enabled)
-                .apply();
-            Toast.makeText(requireContext(), "CLEO setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
+        mCefSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "CEF_ENABLED", b);
+                Toast.makeText(requireContext(), b ? "CEF WebView diaktifkan" : "CEF WebView dimatikan. Restart game untuk menerapkan.", Toast.LENGTH_LONG).show();
+            }
         });
 
         mKeyboardSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -275,6 +280,11 @@ public class SettingsFragment extends Fragment {
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
         mAMLSwitch.setChecked(requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
+        // CEF default ON; only OFF when the user explicitly disabled it before.
+        android.content.SharedPreferences cefPrefs = requireContext().getApplicationContext()
+                .getSharedPreferences(com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
+        boolean cefOn = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
+        mCefSwitch.setChecked(cefOn);
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");

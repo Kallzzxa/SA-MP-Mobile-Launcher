@@ -4,12 +4,14 @@
 #include "../game/Timer.h"
 #include "../gui/gui.h"
 #include "../audiostream.h"
-
+#include "../cef/SAMPMobileCef.h"
 // voice
 #include "../voice_new/MicroIcon.h"
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
+#include "../java/editobject.h"
+
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
@@ -66,6 +68,10 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	m_iPort = iPort;
 
 	m_pRakClient = RakNetworkFactory::GetRakClientInterface();
+
+	cef::setGamePath(g_pszStorage);
+	cef::initNetwork(m_pRakClient, 252);
+
 	InitializePools();
 
 	GetPlayerPool()->SetLocalPlayerName(szPlayerName);
@@ -230,6 +236,7 @@ void CNetGame::Process()
 
 	if (GetGameState() == GAMESTATE_CONNECTED) {
 		ProcessPools();
+		CObjectEditor::ProcessGizmo();
 	}
 	else {
 		ProcessLoadingScreen();
@@ -326,9 +333,13 @@ void CNetGame::UpdateNetwork()
                 break;
             }
 
-            case 251:
-                Packet_CustomRPC(pkt);
-                break;
+			case 252:
+				cef::handlePacket(pkt);
+				break;
+
+			case 251:
+				Packet_CustomRPC(pkt);
+				break;
         }
 
 		// voice
@@ -631,7 +642,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-
+	cef::handleServerConnection();
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();

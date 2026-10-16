@@ -1,6 +1,6 @@
 #pragma once
 
-#define MAX_TEXT_DRAW_LINE 800
+#define MAX_TEXT_DRAW_LINE 1024
 
 class CTextDrawPool
 {

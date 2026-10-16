@@ -1,4 +1,4 @@
-﻿#include "../gui.h"
+#include "../gui.h"
 #include "../../game/game.h"
 #include "../../net/netgame.h"
 #include "../../main.h"
@@ -24,10 +24,10 @@ void PlayerTabList::show()
 
 	pNetGame->UpdatePlayerScoresAndPings();
 
-	m_lServerName = new Label("", ImColor(1.0f, 1.0f, 1.0f), false, UISettings::fontSize() / 2);
+	m_lServerName = new Label("", ImColor(0.94f, 0.71f, 0.16f), false, UISettings::fontSize() / 1.7f);
 	this->addChild(m_lServerName);
 
-	m_lTotalPlayers = new Label("", ImColor(1.0f, 1.0f, 1.0f), false, UISettings::fontSize() / 2);
+	m_lTotalPlayers = new Label("", ImColor(0.7f, 0.7f, 0.7f), false, UISettings::fontSize() / 2.2f);
 	this->addChild(m_lTotalPlayers);
 
 	m_tabList = new TabListWidget();

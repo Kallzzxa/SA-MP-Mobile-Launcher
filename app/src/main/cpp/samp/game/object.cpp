@@ -390,6 +390,7 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 	m_dwMaterialFontColor[index] = dwFontColor;
 	m_dwMaterialBackColor[index] = dwBackColor;
 	m_iMaterialTextAlign[index] = textAlignment;
+	m_bHasMaterialText = true;
 }
 
 void CObject::ProcessMaterialText()

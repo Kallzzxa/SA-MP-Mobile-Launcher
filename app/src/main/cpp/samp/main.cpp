@@ -25,7 +25,7 @@
 #include "settings.h"
 
 #include "crashlytics.h"
-
+#include "cef/SAMPMobileCef.h"
 /*
 Peerapol Unarak
 */
@@ -323,6 +323,53 @@ extern "C" {
 		}
 
 		pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
+	}
+	JNIEXPORT void JNICALL
+	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeOnBrowserInit(
+			JNIEnv* env,
+			jobject thiz,
+			jboolean isSuccess,
+			jint errorCode)
+	{
+		cef::log(
+			"nativeOnBrowserInit: success=%d errorCode=%d",
+			isSuccess ? 1 : 0,
+			(int)errorCode
+		);
+		cef::sendBrowserInit(isSuccess != JNI_FALSE, (int)errorCode);
+	}
+
+	JNIEXPORT void JNICALL
+	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSendClientEvent(
+			JNIEnv* env,
+			jobject thiz,
+			jstring eventName,
+			jstring eventDataJson)
+	{
+		if (eventName == nullptr || eventDataJson == nullptr)
+			return;
+
+		const char* name = env->GetStringUTFChars(eventName, nullptr);
+		const char* data = env->GetStringUTFChars(eventDataJson, nullptr);
+
+		if (name && data)
+		{
+			cef::sendClientEvent(name, data);
+		}
+
+		if (name)
+			env->ReleaseStringUTFChars(eventName, name);
+
+		if (data)
+			env->ReleaseStringUTFChars(eventDataJson, data);
+	}
+	JNIEXPORT void JNICALL
+	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSetJavaManager(
+			JNIEnv* env,
+			jobject thiz,
+			jobject javaManager)
+	{
+		cef::setJavaManager(env, javaManager);
 	}
 }
 
