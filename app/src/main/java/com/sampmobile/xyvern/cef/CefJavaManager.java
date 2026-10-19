@@ -353,7 +353,20 @@ public class CefJavaManager {
                 || ("http".equalsIgnoreCase(scheme) && "cef".equalsIgnoreCase(host));
         if (!isCefScheme) return null;
 
-        String path = uri.getPath();
+        String path;
+        if ("cef".equalsIgnoreCase(scheme)) {
+            // cef://__internal/loading.html -> __internal/loading.html
+            // Android Uri parses the first segment as host, so prepend it back.
+            String p = uri.getPath();
+            if (host != null && !host.isEmpty()) {
+                path = host + (p != null ? p : "");
+            } else {
+                path = p;
+            }
+        } else {
+            // http://cef/index.html -> /index.html
+            path = uri.getPath();
+        }
         if (path == null || path.isEmpty() || path.equals("/")) path = "/index.html";
         if (path.startsWith("/")) path = path.substring(1);
         // block directory traversal
