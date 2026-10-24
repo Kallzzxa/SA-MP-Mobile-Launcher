@@ -73,11 +73,22 @@ public class CefJavaManager {
         }
     }
 
-    /** Device folder where server-synced CEF UI files are cached. */
+    /** Device folder where server-synced CEF UI files are cached. Null if unavailable. */
     private File getUiDir() {
-        File dir = new File(mActivity.getExternalFilesDir(null), "SAMP/cef_ui");
+        File ext = mActivity.getExternalFilesDir(null);
+        if (ext == null) return null;
+        File dir = new File(ext, "SAMP/cef_ui");
         if (!dir.exists()) dir.mkdirs();
         return dir;
+    }
+
+    private static byte[] readAllBytes(InputStream in) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        try { in.close(); } catch (IOException ignored) {}
+        return out.toByteArray();
     }
 
     /** omp-cef compatible JS bootstrap, injected before page scripts run. */
@@ -346,6 +357,20 @@ public class CefJavaManager {
      *   http://cef/index.html   -> same (PC omp-cef scheme)
      */
     private WebResourceResponse serveCefScheme(Uri uri) {
+        CefContent c = resolveCefContent(uri);
+        if (c == null) return null;
+        InputStream in = new java.io.ByteArrayInputStream(c.data);
+        return new WebResourceResponse(c.mime, encodingOf(c.mime), in);
+    }
+
+    /** Resolved cef:// content: raw bytes + mime. Null if not a cef URL or not found. */
+    private static class CefContent {
+        final byte[] data;
+        final String mime;
+        CefContent(byte[] data, String mime) { this.data = data; this.mime = mime; }
+    }
+
+    private CefContent resolveCefContent(Uri uri) {
         if (uri == null) return null;
         String scheme = uri.getScheme();
         String host = uri.getHost();
@@ -374,13 +399,15 @@ public class CefJavaManager {
 
         // 1) server-synced UI on the device wins
         try {
-            File dev = new File(getUiDir(), path);
-            if (dev.isFile()) {
-                InputStream in = new java.io.FileInputStream(dev);
-                Log.d(TAG, "serving cef:// -> " + dev.getAbsolutePath());
-                return new WebResourceResponse(mimeOf(path), encodingOf(mimeOf(path)), in);
+            File uiDir = getUiDir();
+            if (uiDir != null) {
+                File dev = new File(uiDir, path);
+                if (dev.isFile() && dev.canRead()) {
+                    Log.d(TAG, "serving cef:// -> " + dev.getAbsolutePath());
+                    return new CefContent(readAllBytes(new java.io.FileInputStream(dev)), mimeOf(path));
+                }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             Log.w(TAG, "cef device file error: " + path);
         }
 
@@ -389,9 +416,12 @@ public class CefJavaManager {
         try {
             AssetManager am = mActivity.getAssets();
             InputStream in = am.open(assetPath);
-            String mime = mimeOf(path);
-            Log.d(TAG, "serving cef:// -> assets/" + assetPath);
-            return new WebResourceResponse(mime, encodingOf(mime), in);
+            try {
+                Log.d(TAG, "serving cef:// -> assets/" + assetPath);
+                return new CefContent(readAllBytes(in), mimeOf(path));
+            } finally {
+                try { in.close(); } catch (IOException ignored) {}
+            }
         } catch (IOException e) {
             Log.w(TAG, "cef asset missing: " + assetPath);
             return null;
@@ -460,9 +490,22 @@ public class CefJavaManager {
 
     public void loadUrl(String url) {
         mMainHandler.post(() -> {
-            if (mWebView != null) {
-                mWebView.loadUrl(url);
+            if (mWebView == null) return;
+            // Load cef:// pages by injecting content directly: WebView's
+            // shouldInterceptRequest is unreliable for the main frame with
+            // custom schemes on some devices/Android versions ("webpage not
+            // available"). Sub-resources still go through the interceptor.
+            try {
+                CefContent c = resolveCefContent(Uri.parse(url));
+                if (c != null && c.mime.startsWith("text/html")) {
+                    String html = new String(c.data, java.nio.charset.StandardCharsets.UTF_8);
+                    mWebView.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "cef direct load failed, falling back to loadUrl: " + e.getMessage());
             }
+            mWebView.loadUrl(url);
         });
     }
 
