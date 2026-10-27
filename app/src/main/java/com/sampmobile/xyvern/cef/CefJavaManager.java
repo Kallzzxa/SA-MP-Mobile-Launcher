@@ -54,6 +54,19 @@ public class CefJavaManager {
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean mChatInputOpen = new AtomicBoolean(false);
 
+    // ---- omp-cef Android port (aurora-mp/omp-cef client, via WebView) ----
+    /** VFS lookup for http://cef/<resource>/<internalPath>, supplied by OmpCefClient. */
+    public interface OmpVfsProvider { byte[] getFile(String resource, String internalPath); }
+    /** JS -> server event sink for omp browsers (browserId >= 0). */
+    public interface OmpEventSink { void sendOmpClientEvent(int browserId, String eventName, String argsJson); }
+    private final Map<Integer, WebView> mOmpBrowsers = new HashMap<>();
+    private volatile OmpVfsProvider mOmpVfsProvider;
+    private volatile OmpEventSink mOmpEventSink;
+    private volatile OmpCefClient mOmpClient;
+    public void setOmpVfsProvider(OmpVfsProvider provider) { mOmpVfsProvider = provider; }
+    public void setOmpEventSink(OmpEventSink sink) { mOmpEventSink = sink; }
+    public java.io.File getExternalFilesDir() { return mActivity.getExternalFilesDir(null); }
+
     /** Master switch: when false the WebView is never created (Settings toggle). */
     private static volatile boolean sWebViewEnabled = true;
     public static void setWebViewEnabled(boolean enabled) { sWebViewEnabled = enabled; }
@@ -378,6 +391,26 @@ public class CefJavaManager {
                 || ("http".equalsIgnoreCase(scheme) && "cef".equalsIgnoreCase(host));
         if (!isCefScheme) return null;
 
+        // omp-cef VFS first: http://cef/<resource>/<internalPath>
+        if ("http".equalsIgnoreCase(scheme) && "cef".equalsIgnoreCase(host) && mOmpVfsProvider != null) {
+            String rawPath = uri.getPath();
+            if (rawPath != null && rawPath.length() > 1) {
+                String rel = rawPath.substring(1);
+                int slash = rel.indexOf('/');
+                if (slash > 0) {
+                    String resource = rel.substring(0, slash);
+                    String internal = rel.substring(slash + 1);
+                    if (!internal.contains("..")) {
+                        byte[] vfsData = mOmpVfsProvider.getFile(resource, internal);
+                        if (vfsData != null) {
+                            Log.d(TAG, "serving http://cef/ from omp VFS: " + resource + "/" + internal);
+                            return new CefContent(vfsData, mimeOf(internal));
+                        }
+                    }
+                }
+            }
+        }
+
         String path;
         if ("cef".equalsIgnoreCase(scheme)) {
             // cef://__internal/loading.html -> __internal/loading.html
@@ -541,14 +574,222 @@ public class CefJavaManager {
         return mWebView;
     }
 
+    // ---------------------------------------------------------------
+    // omp-cef port: multi-browser WebView management.
+    // The legacy single browser (mWebView, RakNet 252) is untouched; omp
+    // browsers live in mOmpBrowsers, stacked in the same root layout.
+    // Layer ordering uses elevation (higher layer = drawn on top).
+    // World2D / WorldObject3D browsers are never created here: OmpApp
+    // already rejects them with BrowserCreateResult ERROR_GENERIC.
+    // ---------------------------------------------------------------
+
+    /** Start the omp-cef client for the current game connection. Called from native code. */
+    public void startOmpCef(String host, int gamePort, int playerId) {
+        mMainHandler.post(() -> {
+            if (mOmpClient != null) {
+                try { mOmpClient.stop(); } catch (Exception ignored) {}
+                mOmpClient = null;
+            }
+            try {
+                OmpCefClient client = new OmpCefClient(this);
+                mOmpClient = client;
+                setOmpEventSink(client);
+                client.start(host, gamePort, playerId);
+            } catch (Exception e) {
+                Log.e(TAG, "startOmpCef failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /** Stop the omp-cef client (game disconnect / restart). Called from native code. */
+    public void stopOmpCef() {
+        mMainHandler.post(() -> {
+            if (mOmpClient != null) {
+                try { mOmpClient.stop(); } catch (Exception ignored) {}
+                mOmpClient = null;
+            }
+            setOmpEventSink(null);
+            for (WebView w : new java.util.ArrayList<>(mOmpBrowsers.values())) {
+                try { mRootLayout.removeView(w); w.destroy(); } catch (Exception ignored) {}
+            }
+            mOmpBrowsers.clear();
+        });
+    }
+
+    private WebView createOmpWebView(final int browserId) {
+        CefHudWebView w = new CefHudWebView(mActivity);
+        w.setFocusable(true);
+        w.setFocusableInTouchMode(true);
+        w.setClickable(true);
+        w.setLongClickable(true);
+        w.setBackgroundColor(Color.TRANSPARENT);
+        w.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        WebSettings settings = w.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
+        w.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                Log.d(TAG, "[OMP CEF JS] " + consoleMessage.message() +
+                        " -- line " + consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
+                return true;
+            }
+        });
+        w.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                injectBootstrap(view);
+            }
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                injectBootstrap(view);
+                Log.d(TAG, "omp browser " + browserId + " loaded: " + url);
+            }
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse local = serveCefScheme(request.getUrl());
+                return local != null ? local : super.shouldInterceptRequest(view, request);
+            }
+            @Override
+            @SuppressWarnings("deprecation")
+            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                WebResourceResponse local = serveCefScheme(Uri.parse(url));
+                return local != null ? local : super.shouldInterceptRequest(view, url);
+            }
+        });
+        w.addJavascriptInterface(new CefWebInterface(mClientManager, w, browserId), "AndroidCefBridge");
+        w.setVisibility(View.GONE);
+        mRootLayout.addView(w, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return w;
+    }
+
+    private void ompLoadInto(WebView w, String url) {
+        try {
+            CefContent c = resolveCefContent(Uri.parse(url));
+            if (c != null && c.mime.startsWith("text/html")) {
+                String html = new String(c.data, java.nio.charset.StandardCharsets.UTF_8);
+                w.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+                return;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "omp direct load failed, falling back: " + e.getMessage());
+        }
+        w.loadUrl(url);
+    }
+
+    public void ompCreateBrowser(final int browserId, final String url, final boolean focused,
+                                 final boolean controlsChat, final float width, final float height) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w == null) {
+                w = createOmpWebView(browserId);
+                mOmpBrowsers.put(browserId, w);
+            }
+            w.setVisibility(View.VISIBLE);
+            ompLoadInto(w, url);
+            if (focused) ompSetBrowserFocus(browserId, true);
+        });
+    }
+
+    public void ompDestroyBrowser(final int browserId) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.remove(browserId);
+            if (w != null) {
+                try { mRootLayout.removeView(w); w.destroy(); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    public void ompSetBrowserVisible(final int browserId, final boolean visible) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w != null) w.setVisibility(visible ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    public void ompSetBrowserLayer(final int browserId, final int layer) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w != null) {
+                try { w.setElevation(layer * 10f); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    public void ompSetBrowserFocus(final int browserId, final boolean focused) {
+        mMainHandler.post(() -> {
+            for (Map.Entry<Integer, WebView> e : mOmpBrowsers.entrySet()) {
+                WebView w = e.getValue();
+                if (w instanceof CefHudWebView) {
+                    ((CefHudWebView) w).setInteractionEnabled(focused && e.getKey() == browserId);
+                }
+                if (focused && e.getKey() == browserId) {
+                    w.requestFocus();
+                    w.requestFocusFromTouch();
+                }
+            }
+        });
+    }
+
+    public void ompLoadBrowserUrl(final int browserId, final String url) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w != null) ompLoadInto(w, url);
+        });
+    }
+
+    public void ompReloadBrowser(final int browserId, final boolean ignoreCache) {
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w == null) return;
+            if (ignoreCache) {
+                try { w.clearCache(true); } catch (Exception ignored) {}
+            }
+            w.reload();
+        });
+    }
+
+    public void ompDispatchToBrowser(final int browserId, final String eventName, final String argsJson) {
+        if (eventName == null) return;
+        final String js = "window.__sampcef && window.__sampcef.dispatch("
+                + jsString(eventName) + "," + jsString(argsJson == null ? "[]" : argsJson) + ");";
+        mMainHandler.post(() -> {
+            WebView w = mOmpBrowsers.get(browserId);
+            if (w != null) {
+                try { w.evaluateJavascript(js, null); } catch (Exception e) {
+                    Log.w(TAG, "ompDispatchToBrowser failed: " + e.getMessage());
+                }
+            }
+        });
+    }
+
     /**
      * JavaScript Bridge Interface attached to WebView (window.AndroidCefBridge)
      */
     public class CefWebInterface {
         private final CefClientManager mClientManager;
+        private final WebView mBridgeView;
+        private final int mOmpBrowserId;
 
         public CefWebInterface(CefClientManager clientManager) {
+            this(clientManager, null, -1);
+        }
+
+        public CefWebInterface(CefClientManager clientManager, WebView bridgeView, int ompBrowserId) {
             this.mClientManager = clientManager;
+            this.mBridgeView = bridgeView;
+            this.mOmpBrowserId = ompBrowserId;
         }
 
         /** Legacy single-event bridge. */
@@ -560,6 +801,12 @@ public class CefJavaManager {
         /** omp-cef style: window.cef.emit(name, ...args) with args as JSON array. */
         @android.webkit.JavascriptInterface
         public void emitEvent(String eventName, String argsJson) {
+            if (mOmpBrowserId >= 0 && mOmpEventSink != null) {
+                // omp-cef browser: event goes over the omp-cef UDP/KCP channel,
+                // with the browser id the server used in CreateBrowser.
+                mOmpEventSink.sendOmpClientEvent(mOmpBrowserId, eventName, argsJson == null ? "[]" : argsJson);
+                return;
+            }
             if (mClientManager != null) {
                 mClientManager.sendClientEvent(eventName, argsJson == null ? "[]" : argsJson);
             }
@@ -578,14 +825,15 @@ public class CefJavaManager {
         @android.webkit.JavascriptInterface
         public void setBrowserFocus(boolean focused) {
             mMainHandler.post(() -> {
-                if (mWebView == null) return;
+                WebView target = mBridgeView != null ? mBridgeView : mWebView;
+                if (target == null) return;
                 if (focused) {
-                    mWebView.requestFocus();
-                    mWebView.requestFocusFromTouch();
+                    target.requestFocus();
+                    target.requestFocusFromTouch();
                 } else {
-                    mWebView.clearFocus();
+                    target.clearFocus();
                 }
-                if (mWebView instanceof CefHudWebView) ((CefHudWebView) mWebView).setInteractionEnabled(focused);
+                if (target instanceof CefHudWebView) ((CefHudWebView) target).setInteractionEnabled(focused);
             });
         }
 

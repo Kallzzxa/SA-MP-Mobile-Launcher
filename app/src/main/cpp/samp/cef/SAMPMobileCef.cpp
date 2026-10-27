@@ -189,6 +189,36 @@ namespace cef
         if (attached)
             javaVM->DetachCurrentThread();
     }
+    static void callJavaOmpStart(const char* host, int port, int playerId)
+    {
+        if (!g_pJavaManager || !host) return;
+        bool attached = false;
+        JNIEnv* env = getJNIEnv(attached);
+        if (!env) return;
+        jclass cls = env->GetObjectClass(g_pJavaManager);
+        if (!cls) { if (attached) javaVM->DetachCurrentThread(); return; }
+        jmethodID method = env->GetMethodID(cls, "startOmpCef", "(Ljava/lang/String;II)V");
+        if (method) {
+            jstring jHost = env->NewStringUTF(host);
+            env->CallVoidMethod(g_pJavaManager, method, jHost, (jint)port, (jint)playerId);
+            env->DeleteLocalRef(jHost);
+        }
+        env->DeleteLocalRef(cls);
+        if (attached) javaVM->DetachCurrentThread();
+    }
+
+    void ompStart(const char* szHost, int iPort, int iPlayerId)
+    {
+        if (!g_bInitialized) return;
+        log("omp-cef start: %s:%d playerId=%d", szHost ? szHost : "", iPort, iPlayerId);
+        callJavaOmpStart(szHost, iPort, iPlayerId);
+    }
+
+    void ompStop()
+    {
+        callJavaVoidMethod("stopOmpCef");
+    }
+
     void sendBrowserInit(bool success, int errorCode)
     {
         if (!g_bInitialized || !g_pRakClient)

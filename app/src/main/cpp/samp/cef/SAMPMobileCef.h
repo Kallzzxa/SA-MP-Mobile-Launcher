@@ -54,6 +54,14 @@ namespace cef
     void handleServerConnection();
 
     /**
+     * omp-cef client port (aurora-mp/omp-cef, UDP/KCP to gamePort+2).
+     * Called from CNetGame when the SA-MP connection succeeds; the Java
+     * side (CefJavaManager.startOmpCef) owns the actual client.
+     */
+    void ompStart(const char* szHost, int iPort, int iPlayerId);
+    void ompStop();
+
+    /**
      * Sends a client-side JavaScript event back to SA:MP Server via RakNet BitStream.
      * @param szEventName Name of client event.
      * @param szEventData JSON payload string.

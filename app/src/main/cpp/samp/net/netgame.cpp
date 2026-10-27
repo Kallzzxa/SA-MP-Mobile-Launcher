@@ -121,6 +121,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 
 CNetGame::~CNetGame()
 {
+	cef::ompStop();
 	DLManager::Instance().Reset();
 	// voice
 	Network::OnRaknetDisconnect();
@@ -413,6 +414,7 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
 
 void CNetGame::ShutdownForGameModeRestart()
 {
+	cef::ompStop();
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
@@ -643,6 +645,10 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	cef::handleServerConnection();
+	// omp-cef port: try the omp-cef UDP channel in parallel with legacy
+	// MobileCEF. If the server has no omp-cef plugin, the client times
+	// out after 5 join attempts and legacy CEF keeps working.
+	cef::ompStart(m_szHostOrIp, m_iPort, (int)MyPlayerID);
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
