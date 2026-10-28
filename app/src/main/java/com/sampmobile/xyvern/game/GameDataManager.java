@@ -2,6 +2,7 @@ package com.sampmobile.xyvern.game;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -128,7 +129,7 @@ public final class GameDataManager {
         }
     }
 
-    private static void markInstalled(Activity a, DataInfo info) {
+    private static void markInstalled(Context a, DataInfo info) {
         try {
             File root = a.getExternalFilesDir(null);
             if (root == null) return;
@@ -233,58 +234,131 @@ public final class GameDataManager {
     // ---------------------------------------------------------- install ----
     private static void startInstall(Activity a, DataInfo info, ReadyCallback cb) {
         if (a.isFinishing()) return;
-        ProgressUi ui = showProgress(a, info);
-        IO.execute(() -> {
-            File zipFile = null;
-            try {
-                postPhase(ui, "Mencari link download...", "");
-                String directUrl = resolveDownloadUrl(info.url);
-                android.util.Log.i("GameDataManager", "direct url resolved");
+        // Keep the same progress dialog look, but the actual download runs in
+        // GameDataDownloadService (foreground service) so it survives the app
+        // being closed, resumes via Range + .part, and retries transient errors.
+        readyCallback = cb;
+        registerProgressUi(a);
+        GameDataDownloadService.start(a,
+                GameDataDownloadService.ACTION_GAME_DATA,
+                info.url, info.version, info.size, info.sentinel);
+    }
 
-                File cacheDir = a.getExternalCacheDir();
-                if (cacheDir == null) cacheDir = a.getCacheDir();
-                zipFile = new File(cacheDir, "game_data_" + info.version + ".zip");
-                if (zipFile.exists()) zipFile.delete();
+    /** Active callback wired by the foreground activity, replayed when done. */
+    private static volatile ReadyCallback readyCallback;
 
-                downloadWithProgress(directUrl, zipFile, info.size, ui);
-                if (info.size > 0 && zipFile.length() != info.size)
-                    throw new Exception("Ukuran file tidak sesuai, download mungkin corrupt. Coba lagi.");
-
-                postPhase(ui, "Mengekstrak data...", "");
-                extractWithProgress(a, zipFile, ui);
-
-                File root = a.getExternalFilesDir(null);
-                if (root == null) throw new Exception("Penyimpanan tidak tersedia.");
-                if (info.sentinel != null && !info.sentinel.isEmpty()
-                        && !new File(root, info.sentinel).exists())
-                    throw new Exception("Data tidak lengkap setelah ekstrak (sentinel hilang).");
-
-                markInstalled(a, info);
-                try { if (zipFile.exists()) zipFile.delete(); } catch (Exception ignored) {}
-
-                MAIN.post(() -> {
-                    if (ui.dialog.isShowing()) ui.dialog.dismiss();
+    /** Show the progress dialog and observe service state; dismiss on DONE. */
+    private static void registerProgressUi(Activity a) {
+        ProgressUi ui = showProgress(a, null);
+        GameDataDownloadService.Listener l = s -> {
+            if (a.isFinishing() || a.isDestroyed()) { unregisterProgressUi(); return; }
+            MAIN.post(() -> {
+                try {
+                    if (!ui.dialog.isShowing()) return;
+                    if (s.detail != null) {
+                        ui.phase.setText(phaseLabel(s.phase));
+                        ui.detail.setText(s.detail);
+                        ui.speed.setText("");
+                    }
+                    ui.bar.setProgress(s.percent * 10);
+                } catch (Exception ignored) {}
+                if (s.phase == GameDataDownloadService.PHASE_DONE) {
+                    unregisterProgressUi();
+                    dismissLoading();
                     setImmersive(a, false);
                     Toast.makeText(a, "Game data siap dimainkan", Toast.LENGTH_SHORT).show();
-                    if (!a.isFinishing()) cb.onReady();
-                });
-            } catch (Exception e) {
-                android.util.Log.e("GameDataManager", "Install failed", e);
-                final File zf = zipFile;
-                MAIN.post(() -> {
-                    if (ui.dialog.isShowing()) ui.dialog.dismiss();
-                    setImmersive(a, false);
-                    if (a.isFinishing()) return;
-                    new AlertDialog.Builder(a).setTitle("Download gagal")
-                            .setMessage(e.getMessage() == null ? "Silakan coba lagi." : e.getMessage())
-                            .setCancelable(false)
-                            .setPositiveButton("COBA LAGI", (x, w) -> startInstall(a, info, cb))
-                            .setNegativeButton("KELUAR", (x, w) -> a.finishAffinity())
-                            .show();
-                    try { if (zf != null && zf.exists()) zf.delete(); } catch (Exception ignored) {}
-                });
+                    ReadyCallback cb = readyCallback;
+                    if (cb != null && !a.isFinishing()) cb.onReady();
+                } else if (s.phase == GameDataDownloadService.PHASE_FAILED) {
+                    unregisterProgressUi();
+                    if (!a.isFinishing()) {
+                        new AlertDialog.Builder(a).setTitle("Download gagal")
+                                .setMessage(s.error == null ? "Silakan coba lagi." : s.error)
+                                .setCancelable(false)
+                                .setPositiveButton("COBA LAGI", (x, w) ->
+                                        GameDataDownloadService.autoResume(a))
+                                .setNegativeButton("KELUAR", (x, w) -> a.finishAffinity())
+                                .show();
+                    }
+                }
+            });
+        };
+        GameDataDownloadService.addListener(l);
+        progressListener = l;
+    }
+
+    private static void unregisterProgressUi() {
+        if (progressListener != null) { GameDataDownloadService.removeListener(progressListener); progressListener = null; }
+    }
+    private static volatile GameDataDownloadService.Listener progressListener;
+
+    private static String phaseLabel(int p) {
+        switch (p) {
+            case GameDataDownloadService.PHASE_CONNECT:  return "Menyiapkan download...";
+            case GameDataDownloadService.PHASE_DOWNLOAD: return "Mengunduh game data...";
+            case GameDataDownloadService.PHASE_EXTRACT:  return "Mengekstrak data...";
+            case GameDataDownloadService.PHASE_DONE:     return "Selesai";
+            default: return "Menunggu...";
+        }
+    }
+
+    /**
+     * Called by GameDataDownloadService when its download completes: verify,
+     * extract, sentinel-check and drop the .data_ready marker.
+     */
+    public static void finalizeGameDataInstall(Context c, File zipFile, String version, String sentinel) throws Exception {
+        try (ZipFile zip = new ZipFile(zipFile)) {
+            int totalEntries = zip.size();
+            if (totalEntries <= 0) throw new Exception("File zip kosong / rusak.");
+            java.util.ArrayList<String> names = new java.util.ArrayList<>(totalEntries);
+            java.util.Enumeration<? extends ZipEntry> scan = zip.entries();
+            while (scan.hasMoreElements()) names.add(scan.nextElement().getName());
+            final String stripPrefix = detectStripPrefix(names);
+
+            File root = c.getExternalFilesDir(null);
+            if (root == null) throw new Exception("Penyimpanan tidak tersedia.");
+            final String rootCanon = root.getCanonicalPath() + File.separator;
+
+            java.util.Enumeration<? extends ZipEntry> en = zip.entries();
+            byte[] buf = new byte[128 * 1024];
+            while (en.hasMoreElements()) {
+                ZipEntry e = en.nextElement();
+                String name = e.getName();
+                if (!stripPrefix.isEmpty()) {
+                    if (!name.startsWith(stripPrefix)) continue;
+                    name = name.substring(stripPrefix.length());
+                }
+                if (name.isEmpty()) continue;
+                File target = new File(root, name);
+                String canon = target.getCanonicalPath();
+                if (!canon.startsWith(rootCanon) && !canon.equals(root.getCanonicalPath()))
+                    throw new Exception("Entri zip tidak valid: " + name);
+                if (e.isDirectory()) {
+                    target.mkdirs();
+                } else {
+                    File parent = target.getParentFile();
+                    if (parent != null && !parent.exists()) parent.mkdirs();
+                    try (InputStream in = new BufferedInputStream(zip.getInputStream(e));
+                         OutputStream os = new BufferedOutputStream(new FileOutputStream(target))) {
+                        int n;
+                        while ((n = in.read(buf)) != -1) os.write(buf, 0, n);
+                    }
+                }
             }
-        });
+        }
+
+        if (sentinel != null && !sentinel.isEmpty()
+                && !new File(c.getExternalFilesDir(null), sentinel).exists())
+            throw new Exception("Data tidak lengkap setelah ekstrak (sentinel hilang).");
+
+        DataInfo done = new DataInfo();
+        done.version = version;
+        markInstalled(c, done);
+    }
+
+    /** Plain GET used by the service to resolve MediaFire pages. */
+    public static String httpGet(String address) throws Exception {
+        return getText(address);
     }
 
     private static void downloadWithProgress(String url, File out, long expectedSize, ProgressUi ui) throws Exception {

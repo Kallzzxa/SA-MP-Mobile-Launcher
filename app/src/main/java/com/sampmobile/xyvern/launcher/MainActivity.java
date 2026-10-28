@@ -58,6 +58,10 @@ public class MainActivity extends AppCompatActivity {
         Config.currentContext = this;
         checkFirstRun();
 
+        // If the process died mid-download, relaunch the foreground service from
+        // persisted state so the download continues without a manual re-tap.
+        com.sampmobile.xyvern.game.GameDataDownloadService.autoResume(this);
+
         GameDataManager.checkAndPrepare(this, () -> {
             if (isFinishing() || isDestroyed() || launcherInitialized) return;
             launcherInitialized = true;

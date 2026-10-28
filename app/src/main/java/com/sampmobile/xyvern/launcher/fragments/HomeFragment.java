@@ -24,6 +24,7 @@ import com.downloader.PRDownloaderConfig;
 import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
 import com.sampmobile.xyvern.R;
+import com.sampmobile.xyvern.game.GameDataDownloadService;
 import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.data.FilesData;
 import com.sampmobile.xyvern.launcher.util.GameDataVerifier;
@@ -169,126 +170,51 @@ public class HomeFragment extends Fragment {
         tvDataDesc.setText("Connecting to asset server...");
         btnDownloadData.setEnabled(false);
 
-        File baseDir = requireContext().getExternalFilesDir(null);
-        if (baseDir == null) return;
-        File zipFile = new File(baseDir, "files.zip");
-        File partFile = new File(baseDir, "files.zip.part");
-
-        executor.execute(() -> {
-            try {
-                // Cek apakah files.zip sudah pernah terunduh utuh sebelumnya
-                long expectedTotal = 666478908L;
-                if (!zipFile.exists() || zipFile.length() != expectedTotal) {
-                    mainHandler.post(() -> tvDataDesc.setText("Downloading asset pack (~635 MB)..."));
-
-                    long existingBytes = partFile.exists() ? partFile.length() : 0;
-                    URL url = new URL(DATA_ZIP_URL);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setInstanceFollowRedirects(true);
-                    conn.setConnectTimeout(15000);
-                    conn.setReadTimeout(30000);
-
-                    if (existingBytes > 0) {
-                        conn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
-                    }
-
-                    int responseCode = conn.getResponseCode();
-                    if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM || responseCode == 307 || responseCode == 308) {
-                        String redirectUrl = conn.getHeaderField("Location");
-                        if (redirectUrl != null) {
-                            conn.disconnect();
-                            conn = (HttpURLConnection) new URL(redirectUrl).openConnection();
-                            conn.setConnectTimeout(15000);
-                            conn.setReadTimeout(30000);
-                            if (existingBytes > 0) {
-                                conn.setRequestProperty("Range", "bytes=" + existingBytes + "-");
-                            }
-                            responseCode = conn.getResponseCode();
-                        }
-                    }
-
-                    boolean isAppend = (responseCode == HttpURLConnection.HTTP_PARTIAL);
-                    if (!isAppend && existingBytes > 0) {
-                        existingBytes = 0; // Server tidak support range, mulai ulang dari 0
-                    }
-
-                    long totalBytes = conn.getContentLengthLong();
-                    if (isAppend) {
-                        totalBytes += existingBytes;
-                    } else if (totalBytes <= 0) {
-                        totalBytes = expectedTotal;
-                    }
-
-                    java.io.InputStream in = new java.io.BufferedInputStream(conn.getInputStream(), 65536);
-                    java.io.FileOutputStream out = new java.io.FileOutputStream(partFile, isAppend);
-                    byte[] buffer = new byte[65536];
-                    long downloadedBytes = existingBytes;
-                    long lastUpdate = System.currentTimeMillis();
-                    int read;
-
-                    while ((read = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, read);
-                        downloadedBytes += read;
-
-                        long now = System.currentTimeMillis();
-                        if (now - lastUpdate > 150) {
-                            lastUpdate = now;
-                            final long cur = downloadedBytes;
-                            final long tot = totalBytes;
-                            final int percent = (int) ((cur * 100) / tot);
-                            mainHandler.post(() -> {
-                                pbDownload.setProgress(percent);
-                                tvDownloadProgress.setText(percent + "% (" + (cur / 1048576) + "/" + (tot / 1048576) + " MB)");
-                            });
-                        }
-                    }
-                    out.flush();
-                    out.close();
-                    in.close();
-                    conn.disconnect();
-
-                    if (!partFile.renameTo(zipFile)) {
-                        throw new Exception("Failed to complete asset pack download.");
-                    }
-                }
-
-                // Step 2: Unzip files.zip directly into game data directory
-                mainHandler.post(() -> {
-                    pbDownload.setIndeterminate(false);
-                    pbDownload.setMax(100);
-                    pbDownload.setProgress(0);
-                    tvDataDesc.setText("Extracting game assets...");
-                    tvDownloadProgress.setText("Extracting...");
-                });
-
-                unzipFile(zipFile, baseDir);
-
-                // Delete zip to save storage
-                if (zipFile.exists()) {
-                    zipFile.delete();
-                }
-
-                mainHandler.post(() -> {
+        // Run in GameDataDownloadService so it survives the Activity and
+        // resumes via Range + .part with retry; we only observe progress here.
+        GameDataDownloadService.Listener l = s -> {
+            if (!isAdded() || getContext() == null) return;
+            mainHandler.post(() -> {
+                if (!isAdded()) return;
+                if (s.phase == GameDataDownloadService.PHASE_EXTRACT) {
+                    pbDownload.setProgress(s.percent);
+                    tvDownloadProgress.setText("Extracting " + s.percent + "% ("
+                            + s.bytes + "/" + s.total + ")");
+                } else if (s.phase == GameDataDownloadService.PHASE_DONE) {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
                     Toast.makeText(getContext(), "Game assets successfully installed!", Toast.LENGTH_LONG).show();
+                    GameDataDownloadService.removeListener(this.listener);
                     runVerification();
-                });
-
-            } catch (Exception e) {
-                mainHandler.post(() -> {
+                } else if (s.phase == GameDataDownloadService.PHASE_FAILED) {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    tvDataDesc.setText("Download error: " + e.getMessage() + "\nTap Download Assets to resume.");
-                    Toast.makeText(getContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    runVerification();
-                });
-            }
-        });
+                    tvDataDesc.setText("Download error: " + s.error + "\nTap Download Assets to resume.");
+                    GameDataDownloadService.removeListener(this.listener);
+                } else if (s.phase == GameDataDownloadService.PHASE_DOWNLOAD) {
+                    pbDownload.setProgress(s.percent);
+                    tvDownloadProgress.setText(s.percent + "% (" + (s.bytes / 1048576)
+                            + "/" + (s.total / 1048576) + " MB)");
+                }
+            });
+        };
+        this.listener = l;
+        GameDataDownloadService.addListener(l);
+        GameDataDownloadService.start(requireContext(),
+                GameDataDownloadService.ACTION_ASSETS, DATA_ZIP_URL, "assets", 666478908L, "");
+    }
+
+    private volatile GameDataDownloadService.Listener listener;
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (listener != null) { GameDataDownloadService.removeListener(listener); listener = null; }
+        executor.shutdownNow();
     }
 
     private void unzipFile(File zipFile, File targetDir) throws Exception {
