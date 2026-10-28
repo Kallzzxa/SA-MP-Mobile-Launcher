@@ -109,12 +109,6 @@ public class HomeFragment extends Fragment {
         }
     }
 
-    @Override
-    public void onDestroyView() {
-        super.onDestroyView();
-        executor.shutdownNow();
-    }
-
     private void runVerification() {
         if (getContext() == null) return;
         tvDataDesc.setText("Verifying game files...");
