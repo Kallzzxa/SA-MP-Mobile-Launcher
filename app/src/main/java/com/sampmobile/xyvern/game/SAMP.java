@@ -148,6 +148,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.i(TAG, "**** onCreate");
+        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_START");
         super.onCreate(savedInstanceState);
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName())) {
@@ -237,7 +238,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         try {
             initAssetManager(getAssets());
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ASSET_MANAGER_READY");
         } catch (UnsatisfiedLinkError e) {
+            com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_ASSET_MANAGER_FAILED", e);
             Log.e(TAG, "initAssetManager failed", e);
             Toast.makeText(this, "Library game tidak dapat dimulai. Periksa instalasi APK.", Toast.LENGTH_LONG).show();
             finish();
@@ -263,13 +266,16 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private void startGameAfterDataReady(String ip, int port, String password, String nickname) {
         try {
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_SETTINGS_PREPARE");
             updateSettingsIni(ip, port, password, nickname);
             File external = getExternalFilesDir(null);
             if (external == null) throw new java.io.IOException("Penyimpanan game tidak tersedia.");
             String storagePath = external.getAbsolutePath();
             if (!storagePath.endsWith("/")) storagePath += "/";
             initializeSAMP(storagePath);
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_NATIVE_INITIALIZATION_REQUESTED");
         } catch (Exception | UnsatisfiedLinkError e) {
+            com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_NATIVE_INITIALIZATION_FAILED", e);
             Log.e(TAG, "Gagal inisialisasi game", e);
             Toast.makeText(this, "Gagal memulai game: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
@@ -360,6 +366,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
+        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_DESTROY");
         super.onDestroy();
         instance = null;
         // Mematikan paksa proses game saat keluar untuk menghindari crash "destroyed mutex" 

@@ -51,14 +51,17 @@ public final class LauncherEvents {
     public static void sendJoinAttempt(Context context, String host, int port) {
         if (!isConfigured()) {
             Log.w("LauncherEvents", "Reporting is not configured in this APK");
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_NOT_CONFIGURED");
             return;
         }
         if (!preferences(context).getBoolean(ENABLED, DEFAULT_ENABLED)) {
             Log.i("LauncherEvents", "Reporting is disabled in settings");
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_DISABLED");
             return;
         }
         if (!ServerInput.isValidHost(host) || !ServerInput.isValidPort(port)) return;
         Context appContext = context.getApplicationContext();
+        com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_QUEUED");
         EXECUTOR.execute(() -> {
             if (preferences(appContext).getBoolean(ENABLED, DEFAULT_ENABLED)) post(host, port);
         });
@@ -90,6 +93,8 @@ public final class LauncherEvents {
             connection.setFixedLengthStreamingMode(payload.length);
             try (java.io.OutputStream output = connection.getOutputStream()) { output.write(payload); }
             int status = connection.getResponseCode();
+            if (status >= 100 && status <= 599)
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_HTTP_" + status);
             if (status >= 200 && status < 300) {
                 Log.i("LauncherEvents", "Event endpoint accepted the report");
             } else {
@@ -97,10 +102,12 @@ public final class LauncherEvents {
                 Log.w("LauncherEvents", "Event endpoint rejected the report (HTTP " + status + ")");
             }
         } catch (java.net.SocketTimeoutException ignored) {
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_TIMEOUT");
             Log.w("LauncherEvents", "Event request timed out");
         } catch (Exception ignored) {
             // Reporting must never block or prevent a player from launching the game.
             // Do not log exception text; it may contain the webhook URL.
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("REPORTING_NETWORK_FAILED");
             Log.w("LauncherEvents", "Event could not be sent (network or TLS error)");
         } finally {
             if (connection != null) connection.disconnect();

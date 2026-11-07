@@ -63,6 +63,9 @@ public class SettingsFragment extends Fragment {
             ((MainActivity) getActivity()).hideKeyboard(getActivity());
         }
 
+        view.findViewById(R.id.share_diagnostic_logs).setOnClickListener(v ->
+                com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(requireActivity()));
+
         // Ánh xạ các thành phần giao diện
         mNickName = view.findViewById(R.id.settings_nickname);
         autoCompleteTextView = view.findViewById(R.id.spinner);

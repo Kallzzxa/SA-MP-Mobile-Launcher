@@ -475,6 +475,11 @@ public class PlayFragment extends Fragment {
             com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify = 
                     com.sampmobile.xyvern.launcher.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
+                for (int i = 0; i < com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
+                    if (verify.missingFiles.contains(com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
+                        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
+                }
                 Toast.makeText(getContext(), 
                         "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.", 
                         Toast.LENGTH_LONG).show();
@@ -489,9 +494,12 @@ public class PlayFragment extends Fragment {
             // The GTA engine reads these files before the game Activity can
             // initialize its asset manager. Preserve any existing user files.
             try {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_START");
                 StartupAssets.prepare(requireContext().getExternalFilesDir(null),
                         name -> requireContext().getAssets().open(name));
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_DONE");
             } catch (java.io.IOException | SecurityException e) {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_FONT_PREPARATION_FAILED", e);
                 android.util.Log.e("PlayFragment", "Gagal menyiapkan font game", e);
                 Toast.makeText(requireContext(), "Gagal menyiapkan font game: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 return;
@@ -499,6 +507,7 @@ public class PlayFragment extends Fragment {
 
             stopPingTask();
             detailDialog.dismiss();
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_LAUNCH_REQUESTED");
             Intent intent = new Intent(getActivity(), SAMP.class);
             intent.putExtra("ip", server.getAddress());
             intent.putExtra("port", server.getPort());

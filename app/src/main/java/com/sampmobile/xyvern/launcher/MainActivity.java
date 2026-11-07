@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        com.sampmobile.xyvern.diagnostics.Diagnostics.event("LAUNCHER_ACTIVITY_START");
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
@@ -71,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
         GameDataManager.checkAndPrepare(this, () -> {
             if (isFinishing() || isDestroyed() || launcherInitialized) return;
             launcherInitialized = true;
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("LAUNCHER_DATA_GATE_READY");
             initializeLauncherUi();
         });
     }
