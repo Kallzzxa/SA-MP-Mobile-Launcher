@@ -49,8 +49,15 @@ public final class LauncherEvents {
     }
 
     public static void sendJoinAttempt(Context context, String host, int port) {
-        if (!isConfigured() || !preferences(context).getBoolean(ENABLED, DEFAULT_ENABLED)
-                || !ServerInput.isValidHost(host) || !ServerInput.isValidPort(port)) return;
+        if (!isConfigured()) {
+            Log.w("LauncherEvents", "Reporting is not configured in this APK");
+            return;
+        }
+        if (!preferences(context).getBoolean(ENABLED, DEFAULT_ENABLED)) {
+            Log.i("LauncherEvents", "Reporting is disabled in settings");
+            return;
+        }
+        if (!ServerInput.isValidHost(host) || !ServerInput.isValidPort(port)) return;
         Context appContext = context.getApplicationContext();
         EXECUTOR.execute(() -> {
             if (preferences(appContext).getBoolean(ENABLED, DEFAULT_ENABLED)) post(host, port);
@@ -75,18 +82,26 @@ public final class LauncherEvents {
             byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
             connection = (HttpURLConnection) new URL(destination).openConnection();
             connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(8000);
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             connection.setDoOutput(true);
             connection.setFixedLengthStreamingMode(payload.length);
             try (java.io.OutputStream output = connection.getOutputStream()) { output.write(payload); }
             int status = connection.getResponseCode();
-            if (status < 200 || status >= 300) Log.w("LauncherEvents", "Event endpoint did not accept event");
+            if (status >= 200 && status < 300) {
+                Log.i("LauncherEvents", "Event endpoint accepted the report");
+            } else {
+                // Status only: never log the webhook URL, token, response, or player data.
+                Log.w("LauncherEvents", "Event endpoint rejected the report (HTTP " + status + ")");
+            }
+        } catch (java.net.SocketTimeoutException ignored) {
+            Log.w("LauncherEvents", "Event request timed out");
         } catch (Exception ignored) {
             // Reporting must never block or prevent a player from launching the game.
-            Log.w("LauncherEvents", "Event could not be sent");
+            // Do not log exception text; it may contain the webhook URL.
+            Log.w("LauncherEvents", "Event could not be sent (network or TLS error)");
         } finally {
             if (connection != null) connection.disconnect();
         }

@@ -56,6 +56,19 @@ jobs:
             fi
           done
 
+      - name: Check Discord reporting configuration (no secrets printed)
+        shell: bash
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$HOPEPRIDE_DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord webhook secret is present for this build (delivery not yet verified)."
+            echo "Discord webhook: configured; delivery not yet verified." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Discord webhook secret is not available to this build; launcher reporting is disabled."
+            echo "Discord webhook: secret unavailable; launcher reporting disabled." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Run unit tests and build debug APK
         shell: bash
         env:
@@ -94,7 +107,7 @@ jobs:
           retention-days: 14
 
   send-feature-list:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.task == 'features' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.task == 'features') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[send-features]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
