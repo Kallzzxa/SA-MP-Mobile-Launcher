@@ -7,6 +7,12 @@ import java.nio.file.Files;
 import static org.junit.Assert.*;
 
 public class DownloadSafetyTest {
+    @Test public void resolvedUrlKeyUsesSameDefaultVersionAsDownload() {
+        assertEquals("resolved_1", DownloadSafety.resolvedKey(null));
+        assertEquals("resolved_1", DownloadSafety.resolvedKey(""));
+        assertEquals("resolved_2", DownloadSafety.resolvedKey("2"));
+    }
+
     @Test public void validatesPartialResponse() {
         assertTrue(DownloadSafety.matchesRange("bytes 100-199/200", 100, 100));
         assertTrue(DownloadSafety.matchesRange("bytes 0-199/*", 0, -1));
@@ -15,6 +21,15 @@ public class DownloadSafetyTest {
         assertFalse(DownloadSafety.matchesRange("bytes 100-199/200", 100, 99));
         assertFalse(DownloadSafety.matchesRange(null, 100, 100));
         assertFalse(DownloadSafety.matchesRange("bytes 999999999999999999999-2/3", 0, -1));
+    }
+
+    @Test public void extractsRangeLengthWhenContentLengthIsUnknown() {
+        assertEquals(100, DownloadSafety.rangeLength("bytes 100-199/200"));
+        assertEquals(200, DownloadSafety.rangeLength("bytes 0-199/*"));
+        assertEquals(-1, DownloadSafety.rangeLength(null));
+        assertEquals(-1, DownloadSafety.rangeLength("bytes 100-99/200"));
+        assertEquals(-1, DownloadSafety.rangeLength("bytes 0-9223372036854775807/*"));
+        assertEquals(-1, DownloadSafety.rangeLength("bytes 999999999999999999999-2/3"));
     }
 
     @Test public void acceptsOnlyMatchingCompletedRange() {

@@ -12,6 +12,10 @@ final class DownloadSafety {
 
     private DownloadSafety() {}
 
+    static String resolvedKey(String version) {
+        return "resolved_" + (version == null || version.isEmpty() ? "1" : version);
+    }
+
     static boolean matchesRange(String header, long expectedStart, long contentLength) {
         if (header == null) return false;
         Matcher m = CONTENT_RANGE.matcher(header.trim());
@@ -24,6 +28,20 @@ final class DownloadSafety {
             return "*".equals(m.group(3)) || Long.parseLong(m.group(3)) == end + 1;
         } catch (NumberFormatException e) {
             return false;
+        }
+    }
+
+    /** Bytes described by a valid Content-Range, or -1 for malformed/overflow input. */
+    static long rangeLength(String header) {
+        if (header == null) return -1;
+        Matcher m = CONTENT_RANGE.matcher(header.trim());
+        if (!m.matches()) return -1;
+        try {
+            long start = Long.parseLong(m.group(1));
+            long end = Long.parseLong(m.group(2));
+            return end < start || end == Long.MAX_VALUE ? -1 : end - start + 1;
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 

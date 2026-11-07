@@ -201,7 +201,8 @@ public class HomeFragment extends Fragment {
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    Toast.makeText(getContext(), "Data game berhasil dipasang!", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), s.detail == null || s.detail.isEmpty()
+                            ? "Download selesai. Periksa data game." : s.detail, Toast.LENGTH_LONG).show();
                     GameDataDownloadService.removeListener(this.listener);
                     this.listener = null;
                     runVerification();
