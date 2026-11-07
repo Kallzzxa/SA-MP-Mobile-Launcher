@@ -113,8 +113,8 @@ public class PlayFragment extends Fragment {
 
     private void switchTab(boolean favorites) {
         showingFavorites = favorites;
-        tabFavorites.setBackgroundResource(favorites ? R.drawable.bg_nav_active : 0);
-        tabHosted.setBackgroundResource(!favorites ? R.drawable.bg_nav_active : 0);
+        tabFavorites.setBackgroundResource(favorites ? R.drawable.bg_hope_nav_selected : 0);
+        tabHosted.setBackgroundResource(!favorites ? R.drawable.bg_hope_nav_selected : 0);
         updateList();
     }
 

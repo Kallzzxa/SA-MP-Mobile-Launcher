@@ -67,14 +67,18 @@
 
     <TextView
         android:id="@+id/tv_server_status"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_hope_badge"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="5dp"
+        android:paddingBottom="5dp"
         android:fontFamily="@font/montserrat_medium"
         android:text="Players"
         android:textColor="#CBD5E1"
         android:textSize="12sp"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tv_server_mode" />
 </androidx.constraintlayout.widget.ConstraintLayout>

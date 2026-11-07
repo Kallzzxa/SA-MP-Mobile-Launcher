@@ -94,6 +94,11 @@ public class HomeFragment extends Fragment {
         } catch (Exception ignored) {
         }
 
+        view.findViewById(R.id.btn_browse_servers).setOnClickListener(v -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).changeTab(1);
+            }
+        });
         btnVerifyData.setOnClickListener(v -> runVerification());
 
         return view;

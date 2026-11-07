@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#090D16">
+    android:background="#080F1A">
 
     <LinearLayout
         android:id="@+id/server_header"
@@ -64,7 +64,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="@drawable/bg_nav_active"
+            android:background="@drawable/bg_hope_nav_selected"
             android:fontFamily="@font/montserrat_bold"
             android:gravity="center"
             android:text="Favorit"
@@ -120,7 +120,7 @@
         android:layout_marginTop="12dp"
         android:layout_marginEnd="22dp"
         android:layout_marginBottom="18dp"
-        android:backgroundTint="#0284C7"
+        android:backgroundTint="#129FE4"
         android:fontFamily="@font/montserrat_bold"
         android:text="+  Tambah server"
         android:textAllCaps="false"
