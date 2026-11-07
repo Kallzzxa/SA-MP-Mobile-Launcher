@@ -34,6 +34,33 @@ public class GameDataVerifierTest {
         assertFalse(GameDataVerifier.verifyGameDataRoot(root).isValid);
     }
 
+    @Test public void mapsDeviceFamiliesToTextureVariants() {
+        assertEquals("dxt", GameDataVerifier.textureVariantForSoc("SM8550 qcom Adreno (TM) 740"));
+        assertEquals("etc", GameDataVerifier.textureVariantForSoc("MT6789 MediaTek Mali-G57 MC2"));
+        assertEquals("etc", GameDataVerifier.textureVariantForSoc("exynos2100 Mali-G78"));
+        assertEquals("pvr", GameDataVerifier.textureVariantForSoc("PowerVR Rogue GE8320"));
+        assertNull(GameDataVerifier.textureVariantForSoc("unknown soc"));
+        assertNull(GameDataVerifier.textureVariantForSoc(null));
+    }
+
+    @Test public void requiresTheTextureVariantThisGpuNeeds() throws Exception {
+        File root = rootWithCoreFiles();
+        put(root, "audio/config/bankslot.dat", "valid");
+        // Packs built for another GPU family only carry their own variant.
+        put(root, "texdb/txd/txd.pvr.tmb", "x");
+        assertTrue(GameDataVerifier.verifyGameDataRoot(root, "pvr").isValid);
+        assertFalse(GameDataVerifier.verifyGameDataRoot(root, "dxt").isValid);
+        assertTrue(GameDataVerifier.verifyGameDataRoot(root, "dxt")
+                .missingFiles.contains("texdb/txd/txd.dxt.tmb"));
+        // An unknown device must not be blocked by a guess.
+        assertTrue(GameDataVerifier.verifyGameDataRoot(root, null).isValid);
+
+        put(root, "texdb/txd/txd.dxt.tmb", "x");
+        assertTrue(GameDataVerifier.verifyGameDataRoot(root, "dxt").isValid);
+        put(root, "texdb/txd/txd.dxt.tmb", "");
+        assertFalse(GameDataVerifier.verifyGameDataRoot(root, "dxt").isValid);
+    }
+
     @Test public void refusesAmbiguousVariantsAndKeepsExactPriority() throws Exception {
         File root = rootWithCoreFiles();
         put(root, "audio/config/bankslot.dat", "first");

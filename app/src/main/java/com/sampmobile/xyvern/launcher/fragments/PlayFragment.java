@@ -480,8 +480,19 @@ public class PlayFragment extends Fragment {
                     if (verify.missingFiles.contains(com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
                         com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
                 }
-                Toast.makeText(getContext(), 
-                        "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.", 
+                String textureVariantMissing = null;
+                for (String missing : verify.missingFiles) {
+                    if (missing.startsWith("texdb/txd/txd.")) textureVariantMissing = missing;
+                }
+                if (textureVariantMissing != null) {
+                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_TEXTURE_VARIANT");
+                }
+                Toast.makeText(getContext(),
+                        textureVariantMissing != null
+                                ? "Data game ini tidak cocok dengan GPU perangkat. File yang tidak ada: "
+                                  + textureVariantMissing
+                                  + ". Pakai paket data yang lengkap (berisi semua varian texdb/txd)."
+                                : "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.",
                         Toast.LENGTH_LONG).show();
                 stopPingTask();
                 detailDialog.dismiss();

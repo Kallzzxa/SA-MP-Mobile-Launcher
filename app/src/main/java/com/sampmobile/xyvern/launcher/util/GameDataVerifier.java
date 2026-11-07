@@ -4,6 +4,7 @@ import android.content.Context;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class GameDataVerifier {
 
@@ -65,11 +66,66 @@ public class GameDataVerifier {
     }
 
     public static VerificationResult verifyGameData(Context context) {
-        return verifyGameDataRoot(context.getExternalFilesDir(null));
+        return verifyGameDataRoot(context.getExternalFilesDir(null), textureVariantForDevice());
+    }
+
+    /**
+     * Texture container variant the GTA engine selects for this GPU. The engine
+     * requests texdb/txd/txd.&lt;variant&gt;.tmb during InitialiseRenderWare and
+     * dereferences the handle without a null check, so a pack built for another
+     * GPU family crashes the game. Returning null (unknown SoC) skips the check
+     * instead of guessing.
+     */
+    public static String textureVariantForDevice() {
+        String identity = safeSocValue("SOC_MODEL") + " "
+                + safeSocValue("SOC_MANUFACTURER") + " "
+                + safeBuildField("HARDWARE") + " "
+                + safeBuildField("BOARD");
+        return textureVariantForSoc(identity);
+    }
+
+    private static String safeBuildField(String name) {
+        try {
+            if ("HARDWARE".equals(name)) return String.valueOf(android.os.Build.HARDWARE);
+            if ("BOARD".equals(name)) return String.valueOf(android.os.Build.BOARD);
+        } catch (Throwable ignored) { }
+        return "";
+    }
+
+    private static String safeSocValue(String name) {
+        try {
+            // SOC_MODEL / SOC_MANUFACTURER exist from API 31 only.
+            java.lang.reflect.Field field = android.os.Build.class.getField(name);
+            Object value = field.get(null);
+            return value == null ? "" : String.valueOf(value);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    // Package-visible: pure mapping so it can be unit tested without a device.
+    static String textureVariantForSoc(String identity) {
+        if (identity == null) return null;
+        String value = identity.toLowerCase(Locale.ROOT);
+        if (containsAny(value, "qcom", "qualcomm", "adreno", "msm", "sdm", "sm-", "sm8", "sm7", "sm6")) return "dxt";
+        if (containsAny(value, "exynos", "mali", "mediatek", "helio", "mt6", "mt8", "kirin", "hi3", "unisoc", "sprd", "ums")) return "etc";
+        if (containsAny(value, "powervr", "imagination", "imgtec")) return "pvr";
+        return null;
+    }
+
+    private static boolean containsAny(String value, String... needles) {
+        for (String needle : needles) {
+            if (value.contains(needle)) return true;
+        }
+        return false;
     }
 
     // Package-visible to exercise the same checks without Android storage in unit tests.
     static VerificationResult verifyGameDataRoot(File baseDir) {
+        return verifyGameDataRoot(baseDir, null);
+    }
+
+    static VerificationResult verifyGameDataRoot(File baseDir, String textureVariant) {
         if (baseDir == null || !baseDir.exists()) {
             List<String> missing = new ArrayList<>();
             for (String f : ESSENTIAL_FILES) missing.add(f);
@@ -93,6 +149,21 @@ public class GameDataVerifier {
                 missingFiles.add(relativePath);
             } else {
                 totalSize += target.length();
+            }
+        }
+
+        // The engine loads texdb/txd/txd.<variant>.tmb before the world exists and
+        // does not survive a failed open, so verify the variant this GPU needs.
+        if (textureVariant != null) {
+            File textureDir = new File(baseDir, "texdb/txd");
+            if (textureDir.isDirectory()) {
+                String relative = "texdb/txd/txd." + textureVariant + ".tmb";
+                File variant = new File(baseDir, relative);
+                if (!variant.isFile() || variant.length() == 0) {
+                    missingFiles.add(relative);
+                } else {
+                    totalSize += variant.length();
+                }
             }
         }
 
