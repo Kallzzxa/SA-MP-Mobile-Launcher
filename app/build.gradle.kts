@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -67,7 +69,8 @@ android {
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            signingConfig = signingConfigs.getByName("release")
+            // Debug APKs use the local debug key, never the release signing key.
+            signingConfig = signingConfigs.getByName("debug")
 
             externalNativeBuild {
                 cmake {
@@ -185,7 +188,7 @@ dependencies {
 }
 
 // Optional Laragon deployment on local Windows development machine only
-val laragonDir = file("C:\\laragon\\www")
+val laragonDir = File("C:\\laragon\\www")
 if (System.getenv("GITHUB_ACTIONS") == null && laragonDir.exists()) {
     afterEvaluate {
         android.applicationVariants.all {

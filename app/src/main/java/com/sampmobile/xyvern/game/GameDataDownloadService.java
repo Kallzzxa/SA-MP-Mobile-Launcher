@@ -17,7 +17,6 @@ import android.os.IBinder;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -128,9 +127,7 @@ public class GameDataDownloadService extends Service {
     public static boolean hasUnfinished(Context c) {
         SharedPreferences p = prefs(c);
         if (!p.contains(KEY_JOB)) return false;
-        String installed = p.getString("data_version", "");
-        String version = p.getString(KEY_VERSION, "");
-        return !version.equals(installed);
+        return true; // A job is removed only after its own installation succeeds.
     }
 
     /** Re-launch the service from persisted state (called on app open). */
@@ -176,15 +173,16 @@ public class GameDataDownloadService extends Service {
 
     // ------------------------------------------------------------ engine ---
     private Handler mWorker;
+    private HandlerThread mWorkerThread;
     private volatile boolean mRunning = false;
     private volatile boolean mCancelled = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        HandlerThread t = new HandlerThread("GameDataDownload");
-        t.start();
-        mWorker = new Handler(t.getLooper());
+        mWorkerThread = new HandlerThread("GameDataDownload");
+        mWorkerThread.start();
+        mWorker = new Handler(mWorkerThread.getLooper());
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID,
                     "Download Data Game", NotificationManager.IMPORTANCE_LOW);
@@ -213,6 +211,7 @@ public class GameDataDownloadService extends Service {
     @Override
     public void onDestroy() {
         mCancelled = true;
+        if (mWorkerThread != null) mWorkerThread.quitSafely();
         super.onDestroy();
     }
 
@@ -310,6 +309,11 @@ public class GameDataDownloadService extends Service {
 
     /** True when the error looks transient and is worth retrying with backoff. */
     private static boolean isTransient(Exception e) {
+        if (e instanceof java.net.HttpRetryException) {
+            int code = ((java.net.HttpRetryException) e).responseCode();
+            return code >= 500 && code <= 599;
+        }
+        if (e instanceof java.io.EOFException) return true;
         if (e instanceof SocketTimeoutException) return true;
         if (e instanceof ConnectException) return true;
         if (e instanceof SocketException) return true; // reset / broken pipe
@@ -324,52 +328,62 @@ public class GameDataDownloadService extends Service {
     private void downloadOnce(String directUrl, File part, long expectedSize) throws Exception {
         long existing = part.exists() ? part.length() : 0L;
         HttpURLConnection conn = connect(directUrl, existing);
-        int code = conn.getResponseCode();
-        if (code < 200 || code >= 300)
-            throw new Exception("Server menolak download (HTTP " + code + ").");
-
-        boolean append = (code == HttpURLConnection.HTTP_PARTIAL);
-        if (!append && existing > 0) existing = 0; // server ignored Range: restart from 0
-
-        long total = conn.getContentLengthLong();
-        if (append) total += existing;
-        if (total <= 0) total = Math.max(existing, expectedSize);
-
-        setState(PHASE_DOWNLOAD, (int) (total > 0 ? Math.min(100, existing * 100 / total) : 0),
-                existing, total, "Mengunduh...", null);
-
-        long downloaded = existing;
-        long lastUi = 0;
-        long startNs = System.nanoTime();
-        InputStream in = new BufferedInputStream(conn.getInputStream(), 128 * 1024);
-        OutputStream out = new BufferedOutputStream(new FileOutputStream(part, append));
         try {
-            byte[] buf = new byte[128 * 1024];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                if (mCancelled) throw new Exception("Download dibatalkan.");
-                out.write(buf, 0, n);
-                downloaded += n;
-                long now = System.currentTimeMillis();
-                if (now - lastUi > 300) {
-                    lastUi = now;
-                    long elapsed = Math.max(1, (System.nanoTime() - startNs) / 1_000_000_000L);
-                    long speed = (downloaded - existing) / elapsed;
-                    int pct = total > 0 ? (int) Math.min(100, (downloaded * 100) / total) : 0;
-                    setState(PHASE_DOWNLOAD, pct, downloaded, total,
-                            fmtBytes(downloaded) + (total > 0 ? " / " + fmtBytes(total) : "")
-                                    + "  •  " + fmtBytes(speed) + "/dtk", null);
-                    updateNotification(buildNotification(
-                            "Mengunduh " + pct + "% (" + fmtBytes(downloaded)
-                                    + (total > 0 ? " / " + fmtBytes(total) : "") + ")", pct));
-                }
+            int code = conn.getResponseCode();
+            if (code == 416 && DownloadSafety.isCompleteRange(
+                    conn.getHeaderField("Content-Range"), existing, expectedSize)) {
+                return; // The previous attempt finished writing before it was interrupted.
             }
-            out.flush();
-            ((FileOutputStream) out).getFD().sync();
+            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL)
+                throw new java.net.HttpRetryException("Server menolak download (HTTP " + code + ").", code);
+
+            boolean append = code == HttpURLConnection.HTTP_PARTIAL;
+            long responseLength = conn.getContentLengthLong();
+            if (append && !DownloadSafety.matchesRange(
+                    conn.getHeaderField("Content-Range"), existing, responseLength)) {
+                throw new java.io.IOException("Respons Range server tidak valid.");
+            }
+            if (!append) existing = 0; // Server ignored Range; replace the partial file.
+
+            long total = responseLength >= 0 ? existing + responseLength : expectedSize;
+            setState(PHASE_DOWNLOAD, (int) (total > 0 ? Math.min(100, existing * 100 / total) : 0),
+                    existing, total, "Mengunduh...", null);
+
+            long downloaded = existing;
+            long lastUi = 0;
+            long startNs = System.nanoTime();
+            try (InputStream in = new BufferedInputStream(conn.getInputStream(), 128 * 1024);
+                 FileOutputStream fileOut = new FileOutputStream(part, append);
+                 OutputStream out = new BufferedOutputStream(fileOut)) {
+                byte[] buf = new byte[128 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    if (mCancelled) throw new Exception("Download dibatalkan.");
+                    out.write(buf, 0, n);
+                    downloaded += n;
+                    long now = System.currentTimeMillis();
+                    if (now - lastUi > 300) {
+                        lastUi = now;
+                        long elapsed = Math.max(1, (System.nanoTime() - startNs) / 1_000_000_000L);
+                        long speed = (downloaded - existing) / elapsed;
+                        int pct = total > 0 ? (int) Math.min(100, (downloaded * 100) / total) : 0;
+                        setState(PHASE_DOWNLOAD, pct, downloaded, total,
+                                fmtBytes(downloaded) + (total > 0 ? " / " + fmtBytes(total) : "")
+                                        + "  •  " + fmtBytes(speed) + "/dtk", null);
+                        updateNotification(buildNotification(
+                                "Mengunduh " + pct + "% (" + fmtBytes(downloaded)
+                                        + (total > 0 ? " / " + fmtBytes(total) : "") + ")", pct));
+                    }
+                }
+                out.flush();
+                fileOut.getFD().sync();
+            }
+            if (responseLength >= 0 && downloaded - existing != responseLength)
+                throw new java.io.EOFException("Unduhan terputus sebelum selesai.");
+            if (expectedSize > 0 && downloaded < expectedSize)
+                throw new java.io.EOFException("Unduhan belum lengkap.");
             setState(PHASE_DOWNLOAD, 100, downloaded, downloaded, "Download selesai", null);
         } finally {
-            try { in.close(); } catch (Exception ignored) {}
-            try { out.close(); } catch (Exception ignored) {}
             conn.disconnect();
         }
     }
@@ -399,46 +413,41 @@ public class GameDataDownloadService extends Service {
     // ------------------------------------------------------------ extract --
     /** Shared unzip (assets job): strips the "files/" wrapper like HomeFragment did. */
     private void unzipTo(Context c, File zipFile, File targetDir) throws Exception {
-        java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zipFile);
-        int totalEntries = zf.size();
-        int processed = 0;
-        byte[] buffer = new byte[65536];
-
-        java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zf.entries();
-        while (entries.hasMoreElements()) {
-            java.util.zip.ZipEntry ze = entries.nextElement();
-            processed++;
-
-            String entryName = ze.getName();
-            if (entryName.startsWith("files/") || entryName.startsWith("files\\")) {
-                entryName = entryName.substring(6);
-            }
-            if (entryName.isEmpty()) continue;
-
-            File file = new File(targetDir, entryName);
-            if (!file.getCanonicalPath().startsWith(targetDir.getCanonicalPath())) continue;
-
-            if (ze.isDirectory()) {
-                file.mkdirs();
-            } else {
-                File parent = file.getParentFile();
-                if (parent != null && !parent.exists()) parent.mkdirs();
-                java.io.InputStream is = zf.getInputStream(ze);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
-                int count;
-                while ((count = is.read(buffer)) != -1) fos.write(buffer, 0, count);
-                fos.flush();
-                fos.close();
-                is.close();
-            }
-
-            if (totalEntries > 0 && processed % 25 == 0) {
-                int pct = (processed * 100) / totalEntries;
-                setState(PHASE_EXTRACT, pct, processed, totalEntries,
-                        "Mengekstrak " + processed + "/" + totalEntries, null);
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zipFile)) {
+            int totalEntries = zf.size();
+            if (totalEntries == 0) throw new java.io.IOException("File zip kosong / rusak.");
+            int processed = 0;
+            byte[] buffer = new byte[65536];
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zf.entries();
+            while (entries.hasMoreElements()) {
+                java.util.zip.ZipEntry ze = entries.nextElement();
+                processed++;
+                String entryName = ze.getName();
+                if (entryName.startsWith("files/") || entryName.startsWith("files\\")) {
+                    entryName = entryName.substring(6);
+                }
+                if (entryName.isEmpty()) continue;
+                File file = DownloadSafety.safeZipTarget(targetDir, entryName);
+                if (ze.isDirectory()) {
+                    if (!file.isDirectory() && !file.mkdirs())
+                        throw new java.io.IOException("Gagal membuat direktori: " + entryName);
+                } else {
+                    File parent = file.getParentFile();
+                    if (parent != null && !parent.isDirectory() && !parent.mkdirs())
+                        throw new java.io.IOException("Gagal membuat direktori: " + entryName);
+                    try (InputStream in = zf.getInputStream(ze);
+                         OutputStream out = new FileOutputStream(file)) {
+                        int count;
+                        while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                    }
+                }
+                if (processed % 25 == 0) {
+                    int pct = (processed * 100) / totalEntries;
+                    setState(PHASE_EXTRACT, pct, processed, totalEntries,
+                            "Mengekstrak " + processed + "/" + totalEntries, null);
+                }
             }
         }
-        zf.close();
     }
 
     // ------------------------------------------------------------ notif ----
@@ -462,7 +471,7 @@ public class GameDataDownloadService extends Service {
                 : new Notification.Builder(this);
         return b
                 .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle("M-SAMP: Unduh Data Game")
+                .setContentTitle("HopePride: Unduh Data Game")
                 .setContentText(text)
                 .setProgress(100, percent, percent <= 0)
                 .setOngoing(true)
