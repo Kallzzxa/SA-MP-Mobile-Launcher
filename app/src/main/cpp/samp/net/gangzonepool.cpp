@@ -20,7 +20,7 @@ CGangZonePool::~CGangZonePool()
 	{
 		if (m_pGangZone[wZone])
 		{
-			delete m_pGangZone[wZone];
+			free(m_pGangZone[wZone]);
 			m_pGangZone[wZone] = nullptr;
 		}
 	}
@@ -28,9 +28,11 @@ CGangZonePool::~CGangZonePool()
 
 void CGangZonePool::New(uint16_t wZoneID, float fMinX, float fMinY, float fMaxX, float fMaxY, uint32_t dwColor)
 {
+	if (wZoneID >= MAX_GANG_ZONES) return;
+
 	if (m_pGangZone[wZoneID])
 	{
-		delete m_pGangZone[wZoneID];
+		free(m_pGangZone[wZoneID]);
 		m_pGangZone[wZoneID] = nullptr;
 		m_bSlotState[wZoneID] = false;
 	}
@@ -52,9 +54,11 @@ void CGangZonePool::New(uint16_t wZoneID, float fMinX, float fMinY, float fMaxX,
 
 void CGangZonePool::Delete(uint16_t wZoneID)
 {
+	if (wZoneID >= MAX_GANG_ZONES) return;
+
 	if (m_pGangZone[wZoneID])
 	{
-		delete m_pGangZone[wZoneID];
+		free(m_pGangZone[wZoneID]);
 		m_pGangZone[wZoneID] = nullptr;
 		m_bSlotState[wZoneID] = false;
 	}
@@ -62,6 +66,8 @@ void CGangZonePool::Delete(uint16_t wZoneID)
 
 void CGangZonePool::Flash(uint16_t wZoneID, uint32_t dwColor)
 {
+	if (wZoneID >= MAX_GANG_ZONES) return;
+
 	if (m_pGangZone[wZoneID]) {
 		m_pGangZone[wZoneID]->dwAltColor = dwColor;
 	}
@@ -69,6 +75,8 @@ void CGangZonePool::Flash(uint16_t wZoneID, uint32_t dwColor)
 
 void CGangZonePool::StopFlash(uint16_t wZoneID)
 {
+	if (wZoneID >= MAX_GANG_ZONES) return;
+
 	if (m_pGangZone[wZoneID]) {
 		m_pGangZone[wZoneID]->dwAltColor = m_pGangZone[wZoneID]->dwColor;
 	}

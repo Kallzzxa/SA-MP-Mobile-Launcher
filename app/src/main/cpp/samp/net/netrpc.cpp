@@ -6,6 +6,8 @@
 #include "../settings.h"
 #include "dl/dlmanager.h"
 #include <cstdio>
+#include <climits>
+#include <cmath>
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -33,43 +35,75 @@ void InitGame(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] InitGame");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->m_pNetSet || !pGame || !pNetGame->GetPlayerPool() ||
+		!pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	CNetGame::NET_SETTINGS settings{};
+	PLAYERID MyPlayerID = 0;
+	int iLagCompensation = 0;
+	int onFootSendRate = 0, inCarSendRate = 0, firingSendRate = 0, sendMultiplier = 0;
+	bool bStuntBonus = false, bLanMode = false;
+	uint8_t byteStrLen = 0, byteVehicleModels[212]{};
+	char hostName[sizeof(pNetGame->m_szHostName)]{};
+	RakNet::BitStream bsInitGame(Data, (iBitLength + 7) / 8, false);
+	bsInitGame.SetWriteOffset(iBitLength);
 
-	PLAYERID MyPlayerID;
-	int iLagCompensation;
-	bool bStuntBonus;
-	bool bLanMode;
-	RakNet::BitStream bsInitGame(Data, (iBitLength / 8) + 1, false);
+	if (!bsInitGame.ReadCompressed(settings.bZoneNames) ||
+		!bsInitGame.ReadCompressed(settings.bUseCJWalk) ||
+		!bsInitGame.ReadCompressed(settings.bAllowWeapons) ||
+		!bsInitGame.ReadCompressed(settings.bLimitGlobalChatRadius) ||
+		!bsInitGame.Read(settings.fGlobalChatRadius) ||
+		!bsInitGame.ReadCompressed(bStuntBonus) ||
+		!bsInitGame.Read(settings.fNameTagDrawDistance) ||
+		!bsInitGame.ReadCompressed(settings.bDisableInteriorEnterExits) ||
+		!bsInitGame.ReadCompressed(settings.bNameTagLOS) ||
+		!bsInitGame.ReadCompressed(settings.bManualVehicleEngineAndLight) ||
+		!bsInitGame.Read(settings.iSpawnsAvailable) ||
+		!bsInitGame.Read(MyPlayerID) ||
+		!bsInitGame.ReadCompressed(settings.bShowNameTags) ||
+		!bsInitGame.Read(settings.iShowPlayerMarkers) ||
+		!bsInitGame.Read(settings.byteWorldTime_Hour) ||
+		!bsInitGame.Read(settings.byteWeather) ||
+		!bsInitGame.Read(settings.fGravity) ||
+		!bsInitGame.ReadCompressed(bLanMode) ||
+		!bsInitGame.Read(settings.iDeathDropMoney) ||
+		!bsInitGame.ReadCompressed(settings.bInstagib) ||
+		!bsInitGame.Read(onFootSendRate) || !bsInitGame.Read(inCarSendRate) ||
+		!bsInitGame.Read(firingSendRate) || !bsInitGame.Read(sendMultiplier) ||
+		!bsInitGame.Read(iLagCompensation) || !bsInitGame.Read(byteStrLen) ||
+		(byteStrLen && !bsInitGame.Read(hostName, byteStrLen)) ||
+		!bsInitGame.Read((char*)byteVehicleModels, sizeof(byteVehicleModels)) ||
+		!bsInitGame.Read(settings.iVehicleFriendlyFire)) return;
 
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bZoneNames);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bUseCJWalk);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bAllowWeapons);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bLimitGlobalChatRadius);
-	bsInitGame.Read(pNetGame->m_pNetSet->fGlobalChatRadius);
-	bsInitGame.ReadCompressed(bStuntBonus);
-	bsInitGame.Read(pNetGame->m_pNetSet->fNameTagDrawDistance);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bDisableInteriorEnterExits);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bNameTagLOS);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bManualVehicleEngineAndLight);
-	bsInitGame.Read(pNetGame->m_pNetSet->iSpawnsAvailable);
-	bsInitGame.Read(MyPlayerID);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bShowNameTags);
-	bsInitGame.Read(pNetGame->m_pNetSet->iShowPlayerMarkers);
-	bsInitGame.Read(pNetGame->m_pNetSet->byteWorldTime_Hour);
-	bsInitGame.Read(pNetGame->m_pNetSet->byteWeather);
-	bsInitGame.Read(pNetGame->m_pNetSet->fGravity);
-	bsInitGame.ReadCompressed(bLanMode);
-	bsInitGame.Read(pNetGame->m_pNetSet->iDeathDropMoney);
-	bsInitGame.ReadCompressed(pNetGame->m_pNetSet->bInstagib);
-
-	bsInitGame.Read(iNetModeNormalOnFootSendRate);
-	bsInitGame.Read(iNetModeNormalInCarSendRate);
-	bsInitGame.Read(iNetModeFiringSendRate);
-	bsInitGame.Read(iNetModeSendMultiplier);
-	bsInitGame.Read(iLagCompensation);
+	// Apply the initialization only after the entire RPC has been read.
+	pNetGame->m_pNetSet->bZoneNames = settings.bZoneNames;
+	pNetGame->m_pNetSet->bUseCJWalk = settings.bUseCJWalk;
+	pNetGame->m_pNetSet->bAllowWeapons = settings.bAllowWeapons;
+	pNetGame->m_pNetSet->bLimitGlobalChatRadius = settings.bLimitGlobalChatRadius;
+	pNetGame->m_pNetSet->fGlobalChatRadius = settings.fGlobalChatRadius;
+	pNetGame->m_pNetSet->fNameTagDrawDistance = settings.fNameTagDrawDistance;
+	pNetGame->m_pNetSet->bDisableInteriorEnterExits = settings.bDisableInteriorEnterExits;
+	pNetGame->m_pNetSet->bNameTagLOS = settings.bNameTagLOS;
+	pNetGame->m_pNetSet->bManualVehicleEngineAndLight = settings.bManualVehicleEngineAndLight;
+	pNetGame->m_pNetSet->iSpawnsAvailable = settings.iSpawnsAvailable;
+	pNetGame->m_pNetSet->bShowNameTags = settings.bShowNameTags;
+	pNetGame->m_pNetSet->iShowPlayerMarkers = settings.iShowPlayerMarkers;
+	pNetGame->m_pNetSet->byteWorldTime_Hour = settings.byteWorldTime_Hour;
+	pNetGame->m_pNetSet->byteWeather = settings.byteWeather;
+	pNetGame->m_pNetSet->fGravity = settings.fGravity;
+	pNetGame->m_pNetSet->iDeathDropMoney = settings.iDeathDropMoney;
+	pNetGame->m_pNetSet->bInstagib = settings.bInstagib;
+	pNetGame->m_pNetSet->iVehicleFriendlyFire = settings.iVehicleFriendlyFire;
+	iNetModeNormalOnFootSendRate = onFootSendRate;
+	iNetModeNormalInCarSendRate = inCarSendRate;
+	iNetModeFiringSendRate = firingSendRate;
+	iNetModeSendMultiplier = sendMultiplier;
+	memcpy(pNetGame->m_szHostName, hostName, sizeof(hostName));
 
 	Log::addParameter("bUseCJWalk", pNetGame->m_pNetSet->bUseCJWalk);
 	Log::addParameter("bZoneNames", pNetGame->m_pNetSet->bZoneNames);
@@ -111,23 +145,10 @@ void InitGame(RPCParameters* rpcParams)
 	}
 
 	//InstallWeaponFireHooks();
-	if (pGame && !pSettings->Get().bAutoAim) {
+	if (pGame && pSettings && !pSettings->Get().bAutoAim) {
 		//DisableAutoAim();
 	}
 
-	uint8_t byteStrLen;
-	bsInitGame.Read(byteStrLen);
-	if (byteStrLen) {
-		memset(pNetGame->m_szHostName, 0, sizeof(pNetGame->m_szHostName));
-		bsInitGame.Read(pNetGame->m_szHostName, byteStrLen);
-	}
-	pNetGame->m_szHostName[byteStrLen] = 0;
-
-	uint8_t byteVehicleModels[212];
-	bsInitGame.Read((char*)byteVehicleModels, 212);
-	//pGame->PreloadVehicleModels(byteVehicleModels);
-
-	bsInitGame.Read(pNetGame->m_pNetSet->iVehicleFriendlyFire);
 	pPlayerPool->SetLocalPlayerID(MyPlayerID);
 	pGame->EnableStuntBonus(bStuntBonus);
 
@@ -238,10 +259,14 @@ void Chat(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Chat");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	PLAYERID playerId;
 	uint8_t byteMsgLen;
 	char szMessage[256];
@@ -249,9 +274,7 @@ void Chat(RPCParameters *rpcParams)
 
 	if (pNetGame->GetGameState() != GAMESTATE_CONNECTED) return;
 
-	bsData.Read(playerId);
-	bsData.Read(byteMsgLen);
-	bsData.Read(szMessage, byteMsgLen);
+	if (!bsData.Read(playerId) || !bsData.Read(byteMsgLen) || !bsData.Read(szMessage, byteMsgLen)) return;
 	szMessage[byteMsgLen] = '\0';
 
 	Log::addParameter("playerId", playerId);
@@ -275,23 +298,26 @@ void ClientMessage(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Client message ");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	uint32_t dwColor, dwStrLen;
 	char szMsg[256];
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	
 	memset(szMsg, 0, 256);
-	bsData.Read(dwColor);
-	bsData.Read(dwStrLen);
+	if (!bsData.Read(dwColor) || !bsData.Read(dwStrLen)) return;
 
 	Log::addParameter("dwColor", dwColor);
 	Log::addParameter("dwStrLen", dwStrLen);
 
 	if (dwStrLen <= 255)
 	{
-		bsData.Read(szMsg, dwStrLen);
+		if (!bsData.Read(szMsg, dwStrLen)) return;
 		szMsg[dwStrLen] = '\0';
 		Log::addParameter("szMsg", szMsg);
 		if (pUI) pUI->chat()->addClientMessage(Encoding::cp2utf(szMsg), UI::fixcolor(dwColor));
@@ -302,15 +328,23 @@ void RequestClass(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Request class");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool() || !pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteRequestOutcome = 0;
-	PLAYER_SPAWN_INFO SpawnInfo;
+	PLAYER_SPAWN_INFO SpawnInfo{};
 	CLocalPlayer *pLocalPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer();
 
-	bsData.Read(byteRequestOutcome);
+	if (!bsData.Read(byteRequestOutcome)) return;
+	if (!byteRequestOutcome) {
+		pLocalPlayer->HandleClassSelectionOutcome(false);
+		return;
+	}
 	if (bsData.GetNumberOfUnreadBits() >= (50 * 8)) {
 		uint8_t byteTeam;
 		int iSkin;
@@ -321,16 +355,12 @@ void RequestClass(RPCParameters *rpcParams)
 		int iSpawnWeapons[3];
 		int iSpawnWeaponsAmmo[3];
 
-		bsData.Read(byteTeam);
-		bsData.Read(iSkin);
-		bsData.Read(dCustomSkinID);
-		bsData.Read(unk);
-		bsData.Read(vecPos.x);
-		bsData.Read(vecPos.y);
-		bsData.Read(vecPos.z);
-		bsData.Read(fRotation);
-		bsData.Read((char*)iSpawnWeapons, sizeof(iSpawnWeapons));
-		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
+		if (!bsData.Read(byteTeam) || !bsData.Read(iSkin) ||
+			!bsData.Read(dCustomSkinID) || !bsData.Read(unk) ||
+			!bsData.Read(vecPos.x) || !bsData.Read(vecPos.y) ||
+			!bsData.Read(vecPos.z) || !bsData.Read(fRotation) ||
+			!bsData.Read((char*)iSpawnWeapons, sizeof(iSpawnWeapons)) ||
+			!bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo))) return;
 
 		SpawnInfo.byteTeam = byteTeam;
 		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
@@ -341,8 +371,11 @@ void RequestClass(RPCParameters *rpcParams)
 		memcpy(SpawnInfo.iSpawnWeapons, iSpawnWeapons, sizeof(iSpawnWeapons));
 		memcpy(SpawnInfo.iSpawnWeaponsAmmo, iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
 	} else {
-		bsData.Read((char*)&SpawnInfo, sizeof(PLAYER_SPAWN_INFO));
+		if (!bsData.Read((char*)&SpawnInfo, sizeof(PLAYER_SPAWN_INFO))) return;
 	}
+
+	if (!std::isfinite(SpawnInfo.vecPos.x) || !std::isfinite(SpawnInfo.vecPos.y) ||
+		!std::isfinite(SpawnInfo.vecPos.z) || !std::isfinite(SpawnInfo.fRotation)) return;
 
 	Log::addParameter("byteRequestOutcome", byteRequestOutcome);
 	Log::addParameter("SpawnInfo.byteTeam", SpawnInfo.byteTeam);
@@ -368,14 +401,18 @@ void RequestSpawn(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Request spawn");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool() || !pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteRequestOutcome = false;
 	CLocalPlayer *pLocalPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer();
 
-	bsData.Read(byteRequestOutcome);
+	if (!bsData.Read(byteRequestOutcome)) return;
 	Log::addParameter("byteRequestOutcome", byteRequestOutcome);
 
 	if (byteRequestOutcome == 2 || (byteRequestOutcome && pLocalPlayer->m_bWaitingForSpawnRequestReply)) {
@@ -390,13 +427,17 @@ void ToggleClock(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Toggle clock");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteClock;
 
-	bsData.Read(byteClock);
+	if (!bsData.Read(byteClock)) return;
 	Log::addParameter("byteClock", byteClock);
 
 	if (byteClock) {
@@ -404,8 +445,10 @@ void ToggleClock(RPCParameters *rpcParams)
 	}
 	else {
 		pNetGame->m_pNetSet->byteHoldTime = true;
-		pGame->GetWorldTime((int*)&pNetGame->m_pNetSet->byteWorldTime_Hour, 
-			(int*)&pNetGame->m_pNetSet->byteWorldTime_Minute);
+		int iHour = 0, iMinute = 0;
+		pGame->GetWorldTime(&iHour, &iMinute);
+		pNetGame->m_pNetSet->byteWorldTime_Hour = static_cast<uint8_t>(iHour);
+		pNetGame->m_pNetSet->byteWorldTime_Minute = static_cast<uint8_t>(iMinute);
 	}
 }
 
@@ -413,15 +456,18 @@ void SetTimeEx(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] SetTimeEx");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteHour;
 	uint8_t byteMinute;
 
-	bsData.Read(byteHour);
-	bsData.Read(byteMinute);
+	if (!bsData.Read(byteHour) || !bsData.Read(byteMinute)) return;
 
 	Log::addParameter("byteHour", byteHour);
 	Log::addParameter("byteMinute", byteMinute);
@@ -435,13 +481,17 @@ void Weather(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Weather");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteWeather;
 	
-	bsData.Read(byteWeather);
+	if (!bsData.Read(byteWeather)) return;
 	
 	Log::addParameter("byteWeather", byteWeather);
 
@@ -453,12 +503,16 @@ void WorldTime(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] World time");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint8_t byteWorldTIme;
-	bsData.Read(byteWorldTIme);
+	if (!bsData.Read(byteWorldTIme)) return;
 
 	Log::addParameter("byteWorldTIme", byteWorldTIme);
 
@@ -469,12 +523,16 @@ void ConnectionRejected(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Connection rejected");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	uint8_t byteRejectReason;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(byteRejectReason);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(byteRejectReason)) return;
 
 	Log::addParameter("byteRejectReason", byteRejectReason);
 
@@ -514,10 +572,14 @@ void ServerJoin(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Server join");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	CRemotePlayer *pRemotePlayer = nullptr;
 	uint8_t byteNameLen;
@@ -527,11 +589,9 @@ void ServerJoin(RPCParameters *rpcParams)
 	char szPlayerName[256];
 	memset(szPlayerName, 0, sizeof(szPlayerName));
 
-	bsData.Read(PlayerID);
-	bsData.Read(dwMarkerColor);
-	bsData.Read(byteIsNPC);
-	bsData.Read(byteNameLen);
-	bsData.Read(szPlayerName, byteNameLen);
+	if (!bsData.Read(PlayerID) || !bsData.Read(dwMarkerColor) ||
+		!bsData.Read(byteIsNPC) || !bsData.Read(byteNameLen) ||
+		!bsData.Read(szPlayerName, byteNameLen)) return;
 	szPlayerName[byteNameLen] = '\0';
 
 	Log::addParameter("PlayerID", PlayerID);
@@ -556,14 +616,17 @@ void ServerQuit(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Server quit");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	PLAYERID playerId;
 	uint8_t byteReason;
-	bsData.Read(playerId);
-	bsData.Read(byteReason);
+	if (!bsData.Read(playerId) || !bsData.Read(byteReason)) return;
 
 	Log::addParameter("playerId", playerId);
 	Log::addParameter("byteReason", byteReason);
@@ -575,28 +638,30 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 {
 	FLog("[RPC-IN] World player add");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	CRemotePlayer *pRemotePlayer = nullptr;
 	CPlayerPed *pPlayerPed = nullptr;
-	PLAYERID playerId;
-	uint8_t byteTeam;
-	int iSkin;
-	CVector vecPos;
-	float fRotation;
-	uint32_t dwColor;
-	uint8_t byteFightingStyle;
-	uint16_t wUnkData[11];
+	PLAYERID playerId = 0;
+	uint8_t byteTeam = 0;
+	int iSkin = 0;
+	CVector vecPos{};
+	float fRotation = 0.0f;
+	uint32_t dwColor = 0;
+	uint8_t byteFightingStyle = 0;
+	uint16_t wUnkData[11]{};
 
-	bsData.Read(playerId);
-	bsData.Read(byteTeam);
-	bsData.Read(iSkin);
+	if (!bsData.Read(playerId) || !bsData.Read(byteTeam) || !bsData.Read(iSkin)) return;
 	if (bsData.GetNumberOfUnreadBits() >= (47 * 8)) {
 		uint32_t dCustomSkinID = 0;
-		bsData.Read(dCustomSkinID);
+		if (!bsData.Read(dCustomSkinID)) return;
 		if (dCustomSkinID > 0) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
@@ -604,13 +669,11 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 			}
 		}
 	}
-	bsData.Read(vecPos.x);
-	bsData.Read(vecPos.y);
-	bsData.Read(vecPos.z);
-	bsData.Read(fRotation);
-	bsData.Read(dwColor);
-	bsData.Read(byteFightingStyle);
-	bsData.Read((char*)wUnkData, sizeof(wUnkData));
+	if (!bsData.Read(vecPos.x) || !bsData.Read(vecPos.y) || !bsData.Read(vecPos.z) ||
+		!bsData.Read(fRotation) || !bsData.Read(dwColor) ||
+		!bsData.Read(byteFightingStyle) || !bsData.Read((char*)wUnkData, sizeof(wUnkData))) return;
+	if (!std::isfinite(vecPos.x) || !std::isfinite(vecPos.y) || !std::isfinite(vecPos.z) ||
+		!std::isfinite(fRotation)) return;
 
 	Log::addParameter("playerId", playerId);
 	Log::addParameter("byteTeam", byteTeam);
@@ -666,22 +729,24 @@ void WorldPlayerRemove(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] World player remove");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 16 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	CRemotePlayer *pRemotePlayer = nullptr;
-	PLAYERID playerId;
+	PLAYERID playerId = 0;
 
-	bsData.Read(playerId);
+	if (!bsData.Read(playerId)) return;
 	Log::addParameter("playerId", playerId);
 
-	if (pPlayerPool) {
-		pRemotePlayer = pPlayerPool->GetAt(playerId);
-		if (pRemotePlayer) {
-			pRemotePlayer->Remove();
-		}
+	pRemotePlayer = pPlayerPool->GetAt(playerId);
+	if (pRemotePlayer) {
+		pRemotePlayer->Remove();
 	}
 }
 
@@ -689,22 +754,24 @@ void WorldPlayerDeath(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] World player death");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 16 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPlayerPool()) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	CRemotePlayer *pRemotePlayer = nullptr;
-	PLAYERID playerId;
+	PLAYERID playerId = 0;
 
-	bsData.Read(playerId);
+	if (!bsData.Read(playerId)) return;
 	Log::addParameter("playerId", playerId);
 
-	if (pPlayerPool) {
-		pRemotePlayer = pPlayerPool->GetAt(playerId);
-		if (pRemotePlayer) {
-			pRemotePlayer->HandleDeath();
-		}
+	pRemotePlayer = pPlayerPool->GetAt(playerId);
+	if (pRemotePlayer) {
+		pRemotePlayer->HandleDeath();
 	}
 }
 
@@ -712,18 +779,24 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] World vehicle add");
 
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input ||
+		rpcParams->numberOfBitsOfData < sizeof(NEW_VEHICLE) * 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetVehiclePool()) return;
 
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
 	NEW_VEHICLE VehicleInfo;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-	if (!pVehiclePool) return;
-
 	memset(&VehicleInfo, 0, sizeof(NEW_VEHICLE));
 
-	bsData.Read((char*)& VehicleInfo, sizeof(NEW_VEHICLE));
+	if (!bsData.Read((char*)&VehicleInfo, sizeof(NEW_VEHICLE))) return;
+	if (!std::isfinite(VehicleInfo.vecPos.x) || !std::isfinite(VehicleInfo.vecPos.y) ||
+		!std::isfinite(VehicleInfo.vecPos.z) || !std::isfinite(VehicleInfo.fRotation) ||
+		!std::isfinite(VehicleInfo.fHealth)) return;
 
 	Log::addParameter("VehicleInfo.byteAddSiren", VehicleInfo.byteAddSiren);
 	Log::addParameter("VehicleInfo.byteInterior", VehicleInfo.byteInterior);
@@ -798,16 +871,19 @@ void WorldVehicleRemove(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] World vehicle remove");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 16 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetVehiclePool() || !pGame) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-
-	VEHICLEID VehicleID;
+	VEHICLEID VehicleID = INVALID_VEHICLE_ID;
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-	if (!pVehiclePool) return;
 
-	bsData.Read(VehicleID);
+	if (!bsData.Read(VehicleID)) return;
 
 	Log::addParameter("VehicleID", VehicleID);
 
@@ -819,6 +895,7 @@ void WorldVehicleRemove(RPCParameters* rpcParams)
 
 	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
 	CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
+	if (!pPlayerPed) return;
 
 	if (pPlayerPed->IsInVehicle())
 	{
@@ -878,13 +955,16 @@ void TimerUpdate(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Timer update");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < sizeof(uint32_t) * 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 	uint32_t dwTime = 0;
 
-	bsData.Read(dwTime);
+	if (!bsData.Read(dwTime)) return;
 	Log::addParameter("dwTime", dwTime);
 
 	//pGame->UpdateGlobalTimer(dwTime);
@@ -894,19 +974,19 @@ void ScmEvent(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] SCM event");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 18 * 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	PLAYERID playerId;
-	int iEvent;
-	uint32_t dwParam1, dwParam2, dwParam3;
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	PLAYERID playerId = 0;
+	int iEvent = 0;
+	uint32_t dwParam1 = 0, dwParam2 = 0, dwParam3 = 0;
 
-	bsData.Read(playerId);
-	bsData.Read(iEvent);
-	bsData.Read(dwParam1);
-	bsData.Read(dwParam2);
-	bsData.Read(dwParam3);
+	if (!bsData.Read(playerId) || !bsData.Read(iEvent) || !bsData.Read(dwParam1) ||
+		!bsData.Read(dwParam2) || !bsData.Read(dwParam3)) return;
 
 	Log::addParameter("playerId", playerId);
 	Log::addParameter("iEvent", iEvent);
@@ -941,41 +1021,48 @@ void Pickup(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Pickup");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input ||
+		rpcParams->numberOfBitsOfData < (sizeof(int) + sizeof(PICKUP)) * 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPickupPool()) return;
 
-	int iIndex;
-	PICKUP Pickup;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(iIndex);
-	bsData.Read((char*)&Pickup, sizeof(PICKUP));
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
 
-	CPickupPool *pPickupPool = pNetGame->GetPickupPool();
-	if (pPickupPool) {
-		pPickupPool->New(&Pickup, iIndex);
-	}
+	int iIndex = 0;
+	PICKUP Pickup{};
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(iIndex) || !bsData.Read((char*)&Pickup, sizeof(PICKUP))) return;
+
+	pNetGame->GetPickupPool()->New(&Pickup, iIndex);
 }
 
 void DestroyPickup(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Destroy pickup");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < sizeof(int) * 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetPickupPool()) return;
 
-	int iIndex;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(iIndex);
+	unsigned char *Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
 
-	CPickupPool *pPickupPool = pNetGame->GetPickupPool();
-	if (pPickupPool) {
-		pPickupPool->Destroy(iIndex);
-	}
+	int iIndex = 0;
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(iIndex)) return;
+
+	pNetGame->GetPickupPool()->Destroy(iIndex);
 }
 
 void Create3DTextLabel(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Create 3D text label");
+
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
 
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
@@ -988,16 +1075,11 @@ void Create3DTextLabel(RPCParameters* rpcParams)
 	char szBuffer[2048 + 1];
 	memset(szBuffer, 0, sizeof(szBuffer));
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(wLabelId);
-	bsData.Read(label.dwColor);
-	bsData.Read(label.vecPos.x);
-	bsData.Read(label.vecPos.y);
-	bsData.Read(label.vecPos.z);
-	bsData.Read(label.fDistance);
-	bsData.Read(label.bTestLOS);
-	bsData.Read(label.playerId);
-	bsData.Read(label.vehicleId);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(wLabelId) || !bsData.Read(label.dwColor) || !bsData.Read(label.vecPos.x) || !bsData.Read(label.vecPos.y) || !bsData.Read(label.vecPos.z) || !bsData.Read(label.fDistance) || !bsData.Read(label.bTestLOS) || !bsData.Read(label.playerId) || !bsData.Read(label.vehicleId)) return;
+	if (!std::isfinite(label.vecPos.x) || !std::isfinite(label.vecPos.y) ||
+		!std::isfinite(label.vecPos.z) || !std::isfinite(label.fDistance)) return;
 
 	stringCompressor->DecodeString(szBuffer, sizeof szBuffer, &bsData);
 	label.text = szBuffer;
@@ -1011,6 +1093,9 @@ void Update3DTextLabel(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Update 3D text label");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
@@ -1018,8 +1103,9 @@ void Update3DTextLabel(RPCParameters* rpcParams)
 	if (pTextLabelPool == nullptr)  return;
 
 	uint16_t wLabelId;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(wLabelId);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(wLabelId)) return;
 	
 	if (pTextLabelPool->GetSlotState(wLabelId)) {
 			pTextLabelPool->ClearLabel(wLabelId);
@@ -1030,16 +1116,19 @@ void SetCheckpoint(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Set checkpoint");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	CVector vecPos;
 	float fSize;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(vecPos.x);
-	bsData.Read(vecPos.y);
-	bsData.Read(vecPos.z);
-	bsData.Read(fSize);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(vecPos.x) || !bsData.Read(vecPos.y) || !bsData.Read(vecPos.z) || !bsData.Read(fSize)) return;
+	if (!std::isfinite(vecPos.x) || !std::isfinite(vecPos.y) || !std::isfinite(vecPos.z) ||
+		!std::isfinite(fSize)) return;
 
 	CVector vecSize;
 	vecSize.x = fSize;
@@ -1061,6 +1150,9 @@ void SetRaceCheckpoint(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Set race checkpoint");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
@@ -1068,15 +1160,12 @@ void SetRaceCheckpoint(RPCParameters* rpcParams)
 	CVector vecPos;
 	CVector vecNextPos;
 	float fRadius;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(byteType);
-	bsData.Read(vecPos.x);
-	bsData.Read(vecPos.y);
-	bsData.Read(vecPos.z);
-	bsData.Read(vecNextPos.x);
-	bsData.Read(vecNextPos.y);
-	bsData.Read(vecNextPos.z);
-	bsData.Read(fRadius);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(byteType) || !bsData.Read(vecPos.x) || !bsData.Read(vecPos.y) || !bsData.Read(vecPos.z) || !bsData.Read(vecNextPos.x) || !bsData.Read(vecNextPos.y) || !bsData.Read(vecNextPos.z) || !bsData.Read(fRadius)) return;
+	if (!std::isfinite(vecPos.x) || !std::isfinite(vecPos.y) || !std::isfinite(vecPos.z) ||
+		!std::isfinite(vecNextPos.x) || !std::isfinite(vecNextPos.y) || !std::isfinite(vecNextPos.z) ||
+		!std::isfinite(fRadius)) return;
 
 	pGame->SetRaceCheckpointInformation(byteType, &vecPos, &vecNextPos, fRadius);
 	pGame->m_bRaceCheckpointsEnabled = true;
@@ -1093,19 +1182,22 @@ void DamageVehicle(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Damage vehicle");
 
-	RakNet::BitStream bsData(rpcParams->input, (rpcParams->numberOfBitsOfData / 8) + 1, false);
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7 || !pNetGame ||
+		!pNetGame->GetVehiclePool()) return;
 
-	VEHICLEID vehId;
-	bsData.Read(vehId);
+	int iBitLength = static_cast<int>(rpcParams->numberOfBitsOfData);
+	RakNet::BitStream bsData(reinterpret_cast<unsigned char*>(rpcParams->input), (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+
+	VEHICLEID vehId = INVALID_VEHICLE_ID;
+	if (!bsData.Read(vehId)) return;
 	if (pNetGame->GetVehiclePool()->GetSlotState(vehId))
 	{
 		uint32_t dwPanelStatus, dwDoorStatus;
 		uint8_t byteLightStatus, byteTireStatus;
 
-		bsData.Read(dwPanelStatus);
-		bsData.Read(dwDoorStatus);
-		bsData.Read(byteLightStatus);
-		bsData.Read(byteTireStatus);
+		if (!bsData.Read(dwPanelStatus) || !bsData.Read(dwDoorStatus) || !bsData.Read(byteLightStatus) || !bsData.Read(byteTireStatus)) return;
 
 		CVehicle* pVehicle = pNetGame->GetVehiclePool()->GetAt(vehId);
 		if (pVehicle)
@@ -1118,18 +1210,22 @@ void DamageVehicle(RPCParameters *rpcParams)
 
 void SetVehicleTireStatus(RPCParameters* rpcParams)
 {
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
-	RakNet::BitStream bsData((unsigned char*)Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	VEHICLEID vehicleId;
 	uint8_t byteTire;
 
-	bsData.Read(vehicleId);
+	if (!bsData.Read(vehicleId)) return;
 	if(vehicleId < 0 || vehicleId >= MAX_VEHICLES)
 		return;
 
-	bsData.Read(byteTire);
+	if (!bsData.Read(byteTire)) return;
 
 	CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
 	if(pVehiclePool)
@@ -1145,22 +1241,26 @@ void EnterVehicle(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Enter vehicle");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	PLAYERID PlayerID;
 	VEHICLEID VehicleID;
 	uint8_t bytePassenger;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(PlayerID);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(PlayerID)) return;
     if(PlayerID < 0 || PlayerID >= MAX_PLAYERS)
         return;
 
-	bsData.Read(VehicleID);
+	if (!bsData.Read(VehicleID)) return;
     if(VehicleID < 0 || VehicleID >= MAX_VEHICLES)
         return;
 
-	bsData.Read(bytePassenger);
+	if (!bsData.Read(bytePassenger)) return;
 
 	if (bytePassenger) {
 		bytePassenger = 1;
@@ -1176,14 +1276,17 @@ void ExitVehicle(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Exit vehicle");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	PLAYERID PlayerID;
 	VEHICLEID VehicleID;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(PlayerID);
-	bsData.Read(VehicleID);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(PlayerID) || !bsData.Read(VehicleID)) return;
 
 	CRemotePlayer* pRemotePlayer = pNetGame->GetPlayerPool()->GetAt(PlayerID);
 	if (pRemotePlayer) {
@@ -1196,6 +1299,9 @@ void VehicleParamsEx(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] VehicleParamsEx");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
@@ -1204,9 +1310,9 @@ void VehicleParamsEx(RPCParameters* rpcParams)
 
 	VEHICLEID VehicleID;
 	VEHICLE_PARAMS_EX vehParamsEx;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(VehicleID);
-	bsData.Read((char*)& vehParamsEx, sizeof(VEHICLE_PARAMS_EX));
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(VehicleID) || !bsData.Read((char*)& vehParamsEx, sizeof(VEHICLE_PARAMS_EX))) return;
 
 	CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
 	if (!pVehicle) return;
@@ -1364,34 +1470,32 @@ void ShowActor(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Show actor");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	CActorPool* pActorPool = pNetGame->GetActorPool();
 	if (!pActorPool) return;
 
-	NEW_ACTOR newActor;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	NEW_ACTOR newActor{};
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	if (bsData.GetNumberOfUnreadBits() >= (31 * 8)) {
-		bsData.Read(newActor.ActorID);
-		bsData.Read(newActor.iSkin);
+		if (!bsData.Read(newActor.ActorID) || !bsData.Read(newActor.iSkin)) return;
 		uint32_t dCustomSkinID = 0;
-		bsData.Read(dCustomSkinID);
+		if (!bsData.Read(dCustomSkinID)) return;
 		if (dCustomSkinID > 0) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
 				newActor.iSkin = virtId;
 			}
 		}
-		bsData.Read(newActor.vecPos.x);
-		bsData.Read(newActor.vecPos.y);
-		bsData.Read(newActor.vecPos.z);
-		bsData.Read(newActor.fAngle);
-		bsData.Read(newActor.fHealth);
-		bsData.Read(newActor.bInvulnerable);
+		if (!bsData.Read(newActor.vecPos.x) || !bsData.Read(newActor.vecPos.y) || !bsData.Read(newActor.vecPos.z) || !bsData.Read(newActor.fAngle) || !bsData.Read(newActor.fHealth) || !bsData.Read(newActor.bInvulnerable)) return;
 	} else {
-		bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
+		if (!bsData.Read((char*)&newActor, sizeof(NEW_ACTOR))) return;
 	}
 
 	if (IsValidPedModel(newActor.iSkin))
@@ -1404,6 +1508,9 @@ void HideActor(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Hide actor");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
@@ -1411,8 +1518,9 @@ void HideActor(RPCParameters* rpcParams)
 	if (!pActorPool) return;
 
 	PLAYERID ActorID;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ActorID);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
+	if (!bsData.Read(ActorID)) return;
 
 	pActorPool->Delete(ActorID);
 }
@@ -1421,13 +1529,17 @@ void ChatBubble(RPCParameters* rpcParams)
 {
 	Log::traceLastFunc("RPC: ChatBubble");
 
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
 	CPlayerBubblePool* pPlayerBubblePool = pNetGame->GetPlayerBubblePool();
 	if (pPlayerBubblePool == nullptr) return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	PLAYERID playerId;
 	uint32_t color;
@@ -1438,16 +1550,12 @@ void ChatBubble(RPCParameters* rpcParams)
 	char szText[256];
 	memset(szText, 0, 256);
 
-	bsData.Read(playerId);
+	if (!bsData.Read(playerId)) return;
 
 	if (playerId == pNetGame->GetPlayerPool()->GetLocalPlayerID()) return;
 	if (playerId >= MAX_PLAYERS) return;
 
-	bsData.Read(color);
-	bsData.Read(drawDistance);
-	bsData.Read(duration);
-	bsData.Read(byteTextLen);
-	bsData.Read((char*)szText, byteTextLen);
+	if (!bsData.Read(color) || !bsData.Read(drawDistance) || !bsData.Read(duration) || !bsData.Read(byteTextLen) || !bsData.Read((char*)szText, byteTextLen)) return;
 	szText[byteTextLen] = '\0';
 
 	pPlayerBubblePool->New(playerId, szText, color, drawDistance, duration);
@@ -1455,17 +1563,19 @@ void ChatBubble(RPCParameters* rpcParams)
 
 void SetPlayerSkillLevel(RPCParameters *rpcParams)
 {
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char* Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	PLAYERID playerId;
 	uint32_t ucSkillType;
 	uint16_t uiSkillLevel;
 
-	bsData.Read(playerId);
-	bsData.Read(ucSkillType);
-	bsData.Read(uiSkillLevel);
+	if (!bsData.Read(playerId) || !bsData.Read(ucSkillType) || !bsData.Read(uiSkillLevel)) return;
 
 	if(ucSkillType < 0 || ucSkillType > 10)
 		return;
@@ -1484,14 +1594,18 @@ void SetPlayerSkillLevel(RPCParameters *rpcParams)
 
 #include "../java/editobject.h"
 void EditAttachedObject(RPCParameters *rpcParams) {
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data,(iBitLength/8)+1,false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	uint32_t index;
 
-	bsData.Read(index);
+	if (!bsData.Read(index)) return;
 
 	CObjectEditor::startEditPlayerAttach(index);
 
@@ -1499,16 +1613,19 @@ void EditAttachedObject(RPCParameters *rpcParams) {
 }
 
 void EditObject(RPCParameters *rpcParams) {
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 8 ||
+		rpcParams->numberOfBitsOfData > INT_MAX - 7) return;
+
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
 
-	RakNet::BitStream bsData(Data,(iBitLength/8)+1,false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
+	bsData.SetWriteOffset(iBitLength);
 
 	bool bPlayerObj;
 	uint16_t objectId;
 
-	bsData.Read(bPlayerObj);
-	bsData.Read(objectId);
+	if (!bsData.Read(bPlayerObj) || !bsData.Read(objectId)) return;
 
 	CObjectEditor::startEditObject(objectId);
 

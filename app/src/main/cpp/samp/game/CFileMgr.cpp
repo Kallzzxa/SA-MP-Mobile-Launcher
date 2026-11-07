@@ -110,6 +110,7 @@ void CFileMgr::SetDir(const char *path) {
 }
 
 FILE* CFileMgr::OpenFile(const char *path, const char *mode) {
+    if (!path || !mode) return nullptr;
     // Check for Text or fonts in assets (Case insensitive)
     if (g_pAssetManager && (strcasestr(path, "Text/") || strcasestr(path, "fonts/") || strcasestr(path, "scache") || strcasestr(path, "stream.ini") || strcasestr(path, "version.txt"))) {
         AAsset* asset = OpenAssetCompat(path);
@@ -123,7 +124,12 @@ FILE* CFileMgr::OpenFile(const char *path, const char *mode) {
         }
     }
 
-    sprintf(ms_path, "%s%s", g_pszStorage, path);
+    if (!g_pszStorage) return nullptr;
+    int pathLength = snprintf(ms_path, sizeof(ms_path), "%s%s", g_pszStorage, path);
+    if (pathLength < 0 || static_cast<size_t>(pathLength) >= sizeof(ms_path)) {
+        FLog("File path too long");
+        return nullptr;
+    }
 
     auto file = fopen(ms_path, mode);
 
