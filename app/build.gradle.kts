@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -186,7 +188,7 @@ dependencies {
 }
 
 // Optional Laragon deployment on local Windows development machine only
-val laragonDir = java.io.File("C:\\laragon\\www")
+val laragonDir = File("C:\\laragon\\www")
 if (System.getenv("GITHUB_ACTIONS") == null && laragonDir.exists()) {
     afterEvaluate {
         android.applicationVariants.all {

@@ -53,7 +53,7 @@ jobs:
           ./gradlew testDebugUnitTest assembleDebug --stacktrace 2>&1 | tee gradle.log
           result=${PIPESTATUS[0]}
           if [ "$result" -ne 0 ]; then
-            grep -E -m 30 '(^FAILURE:|^\* What went wrong:|^Execution failed for task|^> |error:|^Caused by:)' gradle.log | while IFS= read -r line; do
+            grep -E -m 30 '(^FAILURE:|^\* What went wrong:|^Execution failed for task|^> |error:|^e:|^[[:space:]]*Line [0-9]+:|Unresolved reference|^Caused by:)' gradle.log | while IFS= read -r line; do
               echo "::error::$line"
             done
           fi
