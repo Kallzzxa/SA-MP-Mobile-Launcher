@@ -1476,6 +1476,43 @@ int OS_FileRead_hook(void* a1, void* a2, int a3)
 }
 
 // Original RLE function pointer
+// ---------------------------------------------------------------------------
+// Engine over-read guard for RLEDecompress.
+//
+// crash_native.txt shows the engine faulting inside RLEDecompress with a
+// four byte load whose source sits two bytes before the end of a page aligned
+// block, so the load crosses into the next page, which is not mapped. The
+// decompressed result is correct; only that trailing word load is unsafe.
+// Copy the block into a padded buffer when it ends within one word of a page
+// boundary and leave every other call untouched.
+// ---------------------------------------------------------------------------
+typedef void* (*RLEDecompressPaddedFn)(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape);
+
+static RLEDecompressPaddedFn orig_RLEDecompressPadded = nullptr;
+
+static void* RLEDecompressPaddedHook(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape)
+{
+    if (!orig_RLEDecompressPadded) return nullptr;
+    if (!src || srcSize == 0) return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    const uintptr_t uiEnd = (uintptr_t)src + (uintptr_t)srcSize;
+    const uintptr_t uiInPage = uiEnd & 0xFFFu;
+    const bool bAtPageEdge = (uiInPage == 0) || (uiInPage > 0xFFCu);
+    if (!bAtPageEdge)
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    uint8_t* pPadded = static_cast<uint8_t*>(malloc((size_t)srcSize + 8));
+    if (!pPadded)
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    memcpy(pPadded, src, srcSize);
+    memset(pPadded + srcSize, 0, 8);
+
+    void* pResult = orig_RLEDecompressPadded(dest, destSize, pPadded, srcSize, escape);
+    free(pPadded);
+    return pResult;
+}
+
 void (*orig_RLEDecompress)(uint8_t* dest, size_t destSize, const uint8_t* src, size_t segSize, uint32_t escape) = nullptr;
 void RLEDecompress_hook(uint8_t* dest, size_t destSize, const uint8_t* src, size_t segSize, uint32_t escape)
 {
@@ -1725,6 +1762,11 @@ void InstallSpecialHooks()
     CHook::RET("_ZN4CPed31RemoveWeaponWhenEnteringVehicleEi"); // CPed::RemoveWeaponWhenEnteringVehicle
 
     //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x6701D4 : 0x840708), &RLEDecompress_hook, &orig_RLEDecompress);
+
+    // Keep the engine decompressor from reading one word past the end of a
+    // page aligned compressed block (see crash_native.txt: RLEDecompress,
+    // four byte load at end-2). No effect when the tail is safely inside a page.
+    CHook::InlineHook("_Z13RLEDecompressPhjPKhjj", RLEDecompressPaddedHook, &orig_RLEDecompressPadded);
 
     //CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
 
