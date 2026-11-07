@@ -152,6 +152,34 @@ const Entry kDictionary[] =
     { u"\u0418\u0433\u0440\u043e\u043a",                                 u"Pemain" },
     { u"\u0418\u0433\u0440\u043e\u043a\u0438",                           u"Para Pemain" },
     { u"\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435",            u"Menunggu" },
+
+    // Remaining standard menus, settings pages and status words.
+    { u"Continue",                         u"Lanjutkan" },
+    { u"Controls",                         u"Kontrol" },
+    { u"Control Setup",                    u"Pengaturan Kontrol" },
+    { u"Touch Controls",                   u"Kontrol Sentuh" },
+    { u"Touch Layout",                     u"Tata Letak Sentuh" },
+    { u"Sensitivity",                      u"Sensitivitas" },
+    { u"Apply",                            u"Terapkan" },
+    { u"Reset",                            u"Atur Ulang" },
+    { u"Restore Defaults",                 u"Kembalikan Pengaturan Awal" },
+    { u"Are you sure?",                    u"Apakah kamu yakin?" },
+    { u"Volume",                           u"Volume" },
+    { u"Brightness",                       u"Kecerahan" },
+    { u"Select",                           u"Pilih" },
+    { u"Delete",                           u"Hapus" },
+    { u"Load",                             u"Muat" },
+    { u"Save",                             u"Simpan" },
+    { u"Start",                            u"Mulai" },
+    { u"Audio",                            u"Suara" },
+    { u"Display",                          u"Tampilan" },
+    { u"Video",                            u"Tampilan" },
+    { u"Sound",                            u"Suara" },
+    { u"Subtitles",                        u"Teks Bawah" },
+    { u"Radio",                            u"Radio" },
+    { u"Game",                             u"Permainan" },
+    { u"Exit",                             u"Keluar" },
+    { u"Joystick",                         u"Joystick" },
 };
 
 constexpr size_t kDictionarySize = sizeof(kDictionary) / sizeof(kDictionary[0]);
@@ -173,12 +201,23 @@ constexpr uint32_t kReportedMax = 96;
 uint32_t g_reportedHash[kReportedMax] = {};
 uint32_t g_reportedCount = 0;
 
+// Menu text arrives in whatever case the data set uses ("RESUME", "Resume",
+// "ВОЗОБНОВИТЬ"), so both Latin and Cyrillic are folded to lower case before
+// hashing and comparing.
+uint16_t FoldChar(uint16_t c)
+{
+    if (c >= u'A' && c <= u'Z') return static_cast<uint16_t>(c + 32);
+    if (c >= 0x0410 && c <= 0x042F) return static_cast<uint16_t>(c + 32);
+    if (c >= 0x0400 && c <= 0x040F) return static_cast<uint16_t>(c + 80);
+    return c;
+}
+
 uint32_t HashText(const uint16_t* text, uint32_t length)
 {
     uint32_t hash = 2166136261u;
     for (uint32_t i = 0; i < length; i++)
     {
-        hash ^= text[i];
+        hash ^= FoldChar(text[i]);
         hash *= 16777619u;
     }
     return hash;
@@ -251,7 +290,7 @@ const char16_t* Lookup(const uint16_t* text, uint32_t length, uint32_t hash)
 
         const char16_t* candidate = kDictionary[i].from;
         uint32_t j = 0;
-        while (j < length && static_cast<uint16_t>(candidate[j]) == text[j]) j++;
+        while (j < length && FoldChar(static_cast<uint16_t>(candidate[j])) == FoldChar(text[j])) j++;
         if (j == length) return kDictionary[i].to;
     }
     return nullptr;

@@ -192,8 +192,41 @@ void CFileMgr::SetDir(const char *path) {
     ( ( void(*)(const char *path) )(g_libGTASA + (VER_x32 ? 0x003F0C54 + 1 : 0x4D293C)) )(path);
 }
 
+// The installed data set is built with a Russian interface and the engine opens
+// TEXT\RUSSIAN.GXT by name (see samp_log: OS_FileOpen: TEXT\RUSSIAN.GXT, plus
+// RussianFont.met/.png). The English table is opened instead when the set also
+// ships it, because the built in menus are then in a language the Indonesian
+// translation table covers.
+static bool IsRussianTextTable(const char* path) {
+    if (!path) return false;
+
+    const char* base = path;
+    for (const char* cursor = path; *cursor; ++cursor)
+        if (*cursor == '/' || *cursor == '\\') base = cursor + 1;
+
+    return strcasecmp(base, "RUSSIAN.GXT") == 0;
+}
+
 FILE* CFileMgr::OpenFile(const char *path, const char *mode) {
     if (!path || !mode) return nullptr;
+
+    if (IsRussianTextTable(path)) {
+        static const char* kEnglishTables[] = {
+            "TEXT/AMERICAN.GXT",
+            "Text/American.gxt",
+            "text/american.gxt",
+            "TEXT/american.gxt",
+        };
+        for (const char* candidate : kEnglishTables) {
+            FILE* english = CFileMgr::OpenFile(candidate, mode);
+            if (english) {
+                FLog("Language: opened %s instead of %s", candidate, path);
+                return english;
+            }
+        }
+        FLog("Language: English text table not found, keeping %s", path);
+    }
+
     // Check for Text or fonts in assets (Case insensitive)
     if (g_pAssetManager && (strcasestr(path, "Text/") || strcasestr(path, "fonts/") || strcasestr(path, "scache") || strcasestr(path, "stream.ini") || strcasestr(path, "version.txt"))) {
         AAsset* asset = OpenAssetCompat(path);
