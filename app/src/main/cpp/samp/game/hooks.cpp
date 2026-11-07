@@ -1479,34 +1479,45 @@ int OS_FileRead_hook(void* a1, void* a2, int a3)
 // ---------------------------------------------------------------------------
 // Engine over-read guard for RLEDecompress.
 //
-// crash_native.txt shows the engine faulting inside RLEDecompress with a
-// four byte load whose source sits two bytes before the end of a page aligned
-// block, so the load crosses into the next page, which is not mapped. The
-// decompressed result is correct; only that trailing word load is unsafe.
-// Copy the block into a padded buffer when it ends within one word of a page
-// boundary and leave every other call untouched.
+// crash_native.txt shows the engine faulting inside RLEDecompress with a four
+// byte load whose source is two bytes before an unmapped page boundary, i.e.
+// the decompressor touches the word right after the compressed block. The
+// decompressed result is fine; only that trailing read is unsafe, and it only
+// faults when the block happens to sit at the end of a page (Scudo allocations
+// are page aligned, so this is routine).
+//
+// Every call is forwarded with the source copied into a buffer that carries a
+// trailing zero pad, so the block can never end at the very edge of a mapping.
+// The decompressor still receives the original srcSize, so its behaviour is
+// unchanged; only the bytes it should not have read become readable zeros.
 // ---------------------------------------------------------------------------
 typedef void* (*RLEDecompressPaddedFn)(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape);
 
 static RLEDecompressPaddedFn orig_RLEDecompressPadded = nullptr;
 
+// Reported by the native crash handler so the next report proves which build
+// ran and whether the guard was live.
+volatile int g_rleGuardHookResult = -1;  // -1 = not attempted yet
+volatile unsigned long long g_rleGuardCalls = 0;
+volatile unsigned long long g_rleGuardPads = 0;
+
 static void* RLEDecompressPaddedHook(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape)
 {
+    g_rleGuardCalls++;
+
     if (!orig_RLEDecompressPadded) return nullptr;
     if (!src || srcSize == 0) return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
 
-    const uintptr_t uiEnd = (uintptr_t)src + (uintptr_t)srcSize;
-    const uintptr_t uiInPage = uiEnd & 0xFFFu;
-    const bool bAtPageEdge = (uiInPage == 0) || (uiInPage > 0xFFCu);
-    if (!bAtPageEdge)
-        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
-
-    uint8_t* pPadded = static_cast<uint8_t*>(malloc((size_t)srcSize + 8));
+    // The tail read is four bytes wide; 64 bytes of slack also covers a short
+    // block that is followed by more of the same run.
+    const size_t uiPad = 64;
+    uint8_t* pPadded = static_cast<uint8_t*>(malloc((size_t)srcSize + uiPad));
     if (!pPadded)
         return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
 
     memcpy(pPadded, src, srcSize);
-    memset(pPadded + srcSize, 0, 8);
+    memset(pPadded + srcSize, 0, uiPad);
+    g_rleGuardPads++;
 
     void* pResult = orig_RLEDecompressPadded(dest, destSize, pPadded, srcSize, escape);
     free(pPadded);
@@ -1763,10 +1774,15 @@ void InstallSpecialHooks()
 
     //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x6701D4 : 0x840708), &RLEDecompress_hook, &orig_RLEDecompress);
 
-    // Keep the engine decompressor from reading one word past the end of a
-    // page aligned compressed block (see crash_native.txt: RLEDecompress,
-    // four byte load at end-2). No effect when the tail is safely inside a page.
-    CHook::InlineHook("_Z13RLEDecompressPhjPKhjj", RLEDecompressPaddedHook, &orig_RLEDecompressPadded);
+    // Keep the engine decompressor from reading one word past the end of its
+    // source block (see crash_native.txt: RLEDecompress, four byte load at
+    // end-2 of a page aligned block). Every call gets a padded copy.
+    g_rleGuardHookResult = shadowhook_hook_sym_name(
+            "libGTASA.so",
+            "_Z13RLEDecompressPhjPKhjj",
+            (void*)RLEDecompressPaddedHook,
+            (void**)&orig_RLEDecompressPadded);
+    FLog("RLEDecompress guard: hook result %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);
 
     //CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
 

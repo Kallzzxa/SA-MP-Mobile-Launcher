@@ -193,6 +193,12 @@ static void CrashLogOpen()
     g_iCrashLogFd = open(szPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
 }
 
+// Live state of the RLEDecompress over-read guard (game/hooks.cpp), so each
+// report shows which build produced it and whether the guard was active.
+extern volatile int g_rleGuardHookResult;
+extern volatile unsigned long long g_rleGuardCalls;
+extern volatile unsigned long long g_rleGuardPads;
+
 static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
 {
     CrashLogOpen();
@@ -267,6 +273,20 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
         CrashLogPut("lr-symbol:  ");
         CrashLogSymbol(uiLr);
     }
+
+    CrashLogPut("build:      ");
+    CrashLogPut(__DATE__);
+    CrashLogPut(" ");
+    CrashLogPut(__TIME__);
+    CrashLogPut("\n");
+
+    CrashLogPut("rle-guard:  hook=");
+    CrashLogHex((uintptr_t)(long)g_rleGuardHookResult);
+    CrashLogPut(" calls=");
+    CrashLogHex((uintptr_t)g_rleGuardCalls);
+    CrashLogPut(" padded=");
+    CrashLogHex((uintptr_t)g_rleGuardPads);
+    CrashLogPut("\n");
 
     CrashLogPut("========================\n");
 }
