@@ -468,6 +468,8 @@ public class PlayFragment extends Fragment {
                 return;
             }
             sp.edit().putString("nickname", newNick).apply();
+            // Report a valid attempt even if data preparation or launch fails later.
+            LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
             com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify = 
@@ -497,7 +499,6 @@ public class PlayFragment extends Fragment {
 
             stopPingTask();
             detailDialog.dismiss();
-            LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
             Intent intent = new Intent(getActivity(), SAMP.class);
             intent.putExtra("ip", server.getAddress());
             intent.putExtra("port", server.getPort());
