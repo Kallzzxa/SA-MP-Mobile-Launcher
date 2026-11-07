@@ -186,7 +186,7 @@ dependencies {
 }
 
 // Optional Laragon deployment on local Windows development machine only
-val laragonDir = file("C:\\laragon\\www")
+val laragonDir = java.io.File("C:\\laragon\\www")
 if (System.getenv("GITHUB_ACTIONS") == null && laragonDir.exists()) {
     afterEvaluate {
         android.applicationVariants.all {
