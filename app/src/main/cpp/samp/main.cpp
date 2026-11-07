@@ -234,6 +234,7 @@ static void CrashRestoreDefault(int iSignum)
     sigaction(iSignum, &dfl, nullptr);
 }
 
+struct sigaction act_old;
 struct sigaction act1_old;
 struct sigaction act2_old;
 struct sigaction act3_old;
