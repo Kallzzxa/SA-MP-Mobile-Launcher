@@ -11,15 +11,16 @@
 #include <unistd.h>
 #include <cstdio>
 
+// Read by the native crash handler, so these need external linkage.
+volatile unsigned long long g_texVariantFallbacks = 0;
+volatile unsigned long long g_texVariantLoadFailures = 0;
+
 namespace
 {
 
 typedef bool (*LoadThumbsFn)(void* thiz, int format, bool setEntries);
 
 LoadThumbsFn orig_LoadThumbs = nullptr;
-
-volatile unsigned long long g_texVariantFallbacks = 0;
-volatile unsigned long long g_texVariantLoadFailures = 0;
 
 // The engine asks for one variant only; these are tried in order of how widely
 // the mobile renderer supports them when the requested one is not on disk.
