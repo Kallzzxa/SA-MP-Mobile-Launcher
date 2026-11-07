@@ -146,6 +146,12 @@ bool CLocalPlayer::Process()
     if (CTimer::GetIsUserPaused())
         return false;
 
+    // Safety Check
+    // The GTA ped only exists after the world finished loading; everything
+    // below dereferences m_pPed, so bail out before the first access.
+    if (!m_pPlayerPed || !m_pPlayerPed->m_pPed)
+        return false;
+
     // Basic Updates
     lastPos = m_pPlayerPed->m_pPed->GetPosition();
     m_pPlayerPed->SetCurrentAim(caAim);
@@ -154,9 +160,6 @@ bool CLocalPlayer::Process()
     // Cache Time (Optimization)
     uint32_t dwThisTick = CTimer::m_snTimeInMillisecondsNonClipped;
 
-    // Safety Check
-    if (!m_pPlayerPed || !m_pPlayerPed->m_pPed) 
-        return false;
 	m_pPlayerPed->ProcessAttach();
 
     if (m_bIsActive)
@@ -1805,7 +1808,7 @@ uint32_t CLocalPlayer::GetCurrentAnimationIndexFlag()
 
 void CLocalPlayer::SendBulletSyncData(PLAYERID byteHitID, uint8_t byteHitType, CVector vecHitPos)
 {
-    if (!m_pPlayerPed) return;
+    if (!m_pPlayerPed || !m_pPlayerPed->m_pPed) return;
     switch (byteHitType)
     {
         case BULLET_HIT_TYPE_NONE:
@@ -1828,7 +1831,10 @@ void CLocalPlayer::SendBulletSyncData(PLAYERID byteHitID, uint8_t byteHitType, C
 
     if (byteHitType == BULLET_HIT_TYPE_PLAYER)
     {
-        float fDistance = pNetGame->GetPlayerPool()->GetAt((PLAYERID)byteHitID)->GetPlayerPed()->m_pPed->GetDistanceFromLocalPlayerPed();
+        CPlayerPed* pHitPed = pNetGame->GetPlayerPool()->GetAt((PLAYERID)byteHitID)->GetPlayerPed();
+        if (!pHitPed || !pHitPed->m_pPed) return;
+
+        float fDistance = pHitPed->m_pPed->GetDistanceFromLocalPlayerPed();
         if (byteCurrWeapon != 0 && fDistance < 1.0f)
             byteShotWeapon = 0;
         else

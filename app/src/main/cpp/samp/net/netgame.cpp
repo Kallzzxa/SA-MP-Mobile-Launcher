@@ -1,4 +1,5 @@
 #include "remote_sync_packet_reader.h"
+#include <cmath>
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -37,12 +38,14 @@ void InstallVehicleEngineLightPatches();
 
 unsigned char GetPacketID(Packet *p)
 {
-	if (p == 0) return 255;
+	if (!p || !p->data || p->length == 0) return 255;
 
-	if ((unsigned char)p->data[0] == ID_TIMESTAMP)
-		return (unsigned char)p->data[sizeof(unsigned char) + sizeof(unsigned long)];
-	else
-		return (unsigned char)p->data[0];
+	if ((unsigned char)p->data[0] == ID_TIMESTAMP) {
+		const size_t idOffset = sizeof(unsigned char) + sizeof(RakNetTime);
+		if (p->length <= idOffset) return 255;
+		return (unsigned char)p->data[idOffset];
+	}
+	return (unsigned char)p->data[0];
 }
 
 extern CJavaWrapper *pJavaWrapper;
@@ -258,89 +261,101 @@ void CNetGame::UpdateNetwork()
 	while (pkt = m_pRakClient->Receive())
 	{
 		packetIdentifier = GetPacketID(pkt);
+		Packet packetView;
+		Packet* message = pkt;
+		if (packetIdentifier != 255 && pkt->data[0] == ID_TIMESTAMP) {
+			// Handlers expect the payload to begin with its own packet ID.
+			const unsigned int prefix = sizeof(unsigned char) + sizeof(RakNetTime);
+			packetView = *pkt;
+			packetView.data += prefix;
+			packetView.length -= prefix;
+			packetView.bitSize = pkt->bitSize >= prefix * 8 ? pkt->bitSize - prefix * 8 : 0;
+			packetView.deleteData = false;
+			message = &packetView;
+		}
 
 		switch (packetIdentifier) {
             case ID_AUTH_KEY:
-                Packet_AuthKey(pkt);
+                Packet_AuthKey(message);
                 break;
 
             case ID_CONNECTION_ATTEMPT_FAILED:
-                Packet_ConnectAttemptFailed(pkt);
+                Packet_ConnectAttemptFailed(message);
                 break;
 
             case ID_NO_FREE_INCOMING_CONNECTIONS:
-                Packet_NoFreeIncomingConnections(pkt);
+                Packet_NoFreeIncomingConnections(message);
                 break;
 
             case ID_DISCONNECTION_NOTIFICATION:
-                Packet_DisconnectionNotification(pkt);
+                Packet_DisconnectionNotification(message);
                 //SetGameState(GAMESTATE_WAIT_CONNECT);
                 break;
 
             case ID_CONNECTION_LOST:
-                Packet_ConnectionLost(pkt);
+                Packet_ConnectionLost(message);
                 break;
 
             case ID_CONNECTION_REQUEST_ACCEPTED:
-                Packet_ConnectionSucceeded(pkt);
+                Packet_ConnectionSucceeded(message);
                 break;
 
             case ID_FAILED_INITIALIZE_ENCRIPTION:
-                Packet_FailedInitializeEncription(pkt);
+                Packet_FailedInitializeEncription(message);
                 break;
 
             case ID_CONNECTION_BANNED:
-                Packet_ConnectionBanned(pkt);
+                Packet_ConnectionBanned(message);
                 SetGameState(GAMESTATE_WAIT_CONNECT);
                 break;
 
             case ID_INVALID_PASSWORD:
-                Packet_InvalidPassword(pkt);
+                Packet_InvalidPassword(message);
                 break;
 
             case ID_VEHICLE_SYNC:
-                Packet_VehicleSync(pkt);
+                Packet_VehicleSync(message);
                 break;
 
             case ID_AIM_SYNC:
-                Packet_AimSync(pkt);
+                Packet_AimSync(message);
                 break;
 
             case ID_BULLET_SYNC:
-                Packet_BulletSync(pkt);
+                Packet_BulletSync(message);
                 break;
 
             case ID_PLAYER_SYNC:
-                Packet_PlayerSync(pkt);
+                Packet_PlayerSync(message);
                 break;
 
             case ID_MARKERS_SYNC:
-                Packet_MarkerSync(pkt);
+                Packet_MarkerSync(message);
                 break;
 
             case ID_UNOCCUPIED_SYNC:
-                Packet_UnoccupiedSync(pkt);
+                Packet_UnoccupiedSync(message);
                 break;
 
             case ID_TRAILER_SYNC:
-                Packet_TrailerSync(pkt);
+                Packet_TrailerSync(message);
                 break;
 
             case ID_PASSENGER_SYNC:
-                Packet_PassengerSync(pkt);
+                Packet_PassengerSync(message);
                 break;
 
             case Network::kRaknetPacketId: {
-                Network::OnRaknetReceive(*pkt);
+                Network::OnRaknetReceive(*message);
                 break;
             }
 
 			case 252:
-				cef::handlePacket(pkt);
+				cef::handlePacket(message);
 				break;
 
 			case 251:
-				Packet_CustomRPC(pkt);
+				Packet_CustomRPC(message);
 				break;
         }
 
@@ -356,11 +371,12 @@ void CNetGame::UpdateNetwork()
 
 void CNetGame::Packet_CustomRPC(Packet *p) {
 
+    if (!p || !p->data || p->length < 1) return;
     RakNet::BitStream bs((unsigned char *) p->data, p->length, false);
     bs.IgnoreBits(8); // skip packet id
 
     uint32_t rpcID;
-    bs.Read(rpcID);
+    if (!bs.Read(rpcID)) return;
 
     switch (rpcID) {
         case 99: {
@@ -373,19 +389,15 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
             memset(szText, 0, 30);
             memset(szText1, 0, 30);
 
-            bs.Read(bLen);
-            if (bLen >= sizeof(szText) - 1)
+            if (!bs.Read(bLen) || bLen >= sizeof(szText) - 1)
                 return;
+            if (!bs.Read(&szText[0], bLen)) return;
 
-            bs.Read(&szText[0], bLen);
-
-            bs.Read(bLen1);
-            if (bLen1 >= sizeof(szText1) - 1)
+            if (!bs.Read(bLen1) || bLen1 >= sizeof(szText1) - 1)
                 return;
+            if (!bs.Read(&szText1[0], bLen1)) return;
 
-            bs.Read(&szText1[0], bLen1);
-
-            bs.Read(bVersion);
+            if (!bs.Read(bVersion)) return;
 
             RwTexture *pCashTexture = nullptr;
             pCashTexture = (RwTexture *) CUtil::LoadTextureFromDB(szText1, szText);
@@ -465,7 +477,9 @@ void CNetGame::ShutdownForGameModeRestart()
 	pGame->m_bCheckpointsEnabled = false;
 	pGame->m_bRaceCheckpointsEnabled = false;
 
-	pGame->FindPlayerPed()->m_pPed->SetInterior(0, true);
+	if (CPlayerPed* pLocalPed = pGame->FindPlayerPed()) {
+		if (pLocalPed->m_pPed) pLocalPed->m_pPed->SetInterior(0, true);
+	}
 	pGame->ResetLocalMoney();
 	pGame->FindPlayerPed()->SetDead();
 	pGame->FindPlayerPed()->SetArmour(0.0f);
@@ -541,13 +555,13 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 	uint8_t byteAuthLen;
 	char szAuth[260], szAuthKey[269];
 
-	RakNet::BitStream bsAuth((unsigned char*)pkt->data, pkt->length, false);
-
 	if (GetGameState() < GAMESTATE_WAIT_CONNECT || GetGameState() > GAMESTATE_AWAIT_JOIN) return;
+	if (!pkt || !pkt->data || pkt->length < 2) return;
 
+	RakNet::BitStream bsAuth((unsigned char*)pkt->data, pkt->length, false);
 	bsAuth.IgnoreBits(8);
-	bsAuth.Read(byteAuthLen);
-	bsAuth.Read(szAuth, byteAuthLen);
+	// Ignore incomplete challenges rather than hashing uninitialized data.
+	if (!bsAuth.Read(byteAuthLen) || !bsAuth.Read(szAuth, byteAuthLen)) return;
 	szAuth[byteAuthLen] = '\0';
 
 	gen_auth_key(szAuthKey, szAuth);
@@ -593,6 +607,7 @@ void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
+	if (!pkt || !pkt->data) return;
 	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
 	PLAYERID MyPlayerID;
 	unsigned int uiChallenge;
@@ -608,8 +623,8 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSuccAuth.IgnoreBits(32);	// binaryAddress
 	bsSuccAuth.IgnoreBits(16);	// port
 
-	bsSuccAuth.Read(MyPlayerID);
-	bsSuccAuth.Read(uiChallenge);
+	// Do not start the join sequence with an incomplete player ID or challenge.
+	if (!bsSuccAuth.Read(MyPlayerID) || !bsSuccAuth.Read(uiChallenge)) return;
 	uiChallenge ^= iVersion;
 
 	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining...");
@@ -703,6 +718,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 
 void CNetGame::Packet_PlayerSync(Packet *pkt)
 {
+	if (!pkt || !pkt->data) return;
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
 	ONFOOT_SYNC_DATA m_LastSendOnFootSync;
 	uint32_t dwTime = 0;
@@ -715,29 +731,22 @@ void CNetGame::Packet_PlayerSync(Packet *pkt)
 
 	memset(&m_LastSendOnFootSync, 0, sizeof(ONFOOT_SYNC_DATA));
 
-	bsData.Read(bytePacketId);
-	bsData.Read(playerId);
+	if (!bsData.Read(bytePacketId) || !bsData.Read(playerId) || !bsData.Read(bHasLR)) return;
+	if (bHasLR && !bsData.Read(m_LastSendOnFootSync.lrAnalog)) return;
 
-	bsData.Read(bHasLR);
-	if (bHasLR) {
-		bsData.Read(m_LastSendOnFootSync.lrAnalog);
-	}
+	if (!bsData.Read(bHasUD)) return;
+	if (bHasUD && !bsData.Read(m_LastSendOnFootSync.udAnalog)) return;
 
-	bsData.Read(bHasUD);
-	if (bHasUD) {
-		bsData.Read(m_LastSendOnFootSync.udAnalog);
-	}
-
-	bsData.Read(m_LastSendOnFootSync.wKeys);
-	bsData.Read((char*)&m_LastSendOnFootSync.vecPos, sizeof(CVector));
+	if (!bsData.Read(m_LastSendOnFootSync.wKeys) ||
+		!bsData.Read((char*)&m_LastSendOnFootSync.vecPos, sizeof(CVector))) return;
 	float w, x, y, z;
-	bsData.ReadNormQuat(w, x, y, z);
+	if (!bsData.ReadNormQuat(w, x, y, z)) return;
 	m_LastSendOnFootSync.quat.Set(x, y, z, w);
 
 	uint8_t byteHealthArmour;
 	uint8_t byteArmTemp = 0, byteHlTemp = 0;
 	
-	bsData.Read(byteHealthArmour);
+	if (!bsData.Read(byteHealthArmour)) return;
 	byteArmTemp = (byteHealthArmour & 0x0F);
 	byteHlTemp = (byteHealthArmour >> 4);
 
@@ -750,32 +759,38 @@ void CNetGame::Packet_PlayerSync(Packet *pkt)
 	else m_LastSendOnFootSync.byteHealth = byteHlTemp * 7;
 
 	uint8_t byteCurrentWeapon = 0;
-	bsData.Read(byteCurrentWeapon);
+	if (!bsData.Read(byteCurrentWeapon)) return;
 	m_LastSendOnFootSync.byteCurrentWeapon ^= (byteCurrentWeapon ^ m_LastSendOnFootSync.byteCurrentWeapon) & 0x3F;
 
-	bsData.Read(m_LastSendOnFootSync.byteSpecialAction);
-	bsData.ReadVector(m_LastSendOnFootSync.vecMoveSpeed.x, m_LastSendOnFootSync.vecMoveSpeed.y, m_LastSendOnFootSync.vecMoveSpeed.z);
+	if (!bsData.Read(m_LastSendOnFootSync.byteSpecialAction)) return;
+	if (!bsData.ReadVector(m_LastSendOnFootSync.vecMoveSpeed.x, m_LastSendOnFootSync.vecMoveSpeed.y, m_LastSendOnFootSync.vecMoveSpeed.z)) return;
 
 	bool bHasVehicleSurfingInfo;
-	bsData.Read(bHasVehicleSurfingInfo);
+	if (!bsData.Read(bHasVehicleSurfingInfo)) return;
 	if (bHasVehicleSurfingInfo)
 	{
-		bsData.Read(m_LastSendOnFootSync.wSurfInfo);
-		bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.x);
-		bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.y);
-		bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.z);
+		if (!bsData.Read(m_LastSendOnFootSync.wSurfInfo)) return;
+		if (!bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.x)) return;
+		if (!bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.y)) return;
+		if (!bsData.Read(m_LastSendOnFootSync.vecSurfOffsets.z)) return;
 	}
 	else
 		m_LastSendOnFootSync.wSurfInfo = INVALID_VEHICLE_ID;
 
 	bool bHasAnimation;
-	bsData.Read(bHasAnimation);
+	if (!bsData.Read(bHasAnimation)) return;
 	if (bHasAnimation) {
-		bsData.Read(m_LastSendOnFootSync.dwAnimation);
+		if (!bsData.Read(m_LastSendOnFootSync.dwAnimation)) return;
 	}
 	else {
 		m_LastSendOnFootSync.dwAnimation = 0x80000000;
 	}
+
+	if (!std::isfinite(m_LastSendOnFootSync.vecPos.x) || !std::isfinite(m_LastSendOnFootSync.vecPos.y) ||
+		!std::isfinite(m_LastSendOnFootSync.vecPos.z) || !std::isfinite(m_LastSendOnFootSync.vecMoveSpeed.x) ||
+		!std::isfinite(m_LastSendOnFootSync.vecMoveSpeed.y) || !std::isfinite(m_LastSendOnFootSync.vecMoveSpeed.z) ||
+		!std::isfinite(m_LastSendOnFootSync.vecSurfOffsets.x) || !std::isfinite(m_LastSendOnFootSync.vecSurfOffsets.y) ||
+		!std::isfinite(m_LastSendOnFootSync.vecSurfOffsets.z)) return;
 
 	CRemotePlayer *pRemotePlayer = GetPlayerPool()->GetAt(playerId);
 	if (pRemotePlayer) {
@@ -785,6 +800,7 @@ void CNetGame::Packet_PlayerSync(Packet *pkt)
 
 void CNetGame::Packet_VehicleSync(Packet* pkt)
 {
+	if (!pkt || !pkt->data) return;
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
 	uint32_t dwTime = 0;
 	uint8_t bytePacketId;
@@ -795,30 +811,30 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 
 	memset(&icSync, 0, sizeof(INCAR_SYNC_DATA));
 
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerID);
-	bsData.Read(icSync.VehicleID);
-	bsData.Read(icSync.lrAnalog);
-	bsData.Read(icSync.udAnalog);
-	bsData.Read(icSync.wKeys);
+	if (!bsData.Read(bytePacketId)) return;
+	if (!bsData.Read(PlayerID)) return;
+	if (!bsData.Read(icSync.VehicleID)) return;
+	if (!bsData.Read(icSync.lrAnalog)) return;
+	if (!bsData.Read(icSync.udAnalog)) return;
+	if (!bsData.Read(icSync.wKeys)) return;
 
 	float w, x, y, z;
-	bsData.ReadNormQuat(w, x, y, z);
+	if (!bsData.ReadNormQuat(w, x, y, z)) return;
 	icSync.quat.Set(x, y, z, w);
 	
-	bsData.Read((char*)& icSync.vecPos, sizeof(CVector));
-	bsData.ReadVector(icSync.vecMoveSpeed.x, icSync.vecMoveSpeed.y, icSync.vecMoveSpeed.z);
+	if (!bsData.Read((char*)& icSync.vecPos, sizeof(CVector))) return;
+	if (!bsData.ReadVector(icSync.vecMoveSpeed.x, icSync.vecMoveSpeed.y, icSync.vecMoveSpeed.z)) return;
 
 	// car health
 	uint16_t wTempVehicleHealth;
-	bsData.Read(wTempVehicleHealth);
+	if (!bsData.Read(wTempVehicleHealth)) return;
 	icSync.fCarHealth = (float)wTempVehicleHealth;
 
 	// health/armour
 	uint8_t byteHealthArmour;
 	uint8_t byteArmTemp = 0, byteHlTemp = 0;
 
-	bsData.Read(byteHealthArmour);
+	if (!bsData.Read(byteHealthArmour)) return;
 	byteArmTemp = (byteHealthArmour & 0x0F);
 	byteHlTemp = (byteHealthArmour >> 4);
 
@@ -832,23 +848,27 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 
 	// current weapon
 	uint8_t byteTempWeapon;
-	bsData.Read(byteTempWeapon);
+	if (!bsData.Read(byteTempWeapon)) return;
 	icSync.byteCurrentWeapon ^= (byteTempWeapon ^ icSync.byteCurrentWeapon) & 0x3F;
 
 	bool bCheck;
 
 	// siren
-	bsData.Read(bCheck);
+	if (!bsData.Read(bCheck)) return;
 	if (bCheck) icSync.byteSirenOn = 1;
 	// landinggear
-	bsData.Read(bCheck);
+	if (!bsData.Read(bCheck)) return;
 	if (bCheck) icSync.byteLandingGearState = 1;
 	// train speed
-	bsData.Read(bCheck);
-	if (bCheck) bsData.Read(icSync.fTrainSpeed);
+	if (!bsData.Read(bCheck)) return;
+	if (bCheck && !bsData.Read(icSync.fTrainSpeed)) return;
 	// triler id
-	bsData.Read(bCheck);
-	if (bCheck) bsData.Read(icSync.TrailerID);
+	if (!bsData.Read(bCheck)) return;
+	if (bCheck && !bsData.Read(icSync.TrailerID)) return;
+
+	if (!std::isfinite(icSync.vecPos.x) || !std::isfinite(icSync.vecPos.y) || !std::isfinite(icSync.vecPos.z) ||
+		!std::isfinite(icSync.vecMoveSpeed.x) || !std::isfinite(icSync.vecMoveSpeed.y) ||
+		!std::isfinite(icSync.vecMoveSpeed.z)) return;
 
 	CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
 	if (pRemotePlayer) {
@@ -911,7 +931,7 @@ void CNetGame::Packet_PassengerSync(Packet* pkt)
 
 void CNetGame::Packet_MarkerSync(Packet *pkt)
 {
-	if(m_iGameState != GAMESTATE_CONNECTED) return;
+	if(m_iGameState != GAMESTATE_CONNECTED || !pkt || !pkt->data) return;
 
 	uint8_t bytePacketId;
 	int	iNumberOfPlayers;
@@ -920,23 +940,21 @@ void CNetGame::Packet_MarkerSync(Packet *pkt)
 	short sPos[3];
 
 	RakNet::BitStream bsMarkersSync((unsigned char *)pkt->data, pkt->length, false);
-	bsMarkersSync.Read(bytePacketId);
-	bsMarkersSync.Read(iNumberOfPlayers);
+	if (!bsMarkersSync.Read(bytePacketId) || !bsMarkersSync.Read(iNumberOfPlayers) ||
+		iNumberOfPlayers < 0 || iNumberOfPlayers > MAX_PLAYERS) return;
 	if(iNumberOfPlayers)
 	{
 		for(int i = 0; i < iNumberOfPlayers; i++)
 		{
-			bsMarkersSync.Read(playerId);
-			bsMarkersSync.ReadCompressed(bIsPlayerActive);
+			if (!bsMarkersSync.Read(playerId) || !bsMarkersSync.ReadCompressed(bIsPlayerActive)) return;
 
 			if(bIsPlayerActive)
 			{
-				bsMarkersSync.Read(sPos[0]);
-				bsMarkersSync.Read(sPos[1]);
-				bsMarkersSync.Read(sPos[2]);
+				if (!bsMarkersSync.Read(sPos[0]) || !bsMarkersSync.Read(sPos[1]) ||
+					!bsMarkersSync.Read(sPos[2])) return;
 			}
 
-			if(playerId >= 0 && playerId < MAX_PLAYERS && GetPlayerPool()->GetSlotState(playerId))
+			if(playerId < MAX_PLAYERS && GetPlayerPool()->GetSlotState(playerId))
 			{
 				CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
 				if(pPlayer)
@@ -1325,18 +1343,14 @@ void CNetGame::Packet_TrailerSync(Packet *pkt)
 
 void CNetGame::Packet_UnoccupiedSync(Packet *pkt)
 {
-    if(m_iGameState != GAMESTATE_CONNECTED) return;
+    if(m_iGameState != GAMESTATE_CONNECTED || !pkt || !pkt->data) return;
 
-    uint8_t bytePacketId;
     PLAYERID playerId;
-
     UNOCCUPIED_SYNC_DATA unocSync;
     memset(&unocSync, 0, sizeof(UNOCCUPIED_SYNC_DATA));
 
     RakNet::BitStream bsUnocSync((unsigned char *)pkt->data, pkt->length, false);
-    bsUnocSync.Read(bytePacketId);
-    bsUnocSync.Read(playerId);
-    bsUnocSync.Read((char*)&unocSync,sizeof(UNOCCUPIED_SYNC_DATA));
+    if (!ReadRemoteSyncPacket(bsUnocSync, playerId, unocSync)) return;
 
     if(GetPlayerPool())
     {
