@@ -162,16 +162,7 @@ VALIDATE_SIZE(INCAR_SYNC_DATA, 63);
 struct PASSENGER_SYNC_DATA
 {
 	VEHICLEID VehicleID;			// +0
-	union {
-		uint16_t DriveBySeatAdditionalKeyWeapon;
-		struct
-		{
-			uint8_t byteSeatFlags : 2;
-			uint8_t byteDriveBy : 2;
-			uint8_t byteCurrentWeapon : 6;
-			uint8_t AdditionalKey : 2;
-		};
-	};
+	uint16_t DriveBySeatAdditionalKeyWeapon; // seat/drive-by/cuffed + weapon/additional key
 	uint8_t bytePlayerHealth;		// +4
 	uint8_t bytePlayerArmour;		// +5
 	uint16_t lrAnalog;				// +6

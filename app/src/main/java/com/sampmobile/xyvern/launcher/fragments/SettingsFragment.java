@@ -26,6 +26,7 @@ import com.sampmobile.xyvern.R;
 import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
 import com.sampmobile.xyvern.launcher.util.LauncherVersion;
+import com.sampmobile.xyvern.launcher.util.LauncherEvents;
 
 import org.ini4j.Wini;
 
@@ -62,6 +63,9 @@ public class SettingsFragment extends Fragment {
             ((MainActivity) getActivity()).hideKeyboard(getActivity());
         }
 
+        view.findViewById(R.id.share_diagnostic_logs).setOnClickListener(v ->
+                com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(requireActivity()));
+
         // Ánh xạ các thành phần giao diện
         mNickName = view.findViewById(R.id.settings_nickname);
         autoCompleteTextView = view.findViewById(R.id.spinner);
@@ -74,6 +78,20 @@ public class SettingsFragment extends Fragment {
             .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
         mCefSwitch = view.findViewById(R.id.cef_switch);
+        SwitchCompat eventReporting = view.findViewById(R.id.event_reporting_switch);
+        boolean relayConfigured = LauncherEvents.isConfigured();
+        eventReporting.setEnabled(relayConfigured);
+        eventReporting.setChecked(relayConfigured && LauncherEvents.preferences(requireContext())
+                .getBoolean(LauncherEvents.ENABLED, LauncherEvents.DEFAULT_ENABLED));
+        TextView eventDescription = view.findViewById(R.id.event_reporting_description);
+        if (!relayConfigured) {
+            eventDescription.setText("Tidak tersedia: webhook Discord atau relay belum dikonfigurasi saat build.");
+        } else if (LauncherEvents.isDirectDiscord()) {
+            eventDescription.setText("Aktif secara default jika webhook dikonfigurasi; dapat dimatikan di sini. Alamat dan port server dikirim saat mencoba masuk. Discord dapat melihat IP internet; nickname dan password tidak dikirim.");
+        }
+        eventReporting.setOnCheckedChangeListener((button, enabled) ->
+                LauncherEvents.preferences(requireContext()).edit().putBoolean(LauncherEvents.ENABLED, enabled).apply());
+
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);

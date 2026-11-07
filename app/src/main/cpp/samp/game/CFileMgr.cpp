@@ -80,6 +80,14 @@ FILE* CFileMgr::OpenFile(const char *path, const char *mode) {
 
     auto file = fopen(ms_path, mode);
 
+    // Some game data uses this mixed-case audio path on case-sensitive storage.
+    if (!file && strcmp(path, "AUDIO/CONFIG/BANKSLOT.DAT") == 0 && strcmp(mode, "rb") == 0) {
+        char alternate[sizeof(ms_path)];
+        int length = snprintf(alternate, sizeof(alternate), "%s%s", g_pszStorage, "audio/CONFIG/BankSlot.dat");
+        if (length >= 0 && static_cast<size_t>(length) < sizeof(alternate))
+            file = fopen(alternate, mode);
+    }
+
     if(!file) {
         if (!strstr(ms_path, ".idx") && !strstr(ms_path, "gta_sa.set") && !strstr(ms_path, "gtasatelem.set") && !strstr(ms_path, "gta3.ini") && !strstr(ms_path, "CINFO.BIN") && !strstr(ms_path, "MINFO.BIN") && !strstr(ms_path, "GTASAsf") && !strstr(ms_path, "Adjustable.cfg")) {
             FLog("Fail open file %s", ms_path);

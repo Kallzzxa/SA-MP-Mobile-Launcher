@@ -246,7 +246,7 @@
                     android:background="@drawable/bg_server_tabs"
                     android:fontFamily="@font/montserrat_medium"
                     android:padding="12dp"
-                    android:text="Android/data/com.sampmobile.xyvern/files"
+                    android:text="Android/data/com.hopepride.samp/files"
                     android:textColor="#38BDF8"
                     android:textIsSelectable="true"
                     android:textSize="11sp" />

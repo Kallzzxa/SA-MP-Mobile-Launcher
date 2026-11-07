@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
+        android:name="com.sampmobile.xyvern.diagnostics.HopeApplication"
         android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
         android:banner="@drawable/hopepride_banner"

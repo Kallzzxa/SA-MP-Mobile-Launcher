@@ -83,6 +83,56 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <EditText
+        android:id="@+id/search_servers"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="22dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_hope_field"
+        android:fontFamily="@font/montserrat_regular"
+        android:hint="Cari nama atau alamat server"
+        android:inputType="text"
+        android:imeOptions="actionDone"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:singleLine="true"
+        android:textColor="#F8FAFC"
+        android:textColorHint="#8BA0B6"
+        android:textSize="13sp"
+        app:layout_constraintEnd_toStartOf="@id/refresh_servers"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tab_layout" />
+
+    <Button
+        android:id="@+id/refresh_servers"
+        android:layout_width="96dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="22dp"
+        android:backgroundTint="#26425A"
+        android:fontFamily="@font/montserrat_bold"
+        android:text="Muat ulang"
+        android:textAllCaps="false"
+        android:textColor="#DFF3FF"
+        android:textSize="10sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/search_servers" />
+
+    <Spinner
+        android:id="@+id/server_sort"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="22dp"
+        android:layout_marginEnd="22dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_hope_field"
+        android:contentDescription="Urutkan daftar server"
+        android:popupBackground="#263B50"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/search_servers" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_servers"
         android:layout_width="0dp"
@@ -95,7 +145,7 @@
         app:layout_constraintBottom_toTopOf="@id/btn_add_server"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tab_layout" />
+        app:layout_constraintTop_toBottomOf="@id/server_sort" />
 
     <TextView
         android:id="@+id/empty_servers"

@@ -1,6 +1,7 @@
 #include "../main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
+#include <cstdio>
 
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -75,18 +76,26 @@ bool ImGuiWrapper::initialize()
         fontCfg.FontDataOwnedByAtlas = false;
         font = io.Fonts->AddFontFromMemoryTTF((void*)m_fontData.data(), m_fontData.size(),
             UISettings::fontSize(), &fontCfg, ranges);
-    } else {
-	    font = io.Fonts->AddFontFromFileTTF(m_fontPath.c_str(),
-		    UISettings::fontSize(), &fontCfg, ranges);
+    } else if (!m_fontPath.empty()) {
+        // ImGui asserts rather than returning gracefully when the file is absent.
+        FILE* file = std::fopen(m_fontPath.c_str(), "rb");
+        if (file) {
+            std::fclose(file);
+            font = io.Fonts->AddFontFromFileTTF(m_fontPath.c_str(),
+                UISettings::fontSize(), &fontCfg, ranges);
+        }
     }
 
-	if (font == nullptr)
-	{
-		Log::addParameter("font", font);
-		return false;
-	}
-
-	createFontTexture();
+    if (!font) {
+        LOGI("UI font unavailable; using embedded ImGui default font");
+        ImFontConfig fallback;
+        fallback.SizePixels = UISettings::fontSize();
+        font = io.Fonts->AddFontDefault(&fallback);
+    }
+    if (!font || !createFontTexture()) {
+        LOGE("Unable to initialize UI font texture");
+        return false;
+    }
 
 	m_renderer = new ImGuiRenderer(ImGui::GetBackgroundDrawList(), font);
 
@@ -264,11 +273,9 @@ bool ImGuiWrapper::createFontTexture()
 	io.Fonts->GetTexDataAsRGBA32(&pxs, &width, &height, &bytes_per_pixel);
 
 	RwImage* font_img = RwImageCreate(width, height, bytes_per_pixel * 8);
-	RwImageAllocatePixels(font_img);
-
-	if (font_img == nullptr)
-	{
-		Log::addParameter("Font image pointer", font_img);
+	if (!font_img) return false;
+	if (!RwImageAllocatePixels(font_img) || !font_img->cpPixels) {
+		RwImageDestroy(font_img);
 		return false;
 	}
 
@@ -285,10 +292,18 @@ bool ImGuiWrapper::createFontTexture()
 	if (m_fontRaster == nullptr)
 	{
 		Log::addParameter("font raster pointer", m_fontRaster);
+		RwImageDestroy(font_img);
 		return false;
 	}
 
-	m_fontRaster = RwRasterSetFromImage(m_fontRaster, font_img);
+	RwRaster* populatedRaster = RwRasterSetFromImage(m_fontRaster, font_img);
+	if (!populatedRaster) {
+		RwRasterDestroy(m_fontRaster);
+		m_fontRaster = nullptr;
+		RwImageDestroy(font_img);
+		return false;
+	}
+	m_fontRaster = populatedRaster;
 	io.Fonts->TexID = (ImTextureID*)m_fontRaster;
 
 	RwImageDestroy(font_img);

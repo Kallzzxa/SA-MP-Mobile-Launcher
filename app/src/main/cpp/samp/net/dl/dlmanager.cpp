@@ -409,9 +409,14 @@ bool DLManager::RegisterCustomModels() {
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
+    // Multiple models often reuse a texture or mesh by checksum. Store each
+    // archive name once, while still registering every virtual model below.
+    std::unordered_set<std::string> archiveNames;
     for (const auto& mf : toRegister) {
-        entries.push_back({mf.dffPath, mf.dffArcName});
-        entries.push_back({mf.txdPath, mf.txdArcName});
+        if (archiveNames.insert(mf.dffArcName).second)
+            entries.push_back({mf.dffPath, mf.dffArcName});
+        if (archiveNames.insert(mf.txdArcName).second)
+            entries.push_back({mf.txdPath, mf.txdArcName});
     }
 
     std::string packError;

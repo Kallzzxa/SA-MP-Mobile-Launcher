@@ -7,6 +7,10 @@ CPlayerPool::CPlayerPool()
 {
 	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++) {
 		m_bPlayerSlotState[playerId] = false;
+		m_pPlayers[playerId] = nullptr;
+		m_iPlayerScores[playerId] = 0;
+		m_dwPlayerPings[playerId] = 0;
+		m_szPlayerNames[playerId][0] = '\0';
 	}
 
 	m_pLocalPlayer = new CLocalPlayer();
@@ -66,11 +70,15 @@ bool CPlayerPool::New(PLAYERID playerId, const char* szPlayerName, bool bIsNPC)
 	this->FindLastPlayerID();
 
 	return true;*/
+	if (playerId >= MAX_PLAYERS || !szPlayerName || m_bPlayerSlotState[playerId]) return false;
 	m_pPlayers[playerId] = new CRemotePlayer();
 
 	if(m_pPlayers[playerId])
 	{
-		strcpy(m_szPlayerNames[playerId], szPlayerName);
+		strncpy(m_szPlayerNames[playerId], szPlayerName, MAX_PLAYER_NAME);
+		m_szPlayerNames[playerId][MAX_PLAYER_NAME] = '\0';
+		m_iPlayerScores[playerId] = 0;
+		m_dwPlayerPings[playerId] = 0;
 		m_pPlayers[playerId]->SetID(playerId);
 		if(bIsNPC)
 			m_pPlayers[playerId]->SetNPC();
@@ -117,28 +125,20 @@ void CPlayerPool::FindLastPlayerID()
 
 int CPlayerPool::GetPlayerScore(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) return 0;
+	if (playerId >= MAX_PLAYERS) return 0;
 	return m_iPlayerScores[playerId];
 }
 
 int CPlayerPool::GetPlayerPing(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) {
-		return false;
-	}
-
-	if (playerId > MAX_PLAYERS) return 0;
+	if (playerId >= MAX_PLAYERS) return 0;
 	return m_dwPlayerPings[playerId];
 }
 
-
 bool CPlayerPool::IsPlayerNPC(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) {
-		return false;
-	}
-
-	return m_pPlayers[playerId]->IsNPC();
+	CRemotePlayer* player = GetAt(playerId);
+	return player && player->IsNPC();
 }
 
 int CPlayerPool::GetTotalPlayers()

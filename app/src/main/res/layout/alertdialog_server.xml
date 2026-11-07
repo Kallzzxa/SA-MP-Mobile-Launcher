@@ -64,7 +64,43 @@
             <TextView android:id="@+id/server_online" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:fontFamily="@font/montserrat_medium" android:textColor="#F8FAFC" android:textSize="13sp" />
             <TextView android:id="@+id/server_mode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:ellipsize="end" android:maxLines="2" android:textColor="#CBD5E1" android:textSize="12sp" />
             <TextView android:id="@+id/server_language" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:ellipsize="end" android:maxLines="1" android:textColor="#CBD5E1" android:textSize="12sp" />
+            <TextView android:id="@+id/server_query_ping" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="6dp" android:text="Ping query: belum diukur" android:textColor="#8BD9FF" android:textSize="12sp" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/server_players"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="#26425A"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="Lihat daftar pemain"
+            android:textAllCaps="false"
+            android:textColor="#DFF3FF"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/server_measure_ping"
+            android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp"
+            android:backgroundTint="#26425A" android:fontFamily="@font/montserrat_bold"
+            android:text="Ukur ping server" android:textAllCaps="false" android:textColor="#DFF3FF" android:textSize="12sp" />
+        <Button
+            android:id="@+id/server_rules"
+            android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp"
+            android:backgroundTint="#26425A" android:fontFamily="@font/montserrat_bold"
+            android:text="Lihat info server" android:textAllCaps="false" android:textColor="#DFF3FF" android:textSize="12sp" />
+        <Button
+            android:id="@+id/server_copy_address"
+            android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp"
+            android:backgroundTint="#26425A" android:fontFamily="@font/montserrat_bold"
+            android:text="Salin alamat server" android:textAllCaps="false" android:textColor="#DFF3FF" android:textSize="12sp" />
+        <Button
+            android:id="@+id/server_add_favorite"
+            android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp"
+            android:backgroundTint="#26425A" android:fontFamily="@font/montserrat_bold"
+            android:text="Simpan ke favorit" android:textAllCaps="false" android:textColor="#DFF3FF" android:textSize="12sp"
+            android:visibility="gone" />
 
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:fontFamily="@font/montserrat_bold" android:text="Nickname" android:textColor="#F8FAFC" android:textSize="12sp" />
         <EditText
@@ -101,6 +137,12 @@
             android:textColorHint="#94A3B8"
             android:textSize="13sp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Password server tersimpan dalam konfigurasi game di perangkat." android:textColor="#94A3B8" android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/server_reporting_notice"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textColor="#A8C9DE" android:textSize="11sp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/server_connect"
