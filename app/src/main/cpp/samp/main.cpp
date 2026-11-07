@@ -154,6 +154,22 @@ static void CrashLogHex(uintptr_t uiValue)
     (void)!write(g_iCrashLogFd, szBuf, (size_t)iLen);
 }
 
+// Best effort: resolve an address to an exported symbol so the report names the
+// engine function instead of only an offset. The raw offsets are already on
+// disk before this runs, so a stalled dladdr() cannot lose the report.
+static void CrashLogSymbol(uintptr_t uiAddress)
+{
+    if (!uiAddress) { CrashLogPut("(null)\n"); return; }
+
+    Dl_info info;
+    memset(&info, 0, sizeof(info));
+    if (dladdr((void*)uiAddress, &info) && info.dli_sname)
+        CrashLogPut(info.dli_sname);
+    else
+        CrashLogPut("(unknown)");
+    CrashLogPut("\n");
+}
+
 static void CrashLogOpen()
 {
     if (g_iCrashLogFd >= 0) return;
@@ -244,6 +260,12 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
         if (g_libSAMP)  { CrashLogPut("pc-libsamp:  "); CrashLogHex(uiPc - g_libSAMP);  CrashLogPut("\n"); }
         if (g_libGTASA) { CrashLogPut("lr-libGTASA: "); CrashLogHex(uiLr - g_libGTASA); CrashLogPut("\n"); }
         if (g_libSAMP)  { CrashLogPut("lr-libsamp:  "); CrashLogHex(uiLr - g_libSAMP);  CrashLogPut("\n"); }
+
+        // The caller symbol names the engine function that made the bad access.
+        CrashLogPut("pc-symbol:  ");
+        CrashLogSymbol(uiPc);
+        CrashLogPut("lr-symbol:  ");
+        CrashLogSymbol(uiLr);
     }
 
     CrashLogPut("========================\n");
