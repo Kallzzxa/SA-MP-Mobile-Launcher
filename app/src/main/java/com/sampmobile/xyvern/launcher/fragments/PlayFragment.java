@@ -472,7 +472,10 @@ public class PlayFragment extends Fragment {
             LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
-            com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify = 
+            String textureVariant = com.sampmobile.xyvern.launcher.util.GameDataVerifier.textureVariantForDevice();
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event(
+                    "GAME_TEXTURE_VARIANT_" + (textureVariant == null ? "UNKNOWN" : textureVariant.toUpperCase(java.util.Locale.ROOT)));
+            com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify =
                     com.sampmobile.xyvern.launcher.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
                 com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
