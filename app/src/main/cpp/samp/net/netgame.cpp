@@ -503,6 +503,8 @@ void CNetGame::ProcessPools()
 void CNetGame::ProcessLoadingScreen()
 {
 	CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
+	// The game may not have created the local GTA ped yet during loading.
+	if (!pPlayerPed || !pPlayerPed->m_pPed) return;
 	if (pPlayerPed->IsInVehicle()) {
 		pPlayerPed->RemoveFromVehicleAndPutAt(1093.4, -2036.5, 82.710602);
 	}

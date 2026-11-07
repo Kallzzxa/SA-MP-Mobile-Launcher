@@ -301,7 +301,8 @@ public final class GameDataManager {
                     ui.dialog.dismiss();
                     dismissLoading();
                     setImmersive(a, false);
-                    Toast.makeText(a, "Game data siap dimainkan", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(a, s.detail == null || s.detail.isEmpty()
+                            ? "Download selesai. Periksa data di Home." : s.detail, Toast.LENGTH_LONG).show();
                     ReadyCallback cb = readyCallback;
                     readyCallback = null;
                     if (cb != null && !a.isFinishing() && !a.isDestroyed()) cb.onReady();

@@ -145,6 +145,10 @@ HopePride/
 
 **HopePride Launcher** dikembangkan oleh **Pall & Fann** dan menggunakan kode upstream dari [JohnPeriaX/KotlinJava-DSL-SampMobile-2.10](https://github.com/JohnPeriaX/KotlinJava-DSL-SampMobile-2.10).
 
+Kontributor yang dicantumkan: [HOOOOOOQ](https://github.com/HOOOOOOQ) dan [Xaeraa](https://github.com/Xaeraa).
+
+Lihat juga [daftar kontributor kode di GitHub](https://github.com/HOOOOOOQ/SA-MP-HOPEPRIDE-LAUNCER/graphs/contributors).
+
 ---
 
 <div align="center">

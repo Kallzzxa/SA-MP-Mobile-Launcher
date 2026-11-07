@@ -138,6 +138,8 @@ public class GameDataDownloadService extends Service {
             return; // already running
         }
         SharedPreferences p = prefs(c);
+        // Direct MediaFire links may have expired while the job was paused.
+        p.edit().remove(DownloadSafety.resolvedKey(p.getString(KEY_VERSION, ""))).apply();
         Intent i = new Intent(c, GameDataDownloadService.class);
         i.setAction(p.getString(KEY_JOB, ACTION_GAME_DATA));
         i.putExtra(EXTRA_URL, p.getString(KEY_URL, ""));
@@ -153,7 +155,7 @@ public class GameDataDownloadService extends Service {
         savePending(c, action, pageUrl, version, expectedSize, sentinel);
         // Fresh job: drop the resolved direct url (MediaFire links are one-shot),
         // the .part file itself stays so any existing partial data still resumes.
-        prefs(c).edit().remove("resolved_" + (version == null ? "" : version)).apply();
+        prefs(c).edit().remove(DownloadSafety.resolvedKey(version)).apply();
         Intent i = new Intent(c, GameDataDownloadService.class);
         i.setAction(action);
         i.putExtra(EXTRA_URL, pageUrl);
@@ -235,7 +237,7 @@ public class GameDataDownloadService extends Service {
             // 1. Resolve page -> direct url (MediaFire), persisted for resume.
             stage = "DATA_DOWNLOAD_RESOLVE";
             com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
-            String resolvedKey = "resolved_" + versionTag;
+            String resolvedKey = DownloadSafety.resolvedKey(versionTag);
             String direct = prefs(this).getString(resolvedKey, "");
             if (direct == null || direct.isEmpty()) {
                 setState(PHASE_CONNECT, 0, 0, expectedSize, "Mencari link download...", null);
@@ -267,19 +269,18 @@ public class GameDataDownloadService extends Service {
                 if (isGameData) {
                     // Delegate extract + sentinel check + .data_ready marker.
                     GameDataManager.finalizeGameDataInstall(c, finalZip, versionTag, sentinel);
-                    try { if (finalZip.exists()) finalZip.delete(); } catch (Exception ignored) {}
-                    clearPending(c);
-                    setState(PHASE_DONE, 100, 100, 100, "Data game siap dimainkan", null);
                 } else {
-                    // HomeFragment assets job: unzip into game dir, no marker change.
-                    File zip = new File(base, "files.zip");
-                    if (zip.exists()) zip.delete();
-                    if (!finalZip.renameTo(zip)) throw new Exception("Gagal menyiapkan file hasil unduhan.");
-                    unzipTo(c, zip, base);
-                    if (zip.exists()) zip.delete();
-                    clearPending(c);
-                    setState(PHASE_DONE, 100, 100, 100, "Game assets terpasang", null);
+                    // Extract from our cache instead of staging over a user's files.zip.
+                    unzipTo(c, finalZip, base);
                 }
+                boolean complete = com.sampmobile.xyvern.launcher.util.GameDataVerifier
+                        .verifyGameData(c).isValid;
+                if (!complete) com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_FILES_INCOMPLETE");
+                try { if (finalZip.exists()) finalZip.delete(); } catch (Exception ignored) {}
+                clearPending(c);
+                setState(PHASE_DONE, 100, 100, 100, complete
+                        ? "Download selesai. File inti ditemukan."
+                        : "Download selesai, tetapi data belum lengkap. Periksa halaman Home.", null);
             } else {
                 throw new Exception("Gagal menyiapkan file hasil unduhan.");
             }
@@ -347,20 +348,33 @@ public class GameDataDownloadService extends Service {
         HttpURLConnection conn = connect(directUrl, existing);
         try {
             int code = conn.getResponseCode();
-            if (code == 416 && DownloadSafety.isCompleteRange(
-                    conn.getHeaderField("Content-Range"), existing, expectedSize)) {
-                return; // The previous attempt finished writing before it was interrupted.
+            if (code == 416 && existing > 0) {
+                if (DownloadSafety.isCompleteRange(
+                        conn.getHeaderField("Content-Range"), existing, expectedSize)) {
+                    return; // The previous attempt finished writing before it was interrupted.
+                }
+                // The partial length cannot be resumed: retry once without Range. Keep
+                // the old partial until a valid new response is ready to be written.
+                conn.disconnect();
+                conn = connect(directUrl, 0);
+                existing = 0;
+                code = conn.getResponseCode();
             }
             if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL)
                 throw new java.net.HttpRetryException("Server menolak download (HTTP " + code + ").", code);
 
-            boolean append = code == HttpURLConnection.HTTP_PARTIAL;
+            boolean partialResponse = code == HttpURLConnection.HTTP_PARTIAL;
+            boolean append = partialResponse && existing > 0;
             long responseLength = conn.getContentLengthLong();
-            if (append && !DownloadSafety.matchesRange(
+            if (partialResponse && !DownloadSafety.matchesRange(
                     conn.getHeaderField("Content-Range"), existing, responseLength)) {
                 throw new java.io.IOException("Respons Range server tidak valid.");
             }
-            if (!append) existing = 0; // Server ignored Range; replace the partial file.
+            if (partialResponse && responseLength < 0) {
+                responseLength = DownloadSafety.rangeLength(conn.getHeaderField("Content-Range"));
+                if (responseLength < 0) throw new java.io.IOException("Respons Range server tidak valid.");
+            }
+            if (!append) existing = 0; // A full or zero-based response replaces the partial file.
 
             long total = responseLength >= 0 ? existing + responseLength : expectedSize;
             setState(PHASE_DOWNLOAD, (int) (total > 0 ? Math.min(100, existing * 100 / total) : 0),
