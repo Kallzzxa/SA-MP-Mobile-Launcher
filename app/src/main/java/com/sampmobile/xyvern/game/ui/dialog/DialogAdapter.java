@@ -118,7 +118,7 @@ public class DialogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>
                     iArr2[0] = (int) textWidth;
                 }
             } else {
-                String[] split = str.split("\t");
+                String[] split = DialogColumns.split(str);
                 int length = split.length;
                 if (length > 4) {
                     length = 4;
@@ -165,7 +165,7 @@ public class DialogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>
         if (!this.mTablist) {
             viewHolder.mFields[0].setText(Util.getColoredString(str));
         } else {
-            String[] split = str.split("\t");
+            String[] split = DialogColumns.split(str);
             int length = split.length;
             if (length > 4) {
                 length = 4;

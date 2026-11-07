@@ -79,7 +79,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     }
 
     public void exitGame(){
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+        if (!com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+        }
         finishAndRemoveTask();
         System.exit(0);
     }

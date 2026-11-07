@@ -36,7 +36,7 @@
 | **Versi aplikasi** | 1.7.0 |
 | **Android minimum** | Android 8.0 / API 26 |
 | **Arsitektur** | ARM64 & ARMv7 |
-| **Package ID** | `com.sampmobile.xyvern` |
+| **Package ID** | `com.hopepride.samp` |
 
 > [!IMPORTANT]
 > URL konfigurasi, unduhan data, dan daftar Hosted di kode masih mengarah ke layanan proyek sebelumnya. Sesuaikan sebelum launcher digunakan untuk server HopePride.
@@ -113,12 +113,16 @@ gradlew.bat testDebugUnitTest assembleDebug
 Output lokal: `app/build/outputs/apk/debug/app-debug.apk`<br />
 Artifact GitHub Actions: `HopePride-debug.apk`
 
+> [!IMPORTANT]
+> Package ID `com.hopepride.samp` adalah aplikasi baru bagi Android, bukan pembaruan dari `com.sampmobile.xyvern`. Cadangkan data lama sebelum menghapus aplikasi lama; file game perlu disalin atau diunduh ke direktori aplikasi baru. Favorit dan pengaturan tidak berpindah otomatis. Namespace Java/JNI tetap menggunakan nama lama untuk menjaga kompatibilitas library native.
+
 ## 🔧 Konfigurasi sebelum rilis
 
 - **Konfigurasi dan paket data:** periksa URL di [`GameDataManager.java`](app/src/main/java/com/sampmobile/xyvern/game/GameDataManager.java) dan [`HomeFragment.java`](app/src/main/java/com/sampmobile/xyvern/launcher/fragments/HomeFragment.java).
 - **Daftar server Hosted:** periksa `HOSTED_URL` di [`PlayFragment.java`](app/src/main/java/com/sampmobile/xyvern/launcher/fragments/PlayFragment.java).
 - **MobileCEF:** ikuti [panduan integrasi server](server/README.md).
 - **Custom model:** `server-side/` berisi contoh generator manifest dan loader Pawn. Contohnya belum menjamin sinkronisasi model end-to-end; sesuaikan endpoint dan uji di server serta perangkat.
+- **Firebase:** konfigurasi bawaan adalah milik aplikasi lama dan tidak digunakan untuk ID baru. Untuk mengaktifkan Firebase/FCM dan Crashlytics, daftarkan `com.hopepride.samp` di proyek Firebase milikmu lalu tempatkan `google-services.json` yang sesuai di `app/`. Tanpa itu Firebase dinonaktifkan.
 - **Signing produksi:** amankan dan kelola kunci signing sebelum distribusi. Keystore dan kredensial release yang ada di repositori harus dianggap terekspos; rencanakan rotasi sesuai mekanisme distribusi aplikasi.
 
 ## Struktur proyek

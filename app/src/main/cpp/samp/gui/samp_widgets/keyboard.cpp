@@ -190,6 +190,7 @@ void Keyboard::sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	memcpy(buffer, elements, v8);
 	buffer[v8] = 0;
 	std::string input = std::string(buffer);
+	free(buffer);
 	if (m_caller) m_caller->keyboardEvent(input);
 	hide();
 	pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);

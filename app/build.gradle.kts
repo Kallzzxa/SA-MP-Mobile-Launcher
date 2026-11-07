@@ -2,8 +2,21 @@ import java.io.File
 
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+    id("com.google.gms.google-services") apply false
+    id("com.google.firebase.crashlytics") apply false
+}
+
+// Firebase must be configured for the actual application ID, not the upstream app.
+// A build without matching configuration works without Firebase services.
+val firebaseConfig = file("google-services.json")
+val hasHopePrideFirebase = firebaseConfig.exists() &&
+    Regex("\"package_name\"\\s*:\\s*\"com\\.hopepride\\.samp\"")
+        .containsMatchIn(firebaseConfig.readText())
+if (hasHopePrideFirebase) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+} else {
+    logger.lifecycle("Firebase disabled: add app/google-services.json for com.hopepride.samp to enable it")
 }
 
 val stageGlossHookJniLibs = tasks.register<Sync>("stageGlossHookJniLibs") {
@@ -24,7 +37,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.sampmobile.xyvern"
+        applicationId = "com.hopepride.samp"
         minSdk = 26
         targetSdk = 34
         versionCode = 164
