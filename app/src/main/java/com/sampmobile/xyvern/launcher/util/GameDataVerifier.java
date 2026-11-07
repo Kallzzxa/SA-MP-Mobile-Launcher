@@ -13,7 +13,8 @@ public class GameDataVerifier {
             "data/gta.dat",
             "data/surface.dat",
             "data/fonts.dat",
-            "data/handling.cfg"
+            "data/handling.cfg",
+            "AUDIO/CONFIG/BANKSLOT.DAT"
     };
 
     public static class VerificationResult {
@@ -41,6 +42,10 @@ public class GameDataVerifier {
 
         for (String relativePath : ESSENTIAL_FILES) {
             File target = new File(baseDir, relativePath);
+            // Match the native audio fallback without replacing either data file.
+            if (relativePath.equals("AUDIO/CONFIG/BANKSLOT.DAT") && !target.exists()) {
+                target = new File(baseDir, "audio/CONFIG/BankSlot.dat");
+            }
             if (!target.isFile() || target.length() == 0) {
                 missingFiles.add(relativePath);
             } else {

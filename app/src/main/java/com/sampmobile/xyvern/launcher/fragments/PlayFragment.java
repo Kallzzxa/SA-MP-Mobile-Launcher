@@ -2,6 +2,8 @@ package com.sampmobile.xyvern.launcher.fragments;
 
 import android.app.Dialog;
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -9,11 +11,16 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
+import android.widget.Spinner;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -28,10 +35,18 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.joom.paranoid.Obfuscate;
 import com.sampmobile.xyvern.R;
 import com.sampmobile.xyvern.game.SAMP;
+import com.sampmobile.xyvern.game.StartupAssets;
 import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.util.SAMPServerInfo;
 import com.sampmobile.xyvern.launcher.util.SampQueryAPI;
 import com.sampmobile.xyvern.launcher.util.ServerInput;
+import com.sampmobile.xyvern.launcher.util.ServerSearch;
+import com.sampmobile.xyvern.launcher.util.ServerSort;
+import com.sampmobile.xyvern.launcher.util.ServerPlayerQuery;
+import com.sampmobile.xyvern.launcher.util.PlayerListFilter;
+import com.sampmobile.xyvern.launcher.util.ServerRulesQuery;
+import com.sampmobile.xyvern.launcher.util.ServerPingQuery;
+import com.sampmobile.xyvern.launcher.util.LauncherEvents;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -61,15 +76,20 @@ public class PlayFragment extends Fragment {
     private TextView tabFavorites, tabHosted, emptyServers;
     private boolean hostedLoading = true;
     private boolean showingFavorites = true;
+    private String searchQuery = "";
+    private int serverSortPosition = 0;
 
     private Handler pingHandler;
     private Runnable pingRunnable;
+    private Dialog playersDialog;
+    private Dialog rulesDialog;
 
     // Thread pool to prevent thread starvation and unbounded thread creation
     private final ExecutorService queryExecutor = Executors.newFixedThreadPool(4);
 
     // Cache query results (100 servers) to make scrolling instant and save network
     private final LruCache<String, String[]> queryCache = new LruCache<>(100);
+    private volatile int queryGeneration = 0;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -83,8 +103,49 @@ public class PlayFragment extends Fragment {
         tabHosted = view.findViewById(R.id.tab_hosted);
         emptyServers = view.findViewById(R.id.empty_servers);
 
+        EditText search = view.findViewById(R.id.search_servers);
+        search.setText(searchQuery);
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+                searchQuery = text.toString();
+                updateList();
+            }
+            @Override public void afterTextChanged(Editable text) { }
+        });
+
+        Spinner serverSort = view.findViewById(R.id.server_sort);
+        String[] serverSortLabels = {"Urutan asli", "Nama tersimpan A–Z", "Alamat A–Z"};
+        ArrayAdapter<String> serverSortAdapter = new ArrayAdapter<>(requireContext(), R.layout.item_players_sort, serverSortLabels);
+        serverSortAdapter.setDropDownViewResource(R.layout.item_players_sort);
+        serverSort.setAdapter(serverSortAdapter);
+        serverSort.setSelection(serverSortPosition);
+        serverSort.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View selected, int position, long id) {
+                if (serverSortPosition != position) {
+                    serverSortPosition = position;
+                    updateList();
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
         tabFavorites.setOnClickListener(v -> switchTab(true));
         tabHosted.setOnClickListener(v -> switchTab(false));
+
+        Button refreshServers = view.findViewById(R.id.refresh_servers);
+        refreshServers.setOnClickListener(v -> {
+            if (!showingFavorites && hostedLoading) {
+                Toast.makeText(getContext(), "Daftar Hosted sedang dimuat.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            synchronized (queryCache) {
+                queryGeneration++;
+                queryCache.evictAll();
+            }
+            if (!showingFavorites) loadData(view);
+            updateList();
+        });
 
         Button btnAdd = view.findViewById(R.id.btn_add_server);
         btnAdd.setOnClickListener(v -> showAddServerDialog());
@@ -100,6 +161,10 @@ public class PlayFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         stopPingTask();
+        if (playersDialog != null) playersDialog.dismiss();
+        playersDialog = null;
+        if (rulesDialog != null) rulesDialog.dismiss();
+        rulesDialog = null;
         adapter = null;
         rvServers = null;
         emptyServers = null;
@@ -182,9 +247,31 @@ public class PlayFragment extends Fragment {
             currentServers.addAll(hostedServers);
         }
 
+        if (!searchQuery.trim().isEmpty()) {
+            java.util.Iterator<SAMPServerInfo> iterator = currentServers.iterator();
+            while (iterator.hasNext()) {
+                SAMPServerInfo server = iterator.next();
+                String[] cached = queryCache.get(server.getAddress() + ":" + server.getPort());
+                String cachedName = cached != null && cached.length > 3 ? cached[3] : null;
+                if (!ServerSearch.matches(searchQuery, server.getServerName(), server.getAddress(), server.getPort(), cachedName)) {
+                    iterator.remove();
+                }
+            }
+        }
+
+        // Sort only the displayed copy, never the persisted favorites or hosted source.
+        if (serverSortPosition == 1) {
+            java.util.Collections.sort(currentServers, (a, b) -> ServerSort.compareNames(a.getServerName(), b.getServerName()));
+        } else if (serverSortPosition == 2) {
+            java.util.Collections.sort(currentServers, (a, b) -> ServerSort.compareEndpoints(
+                    a.getAddress(), a.getPort(), b.getAddress(), b.getPort()));
+        }
+
         if (emptyServers != null) {
             emptyServers.setVisibility(currentServers.isEmpty() ? View.VISIBLE : View.GONE);
-            emptyServers.setText(showingFavorites
+            emptyServers.setText(!searchQuery.trim().isEmpty() && (!hostedLoading || showingFavorites)
+                    ? "Tidak ada server yang cocok.\nCoba nama tersimpan atau alamat lain."
+                    : showingFavorites
                     ? "Belum ada server favorit.\nTambahkan server untuk mulai bermain."
                     : hostedLoading ? "Memuat daftar server..."
                     : "Daftar Hosted kosong atau tidak dapat dimuat.\nPeriksa koneksi internet dan coba lagi nanti.");
@@ -214,6 +301,77 @@ public class PlayFragment extends Fragment {
         EditText etUsername = detailDialog.findViewById(R.id.server_password);
         EditText etServerPassword = detailDialog.findViewById(R.id.server_join_password);
         Button btnConnect = detailDialog.findViewById(R.id.server_connect);
+        TextView queryPing = detailDialog.findViewById(R.id.server_query_ping);
+        TextView reportingNotice = detailDialog.findViewById(R.id.server_reporting_notice);
+        if (LauncherEvents.isConfigured()) {
+            boolean reportingEnabled = LauncherEvents.preferences(requireContext())
+                    .getBoolean(LauncherEvents.ENABLED, LauncherEvents.DEFAULT_ENABLED);
+            reportingNotice.setVisibility(View.VISIBLE);
+            reportingNotice.setText(reportingEnabled
+                    ? "Laporan masuk aktif: alamat dan port dikirim ke "
+                        + (LauncherEvents.isDirectDiscord() ? "Discord" : "relay")
+                        + "; layanan dapat melihat IP internet. Matikan di Pengaturan."
+                    : "Laporan masuk dimatikan di Pengaturan.");
+        }
+        Button btnMeasurePing = detailDialog.findViewById(R.id.server_measure_ping);
+        View ownerView = getView();
+        btnMeasurePing.setOnClickListener(v -> {
+            btnMeasurePing.setEnabled(false);
+            queryPing.setText("Ping query: mengukur...");
+            queryExecutor.execute(() -> {
+                long measured = -1;
+                try { measured = ServerPingQuery.measure(server.getAddress(), server.getPort()); }
+                catch (Exception ignored) { }
+                final long elapsed = measured;
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (!isAdded() || getView() != ownerView || !detailDialog.isShowing()) return;
+                    btnMeasurePing.setEnabled(true);
+                    queryPing.setText(elapsed < 0 ? "Ping query: tidak tersedia"
+                            : "Ping query: " + elapsed + " ms (bukan ping dalam game)");
+                });
+            });
+        });
+        Button btnPlayers = detailDialog.findViewById(R.id.server_players);
+        btnPlayers.setOnClickListener(v -> showPlayerListDialog(server, detailDialog));
+        Button btnRules = detailDialog.findViewById(R.id.server_rules);
+        btnRules.setOnClickListener(v -> showServerRulesDialog(server, detailDialog));
+        Button btnCopy = detailDialog.findViewById(R.id.server_copy_address);
+        btnCopy.setOnClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                Toast.makeText(getContext(), "Clipboard tidak tersedia.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            clipboard.setPrimaryClip(ClipData.newPlainText("Alamat server", server.getAddress() + ":" + server.getPort()));
+            Toast.makeText(getContext(), "Alamat server disalin.", Toast.LENGTH_SHORT).show();
+        });
+        Button btnAddFavorite = detailDialog.findViewById(R.id.server_add_favorite);
+        if (server.getType() != SAMPServerInfo.Official.CUSTOM) {
+            btnAddFavorite.setVisibility(View.VISIBLE);
+            boolean alreadySaved = isCustomFavorite(server);
+            btnAddFavorite.setEnabled(!alreadySaved);
+            if (alreadySaved) btnAddFavorite.setText("Sudah di favorit");
+            btnAddFavorite.setOnClickListener(v -> {
+                if (!ServerInput.isValidHost(server.getAddress()) || !ServerInput.isValidPort(server.getPort())) {
+                    Toast.makeText(getContext(), "Alamat server tidak valid.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (!isCustomFavorite(server)) {
+                    SAMPServerInfo favorite = new SAMPServerInfo();
+                    favorite.setAddress(server.getAddress());
+                    favorite.setPort(server.getPort());
+                    favorite.setServerName(server.getServerName());
+                    favorite.setType(SAMPServerInfo.Official.CUSTOM);
+                    ArrayList<SAMPServerInfo> favorites = loadCustomServers();
+                    favorites.add(favorite);
+                    saveCustomServers(favorites);
+                    updateList();
+                    Toast.makeText(getContext(), "Server disimpan ke favorit.", Toast.LENGTH_SHORT).show();
+                }
+                btnAddFavorite.setEnabled(false);
+                btnAddFavorite.setText("Sudah di favorit");
+            });
+        }
         Button btnDelete = detailDialog.findViewById(R.id.save_favorites);
         ImageView btnClose = detailDialog.findViewById(R.id.server_close);
 
@@ -261,7 +419,11 @@ public class PlayFragment extends Fragment {
         };
         pingHandler.post(pingRunnable);
 
-        detailDialog.setOnDismissListener(dialog -> stopPingTask());
+        detailDialog.setOnDismissListener(dialog -> {
+            stopPingTask();
+            if (playersDialog != null) playersDialog.dismiss();
+            if (rulesDialog != null) rulesDialog.dismiss();
+        });
 
         if (server.getType() == SAMPServerInfo.Official.CUSTOM) {
             btnDelete.setVisibility(View.VISIBLE);
@@ -306,11 +468,18 @@ public class PlayFragment extends Fragment {
                 return;
             }
             sp.edit().putString("nickname", newNick).apply();
+            // Report a valid attempt even if data preparation or launch fails later.
+            LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
             com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify = 
                     com.sampmobile.xyvern.launcher.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
+                for (int i = 0; i < com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
+                    if (verify.missingFiles.contains(com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
+                        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
+                }
                 Toast.makeText(getContext(), 
                         "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.", 
                         Toast.LENGTH_LONG).show();
@@ -322,8 +491,23 @@ public class PlayFragment extends Fragment {
                 return;
             }
 
+            // The GTA engine reads these files before the game Activity can
+            // initialize its asset manager. Preserve any existing user files.
+            try {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_START");
+                StartupAssets.prepare(requireContext().getExternalFilesDir(null),
+                        name -> requireContext().getAssets().open(name));
+                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_DONE");
+            } catch (java.io.IOException | SecurityException e) {
+                com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_FONT_PREPARATION_FAILED", e);
+                android.util.Log.e("PlayFragment", "Gagal menyiapkan font game", e);
+                Toast.makeText(requireContext(), "Gagal menyiapkan font game: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
+
             stopPingTask();
             detailDialog.dismiss();
+            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_LAUNCH_REQUESTED");
             Intent intent = new Intent(getActivity(), SAMP.class);
             intent.putExtra("ip", server.getAddress());
             intent.putExtra("port", server.getPort());
@@ -339,6 +523,155 @@ public class PlayFragment extends Fragment {
             int dialogWidth = (int) (screenWidth * 0.88f);
             detailDialog.getWindow().setLayout(dialogWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
+    }
+
+    private void showPlayerListDialog(SAMPServerInfo server, Dialog detailDialog) {
+        if (!isAdded() || getView() == null || getContext() == null) return;
+        View ownerView = getView();
+        Dialog playersDialog = new Dialog(requireContext());
+        this.playersDialog = playersDialog;
+        playersDialog.setOnDismissListener(dialog -> {
+            if (this.playersDialog == playersDialog) this.playersDialog = null;
+        });
+        playersDialog.setContentView(R.layout.alertdialog_players);
+        if (playersDialog.getWindow() != null) {
+            playersDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        TextView title = playersDialog.findViewById(R.id.players_title);
+        TextView status = playersDialog.findViewById(R.id.players_status);
+        RecyclerView list = playersDialog.findViewById(R.id.players_list);
+        list.setLayoutManager(new LinearLayoutManager(requireContext()));
+        Button refresh = playersDialog.findViewById(R.id.players_refresh);
+        Button close = playersDialog.findViewById(R.id.players_close);
+        EditText search = playersDialog.findViewById(R.id.players_search);
+        Spinner sort = playersDialog.findViewById(R.id.players_sort);
+        String[] sortLabels = {"Urutan server", "Nama A–Z", "Skor tertinggi", "Ping terendah", "ID terkecil"};
+        ArrayAdapter<String> sortAdapter = new ArrayAdapter<>(requireContext(), R.layout.item_players_sort, sortLabels);
+        sortAdapter.setDropDownViewResource(R.layout.item_players_sort);
+        sort.setAdapter(sortAdapter);
+        title.setText("Daftar pemain");
+        close.setOnClickListener(v -> playersDialog.dismiss());
+
+        // Search and sorting operate only on the last response, without new network requests.
+        class PlayerResults {
+            java.util.List<ServerPlayerQuery.Player> all;
+            boolean loading = true;
+            void render() {
+                if (loading) {
+                    list.setAdapter(null);
+                    status.setText("Memuat daftar pemain...");
+                } else if (all == null) {
+                    list.setAdapter(null);
+                    status.setText("Daftar pemain tidak tersedia. Server mungkin offline atau menonaktifkan query pemain.");
+                } else {
+                    int selected = sort.getSelectedItemPosition();
+                    PlayerListFilter.Order[] orders = PlayerListFilter.Order.values();
+                    PlayerListFilter.Order order = selected >= 0 && selected < orders.length
+                            ? orders[selected] : PlayerListFilter.Order.SERVER;
+                    java.util.List<ServerPlayerQuery.Player> visible =
+                            PlayerListFilter.apply(all, search.getText().toString(), order);
+                    if (all.isEmpty()) status.setText("Tidak ada pemain dalam respons server.");
+                    else if (visible.isEmpty()) status.setText("Tidak ada pemain yang cocok.");
+                    else if (search.getText().toString().trim().isEmpty())
+                        status.setText(all.size() + " pemain dalam respons server");
+                    else status.setText(visible.size() + " dari " + all.size() + " pemain");
+                    list.setAdapter(new PlayerListAdapter(visible));
+                }
+            }
+        }
+        PlayerResults results = new PlayerResults();
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) { results.render(); }
+            @Override public void afterTextChanged(Editable text) { }
+        });
+        sort.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) { results.render(); }
+            @Override public void onNothingSelected(AdapterView<?> parent) { results.render(); }
+        });
+        Runnable loadPlayers = () -> {
+            refresh.setEnabled(false);
+            results.loading = true;
+            results.render();
+            queryExecutor.execute(() -> {
+                java.util.List<ServerPlayerQuery.Player> players = null;
+                try {
+                    players = ServerPlayerQuery.query(server.getAddress(), server.getPort());
+                } catch (Exception error) {
+                    android.util.Log.w("PlayFragment", "Player query unavailable", error);
+                }
+                final java.util.List<ServerPlayerQuery.Player> result = players;
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (!isAdded() || getView() != ownerView || !detailDialog.isShowing() || !playersDialog.isShowing()) return;
+                    refresh.setEnabled(true);
+                    results.all = result;
+                    results.loading = false;
+                    results.render();
+                });
+            });
+        };
+        refresh.setOnClickListener(v -> loadPlayers.run());
+        playersDialog.show();
+        if (playersDialog.getWindow() != null) {
+            android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+            playersDialog.getWindow().setLayout((int) (metrics.widthPixels * 0.88f), (int) (metrics.heightPixels * 0.75f));
+        }
+        loadPlayers.run();
+    }
+
+    private void showServerRulesDialog(SAMPServerInfo server, Dialog detailDialog) {
+        if (!isAdded() || getView() == null || getContext() == null) return;
+        View ownerView = getView();
+        Dialog dialog = new Dialog(requireContext());
+        rulesDialog = dialog;
+        dialog.setOnDismissListener(ignored -> { if (rulesDialog == dialog) rulesDialog = null; });
+        dialog.setContentView(R.layout.alertdialog_rules);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        TextView status = dialog.findViewById(R.id.rules_status);
+        RecyclerView list = dialog.findViewById(R.id.rules_list);
+        list.setLayoutManager(new LinearLayoutManager(requireContext()));
+        Button refresh = dialog.findViewById(R.id.rules_refresh);
+        Button close = dialog.findViewById(R.id.rules_close);
+        close.setOnClickListener(v -> dialog.dismiss());
+        Runnable load = () -> {
+            refresh.setEnabled(false);
+            list.setAdapter(null);
+            status.setText("Memuat info server...");
+            queryExecutor.execute(() -> {
+                java.util.List<ServerRulesQuery.Rule> rules = null;
+                try { rules = ServerRulesQuery.query(server.getAddress(), server.getPort()); }
+                catch (Exception error) { android.util.Log.w("PlayFragment", "Rules query unavailable", error); }
+                final java.util.List<ServerRulesQuery.Rule> result = rules;
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (!isAdded() || getView() != ownerView || !detailDialog.isShowing() || !dialog.isShowing()) return;
+                    refresh.setEnabled(true);
+                    if (result == null) {
+                        status.setText("Info tidak tersedia. Server mungkin offline atau menonaktifkan query info.");
+                        return;
+                    }
+                    status.setText(result.isEmpty() ? "Server tidak mengirim info tambahan."
+                            : result.size() + " info dari server");
+                    list.setAdapter(new ServerRulesAdapter(result));
+                });
+            });
+        };
+        refresh.setOnClickListener(v -> load.run());
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+            dialog.getWindow().setLayout((int) (metrics.widthPixels * 0.88f), (int) (metrics.heightPixels * 0.75f));
+        }
+        load.run();
+    }
+
+    private boolean isCustomFavorite(SAMPServerInfo server) {
+        String address = server.getAddress();
+        if (address == null) return false;
+        for (SAMPServerInfo saved : loadCustomServers()) {
+            if (saved.getPort() == server.getPort() && saved.getAddress() != null
+                    && saved.getAddress().trim().equalsIgnoreCase(address.trim())) return true;
+        }
+        return false;
     }
 
     private void stopPingTask() {
@@ -505,6 +838,55 @@ public class PlayFragment extends Fragment {
         }
     }
 
+    private static class ServerRulesAdapter extends RecyclerView.Adapter<ServerRulesAdapter.RuleHolder> {
+        private final java.util.List<ServerRulesQuery.Rule> rules;
+        ServerRulesAdapter(java.util.List<ServerRulesQuery.Rule> rules) { this.rules = rules; }
+        @NonNull @Override public RuleHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+            return new RuleHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.item_server_player, parent, false));
+        }
+        @Override public void onBindViewHolder(@NonNull RuleHolder holder, int position) {
+            ServerRulesQuery.Rule rule = rules.get(position);
+            holder.name.setText(rule.name);
+            holder.value.setText(rule.value);
+        }
+        @Override public int getItemCount() { return rules.size(); }
+        static class RuleHolder extends RecyclerView.ViewHolder {
+            final TextView name, value;
+            RuleHolder(View view) {
+                super(view);
+                name = view.findViewById(R.id.player_name);
+                value = view.findViewById(R.id.player_stats);
+            }
+        }
+    }
+
+    private static class PlayerListAdapter extends RecyclerView.Adapter<PlayerListAdapter.PlayerHolder> {
+        private final java.util.List<ServerPlayerQuery.Player> players;
+
+        PlayerListAdapter(java.util.List<ServerPlayerQuery.Player> players) { this.players = players; }
+
+        @NonNull @Override public PlayerHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            return new PlayerHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.item_server_player, parent, false));
+        }
+
+        @Override public void onBindViewHolder(@NonNull PlayerHolder holder, int position) {
+            ServerPlayerQuery.Player player = players.get(position);
+            holder.name.setText(player.name);
+            holder.stats.setText("ID " + player.id + "   •   Skor " + player.score + "   •   Ping " + player.ping + " ms");
+        }
+
+        @Override public int getItemCount() { return players.size(); }
+
+        static class PlayerHolder extends RecyclerView.ViewHolder {
+            final TextView name, stats;
+            PlayerHolder(View view) {
+                super(view);
+                name = view.findViewById(R.id.player_name);
+                stats = view.findViewById(R.id.player_stats);
+            }
+        }
+    }
+
     private class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder> {
         private final ArrayList<SAMPServerInfo> serverList;
         private final OnServerClickListener listener;
@@ -539,16 +921,17 @@ public class PlayFragment extends Fragment {
             if (cached != null) {
                 applyServerInfo(holder, cached);
             } else {
-                // Async query using bounded thread pool with view-recycling guard
+                // Ignore results from before a manual refresh or a recycled row.
+                final int generation = queryGeneration;
                 queryExecutor.execute(() -> {
                     try (SampQueryAPI query = new SampQueryAPI(server.getAddress(), server.getPort())) {
                         String[] info = query.mo7164b();
-                        if (info != null) {
-                            queryCache.put(serverKey, info);
+                        synchronized (queryCache) {
+                            if (info != null && generation == queryGeneration) queryCache.put(serverKey, info);
                         }
                         if (getActivity() != null) {
                             getActivity().runOnUiThread(() -> {
-                                if (serverKey.equals(holder.boundKey)) {
+                                if (generation == queryGeneration && serverKey.equals(holder.boundKey)) {
                                     if (info != null) {
                                         applyServerInfo(holder, info);
                                     } else {

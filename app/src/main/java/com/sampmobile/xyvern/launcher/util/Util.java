@@ -111,38 +111,7 @@ public class Util {
     }
 
     public static String getStringWithColors(String str) {
-        int i;
-        int count = 0;
-        StringBuilder sb = new StringBuilder();
-        int i2 = 0;
-        boolean z = false;
-        while (i2 < str.length()) {
-            if (str.charAt(i2) == '{' && (i = i2 + 7) < str.length() && str.charAt(i) == '}') {
-                if (z) {
-                    sb.append("</font>");
-                }
-                sb.append("<font color=#");
-                while (true) {
-                    i2++;
-                    if (i2 >= i) {
-                        break;
-                    }
-                    sb.append(str.charAt(i2));
-                }
-                sb.append('>');
-                i2 = i;
-                z = true;
-            } else {
-                sb.append(str.charAt(i2));
-            }
-            i2++;
-            count++;
-        }
-        if (z) {
-            sb.append("</font>");
-        }
-        if (count > 0) { return sb.toString().replace("\n", "<br/>"); }
-        else return str;
+        return SampColorText.toHtml(str);
     }
 
     private static final float MULT_X = 5.2083336E-4f;
@@ -208,18 +177,7 @@ public class Util {
     }
 
     public static String getStringWithoutColors(String str) {
-        int i;
-        StringBuilder sb = new StringBuilder();
-        int i2 = 0;
-        while (i2 < str.length()) {
-            if (str.charAt(i2) == '{' && (i = i2 + 7) < str.length() && str.charAt(i) == '}') {
-                i2 = i;
-            } else {
-                sb.append(str.charAt(i2));
-            }
-            i2++;
-        }
-        return sb.toString();
+        return SampColorText.strip(str);
     }
 
     public static String convertToReadableValue(int i) {

@@ -1,9 +1,23 @@
 import java.io.File
+import java.net.URI
 
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+    id("com.google.gms.google-services") apply false
+    id("com.google.firebase.crashlytics") apply false
+}
+
+// Firebase must be configured for the actual application ID, not the upstream app.
+// A build without matching configuration works without Firebase services.
+val firebaseConfig = file("google-services.json")
+val hasHopePrideFirebase = firebaseConfig.exists() &&
+    Regex("\"package_name\"\\s*:\\s*\"com\\.hopepride\\.samp\"")
+        .containsMatchIn(firebaseConfig.readText())
+if (hasHopePrideFirebase) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+} else {
+    logger.lifecycle("Firebase disabled: add app/google-services.json for com.hopepride.samp to enable it")
 }
 
 val stageGlossHookJniLibs = tasks.register<Sync>("stageGlossHookJniLibs") {
@@ -24,7 +38,32 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.sampmobile.xyvern"
+        // Public relay endpoint only. Never put a Discord webhook/token in the APK.
+        val relayUrl = providers.gradleProperty("hopeprideEventRelayUrl").orElse("").get().trim()
+        if (relayUrl.isNotEmpty()) {
+            val uri = try { URI(relayUrl) } catch (_: Exception) { null }
+            val host = uri?.host?.lowercase() ?: ""
+            require(uri != null && uri.scheme == "https" && host.isNotEmpty() && uri.userInfo == null &&
+                    uri.rawQuery == null && uri.fragment == null && host != "discord.com" &&
+                    !host.endsWith(".discord.com") && host != "discordapp.com" && !host.endsWith(".discordapp.com")) {
+                "hopeprideEventRelayUrl must be a public HTTPS relay URL, never a Discord webhook"
+            }
+        }
+        val escapedRelayUrl = relayUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "EVENT_RELAY_URL", "\"$escapedRelayUrl\"")
+        // Direct mode embeds this credential into the APK. Use only when accepting that risk.
+        val webhookUrl = providers.environmentVariable("HOPEPRIDE_DISCORD_WEBHOOK_URL").orElse("").get().trim()
+        if (webhookUrl.isNotEmpty()) {
+            val uri = try { URI(webhookUrl) } catch (_: Exception) { null }
+            require(uri != null && uri.scheme == "https" && uri.host == "discord.com" && uri.port == -1 &&
+                    uri.userInfo == null && uri.rawQuery == null && uri.fragment == null &&
+                    Regex("^/api/webhooks/[0-9]+/[A-Za-z0-9._-]+$").matches(uri.path ?: "")) {
+                "HOPEPRIDE_DISCORD_WEBHOOK_URL is not a valid Discord webhook URL"
+            }
+        }
+        val escapedWebhook = webhookUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "DISCORD_WEBHOOK_URL", "\"$escapedWebhook\"")
+        applicationId = "com.hopepride.samp"
         minSdk = 26
         targetSdk = 34
         versionCode = 164

@@ -1,3 +1,4 @@
+#include "streaming_budget.h"
 //
 // Created by x1y2z on 11.01.2023.
 //
@@ -893,7 +894,8 @@ void CStreaming::RetryLoadFile(int32 chIdx) {
 
 void CStreaming::MakeSpaceFor(size_t memoryToCleanInBytes) {
     auto lastmemused = ms_memoryUsed;
-    while (ms_memoryUsed >= ms_memoryAvailable - memoryToCleanInBytes) {
+    const size_t target = StreamingRemainingBudget(ms_memoryAvailable, memoryToCleanInBytes);
+    while (ms_memoryUsed > target) {
         lastmemused = ms_memoryUsed;
         if (!RemoveLeastUsedModel(0) || lastmemused == ms_memoryUsed) {
           //  DeleteRwObjectsBehindCamera(ms_memoryAvailable - memoryToCleanInBytes);

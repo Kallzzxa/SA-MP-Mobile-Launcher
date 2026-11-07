@@ -2,6 +2,15 @@ name: HopePride Debug APK
 
 on:
   workflow_dispatch:
+    inputs:
+      task:
+        description: "Pilih build APK atau kirim daftar fitur ke Discord"
+        type: choice
+        options:
+          - build
+          - features
+        default: build
+        required: true
   push:
     branches:
       - 'arena/**'
@@ -11,6 +20,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.task != 'features' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -46,8 +56,23 @@ jobs:
             fi
           done
 
+      - name: Check Discord reporting configuration (no secrets printed)
+        shell: bash
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$HOPEPRIDE_DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord webhook secret is present for this build (delivery not yet verified)."
+            echo "Discord webhook: configured; delivery not yet verified." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Discord webhook secret is not available to this build; launcher reporting is disabled."
+            echo "Discord webhook: secret unavailable; launcher reporting disabled." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Run unit tests and build debug APK
         shell: bash
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
         run: |
           set +e
           ./gradlew testDebugUnitTest assembleDebug --stacktrace 2>&1 | tee gradle.log
@@ -80,3 +105,17 @@ jobs:
           path: artifacts/HopePride-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  send-feature-list:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.task == 'features') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[send-features]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Send feature list to Discord
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: node server-side/discord-relay/send-feature-list.js

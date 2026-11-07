@@ -206,6 +206,32 @@
             </LinearLayout>
             <androidx.appcompat.widget.AppCompatSeekBar android:id="@+id/fps_seekbar" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginTop="2dp" android:contentDescription="Batas FPS" android:max="3" android:progress="1" android:progressTint="#33B9F7" android:thumbTint="#8BD9FF" />
         </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:background="@drawable/bg_hope_surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold" android:letterSpacing="0.08"
+                android:text="04  /  PRIVASI" android:textColor="#63CAFA" android:textSize="11sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="10dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginEnd="12dp" android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:fontFamily="@font/montserrat_bold" android:text="Laporan percobaan masuk"
+                        android:textColor="#EFF7FF" android:textSize="13sp" />
+                    <TextView android:id="@+id/event_reporting_description" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp" android:fontFamily="@font/montserrat_regular" android:lineSpacingExtra="2dp"
+                        android:text="Aktif secara default jika dikonfigurasi; dapat dimatikan di sini. Alamat dan port server dikirim saat mencoba masuk. Relay dapat melihat IP internet; nickname dan password tidak dikirim."
+                        android:textColor="#90A6BC" android:textSize="11sp" />
+                </LinearLayout>
+                <androidx.appcompat.widget.SwitchCompat android:id="@+id/event_reporting_switch"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:contentDescription="Laporan percobaan masuk" app:thumbTint="@color/hope_switch_thumb"
+                    app:trackTint="@color/hope_switch_track" />
+            </LinearLayout>
+        </LinearLayout>
+        <Button android:id="@+id/share_diagnostic_logs" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="20dp" android:text="BAGIKAN LOG DIAGNOSTIK" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"
             android:fontFamily="@font/montserrat_medium" android:gravity="center" android:text="@string/launcher_developers"
             android:textColor="#71869C" android:textSize="11sp" />
