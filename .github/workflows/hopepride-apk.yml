@@ -47,7 +47,26 @@ jobs:
           done
 
       - name: Run unit tests and build debug APK
-        run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set +e
+          ./gradlew testDebugUnitTest assembleDebug --stacktrace 2>&1 | tee gradle.log
+          result=${PIPESTATUS[0]}
+          if [ "$result" -ne 0 ]; then
+            grep -E -m 30 '(^FAILURE:|^\* What went wrong:|^Execution failed for task|^> |error:|^Caused by:)' gradle.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$result"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HopePride-build-log
+          path: gradle.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Prepare APK
         run: |
