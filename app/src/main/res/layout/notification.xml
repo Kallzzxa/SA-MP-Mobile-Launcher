@@ -9,7 +9,7 @@
         <ImageView
             android:padding="5dp"
             android:id="@+id/icon"
-            android:src="@mipmap/ic_launcher"
+            android:src="@drawable/hopepride_logo"
             android:layout_width="50dp"
             android:layout_height="60dp"/>
     </LinearLayout>
