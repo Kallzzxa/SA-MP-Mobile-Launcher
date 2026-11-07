@@ -9,6 +9,8 @@
 #include "Textures/TextureDatabase.h"
 #include "Textures/TextureDatabaseEntry.h"
 #include "Textures/TextureDatabaseRuntime.h"
+#include "Textures/TextureVariantFallback.h"
+#include "Localization.h"
 #include "Scene.h"
 #include "sprite2d.h"
 #include "Entity/PlayerPedGta.h"
@@ -1830,6 +1832,13 @@ void InstallSpecialHooks()
             (void**)&orig_RLEDecompressPadded);
     g_rleGuardHookResult = (orig_RLEDecompressPadded != nullptr) ? 1 : 0;
     FLog("RLEDecompress guard: installed %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);
+
+    // Interface language: one table, applied where the engine draws text.
+    Localization::Initialise();
+
+    // Texture data sets often ship several GPU variants; make sure the engine
+    // asks for one that exists instead of failing the whole database.
+    TextureVariantFallback::Initialise();
 
     //CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
 

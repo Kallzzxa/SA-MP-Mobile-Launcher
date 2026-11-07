@@ -81,7 +81,7 @@ public class UpdateActivity extends AppCompatActivity{
             if (msg.what == 4) {
                 UpdateActivity.UpdateStatus valueOf = UpdateActivity.UpdateStatus.valueOf(msg.getData().getString("status", ""));
                 if (valueOf == UpdateStatus.DownloadGameData) {
-                    ((TextView)findViewById(R.id.installation_text)).setText("Updating game data...");
+                    ((TextView)findViewById(R.id.installation_text)).setText("Memperbarui data game...");
                     Log.d("x1y2z", "statusname = " + valueOf);
                     long j = msg.getData().getLong("total");
                     long j2 = msg.getData().getLong("current");
@@ -103,7 +103,7 @@ public class UpdateActivity extends AppCompatActivity{
                     progressBar.setMax((int) (j)/1048576);
                     progressBar.setProgress((int) (j2)/1048576);
                 } else if (valueOf == UpdateStatus.DownloadGame) {
-                    ((TextView)findViewById(R.id.installation_text)).setText("Updating game...");
+                    ((TextView)findViewById(R.id.installation_text)).setText("Memperbarui game...");
                     Log.d("x1y2z", "statusname = " + valueOf);
                     long j = msg.getData().getLong("total");
                     long j2 = msg.getData().getLong("current");
@@ -146,7 +146,7 @@ public class UpdateActivity extends AppCompatActivity{
             }
             else if (msg.what == 1) {
                 Log.i("UpdateActivity", "UpdateService.UPDATE_GAME");
-                ((TextView)findViewById(R.id.installation_text)).setText("Installation...");
+                ((TextView)findViewById(R.id.installation_text)).setText("Memasang...");
                 ProgressBar progressBar = (ProgressBar) UpdateActivity.this.findViewById(R.id.download_progress);
                 progressBar.setIndeterminate(true);
                 startActivity(new Intent(UpdateActivity.this, MainActivity.class));
@@ -180,7 +180,7 @@ public class UpdateActivity extends AppCompatActivity{
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(UpdateActivity.this, "Error, while installing apk. Reenter to the launcher.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(UpdateActivity.this, "Gagal memasang APK. Silakan masuk kembali ke launcher.", Toast.LENGTH_LONG).show();
                 }
             });
         }

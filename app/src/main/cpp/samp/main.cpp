@@ -6,6 +6,7 @@
 #include <android/asset_manager_jni.h>
 
 #include "main.h"
+#include "game/Localization.h"
 #include "game/game.h"
 #include "net/netgame.h"
 #include "gui/gui.h"
@@ -202,6 +203,8 @@ extern volatile unsigned long long g_rleGuardLastCaller;
 extern volatile unsigned long long g_rleGuardLastSrcSize;
 extern volatile unsigned long long g_rleGuardLastDestSize;
 extern volatile unsigned long long g_rleGuardLastPad;
+extern volatile unsigned long long g_texVariantFallbacks;
+extern volatile unsigned long long g_texVariantLoadFailures;
 
 static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
 {
@@ -303,6 +306,18 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
     CrashLogHex((uintptr_t)g_rleGuardLastDestSize);
     CrashLogPut(" pad=");
     CrashLogHex((uintptr_t)g_rleGuardLastPad);
+    CrashLogPut("\n");
+
+    CrashLogPut("ui-lang:    translated=");
+    CrashLogHex((uintptr_t)Localization::TranslatedCount());
+    CrashLogPut(" untranslated=");
+    CrashLogHex((uintptr_t)Localization::UnmatchedCyrillicCount());
+    CrashLogPut("\n");
+
+    CrashLogPut("texdb:      variant-fallback=");
+    CrashLogHex((uintptr_t)g_texVariantFallbacks);
+    CrashLogPut(" load-failure=");
+    CrashLogHex((uintptr_t)g_texVariantLoadFailures);
     CrashLogPut("\n");
 
     CrashLogPut("========================\n");

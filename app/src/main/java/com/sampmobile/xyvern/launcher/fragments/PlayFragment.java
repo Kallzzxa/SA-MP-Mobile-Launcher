@@ -925,7 +925,7 @@ public class PlayFragment extends Fragment {
 
             // Default display
             holder.tvName.setText(server.getServerName());
-            holder.tvAddress.setText("Address: " + serverKey);
+            holder.tvAddress.setText("Alamat: " + serverKey);
             holder.tvPlayers.setText("Players: " + server.getCurrentPlayerCount() + " / " + server.getMaxPlayerCount());
             holder.tvMode.setText("Gamemode: " + (server.getServerMode() != null ? server.getServerMode() : "Loading..."));
             holder.ivLock.setVisibility(server.getHasPassword() ? View.VISIBLE : View.GONE);

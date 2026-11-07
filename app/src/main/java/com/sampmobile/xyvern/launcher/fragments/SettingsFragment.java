@@ -175,7 +175,7 @@ public class SettingsFragment extends Fragment {
                 .edit()
                 .putBoolean("aml_enabled", enabled)
                 .apply();
-            Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
+            Toast.makeText(requireContext(), "Pengaturan AML tersimpan. Mulai ulang proses game untuk menerapkannya.", Toast.LENGTH_LONG).show();
         });
 
         mCefSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
