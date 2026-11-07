@@ -115,6 +115,41 @@ const Entry kDictionary[] =
     { u"Waiting",                          u"Menunggu" },
     { u"Spawn",                            u"Muncul" },
     { u"Press to change game mode",        u"Tekan untuk mengganti mode permainan" },
+
+    // Gameplay wording and status text.
+    { u"Jump",                             u"Lompat" },
+    { u"Crouch",                           u"Jongkok" },
+    { u"Sprint",                           u"Lari Cepat" },
+    { u"Run",                              u"Berlari" },
+    { u"Running",                          u"Berlari" },
+    { u"Attack",                           u"Serang" },
+    { u"Enter Vehicle",                    u"Masuk Kendaraan" },
+    { u"Exit Vehicle",                     u"Keluar Kendaraan" },
+    { u"Loading",                          u"Memuat" },
+    { u"Connecting",                       u"Menghubungkan" },
+    { u"Connected",                        u"Terhubung" },
+    { u"Downloading",                      u"Mengunduh" },
+    { u"Player",                           u"Pemain" },
+    { u"Players",                          u"Para Pemain" },
+    { u"Spawn",                            u"Muncul" },
+    { u"Waiting",                          u"Menunggu" },
+    { u"Race",                             u"Balapan" },
+    { u"Derby",                            u"Derby" },
+    { u"Duel",                             u"Duel" },
+    { u"Fall",                             u"Jatuh" },
+    { u"Scoreboard",                       u"Papan Skor" },
+
+    // Same wording on a Russian data set.
+    { u"\u041f\u0440\u044b\u0436\u043e\u043a",                         u"Lompat" },
+    { u"\u041f\u0440\u0438\u0441\u0435\u0441\u0442\u044c",            u"Jongkok" },
+    { u"\u0410\u0442\u0430\u043a\u0430",                                 u"Serang" },
+    { u"\u0411\u0435\u0433",                                               u"Berlari" },
+    { u"\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430",             u"Memuat" },
+    { u"\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435", u"Menghubungkan" },
+    { u"\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u043e",       u"Terhubung" },
+    { u"\u0418\u0433\u0440\u043e\u043a",                                 u"Pemain" },
+    { u"\u0418\u0433\u0440\u043e\u043a\u0438",                           u"Para Pemain" },
+    { u"\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435",            u"Menunggu" },
 };
 
 constexpr size_t kDictionarySize = sizeof(kDictionary) / sizeof(kDictionary[0]);

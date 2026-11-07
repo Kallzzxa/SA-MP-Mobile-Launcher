@@ -537,7 +537,7 @@ void CNetGame::ProcessConnecting()
 	if (CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("Connecting to server...");
+		if (pUI) pUI->chat()->addDebugMessage("Menghubungkan ke server...");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
@@ -576,7 +576,7 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server didn't respond. Retrying...");
+	if (pUI) pUI->chat()->addDebugMessage("Server tidak merespons. Mencoba lagi...");
 	if (pAudioStream) { //add new
 		pAudioStream->Stop(true);
 	}
@@ -587,7 +587,7 @@ void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("Server full. Retrying...");
+	if(pUI) pUI->chat()->addDebugMessage("Server penuh. Mencoba lagi...");
 	SpeakerList::Hide(); //addnew
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
@@ -595,7 +595,7 @@ void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server closed connection.");
+	if (pUI) pUI->chat()->addDebugMessage("Server menutup koneksi.");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -627,7 +627,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	if (!bsSuccAuth.Read(MyPlayerID) || !bsSuccAuth.Read(uiChallenge)) return;
 	uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining...");
+	if (pUI) pUI->chat()->addDebugMessage("Terhubung. Bergabung...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
@@ -674,17 +674,17 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Failed to initialize encryption.");
+	if (pUI) pUI->chat()->addDebugMessage("Gagal memulai enkripsi.");
 }
 
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("You are banned from this server.");
+	if (pUI) pUI->chat()->addDebugMessage("Kamu diblokir dari server ini.");
 }
 
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Wrong server password.");
+	if (pUI) pUI->chat()->addDebugMessage("Password server salah.");
 	m_pRakClient->Disconnect(0);
 }
 
@@ -694,7 +694,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 		m_pRakClient->Disconnect(0);
 	}
 
-	if (pUI) pUI->chat()->addDebugMessage("Lost connection to the server. Reconnecting..");
+	if (pUI) pUI->chat()->addDebugMessage("Koneksi ke server terputus. Menghubungkan ulang..");
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();

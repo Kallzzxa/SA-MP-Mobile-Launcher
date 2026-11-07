@@ -208,7 +208,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("Downloading custom models from %s:%d...", serverIp.c_str(), serverPort);
+        pUI->chat()->addDebugMessage("Mengunduh model khusus dari %s:%d...", serverIp.c_str(), serverPort);
     }
 }
 
@@ -324,7 +324,7 @@ int16_t DLManager::GetVirtualModelId(int32_t networkId) {
     if (m_nextVirtualId > DL_VIRT_MAX) {
         if (!m_bVirtualIdExhausted) {
             m_bVirtualIdExhausted = true;
-            PushChat("Virtual model slot pool exhausted; extra models use their base id.");
+            PushChat("Slot model virtual habis; model tambahan memakai id dasar.");
         }
         return -1;
     }
@@ -393,7 +393,7 @@ bool DLManager::RegisterCustomModels() {
     }
 
     if (toRegister.empty()) {
-        PushChat("No custom models to register.");
+        PushChat("Tidak ada model khusus untuk didaftarkan.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -422,7 +422,7 @@ bool DLManager::RegisterCustomModels() {
     std::string packError;
     if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
         char msg[256];
-        snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
+        snprintf(msg, sizeof(msg), "Gagal mengemas IMG khusus: %s",
                  packError.c_str());
         PushChat(msg);
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -434,7 +434,7 @@ bool DLManager::RegisterCustomModels() {
     // Note: path format follows the game's CdStreamOpen expectations.
     int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
     if (imgIndex < 0) {
-        PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
+        PushChat("Gagal mendaftarkan IMG khusus ke streaming (slot IMG penuh).");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -444,7 +444,7 @@ bool DLManager::RegisterCustomModels() {
     //  not a stale entry or an out-of-bounds index.)
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
         strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
-        PushChat("Custom IMG registration verification failed.");
+        PushChat("Verifikasi pendaftaran IMG khusus gagal.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -1273,7 +1273,7 @@ void DLManager::ProcessTick() {
     if (!m_bReportedNoManifest && !m_bSawAnyModel &&
         m_connectTime > 0 && (now - m_connectTime > 9000) && m_totalModels.load() == 0) {
         m_bReportedNoManifest = true;
-        PushChat("This server has no custom models. Joining...");
+        PushChat("Server ini tidak memiliki model khusus. Bergabung...");
     }
 
     if (m_bDownloadFinished.load()) return;
@@ -1356,7 +1356,7 @@ void DLManager::RequestRetryFailed() {
     }
     if (rearmed > 0) {
         m_workCv.notify_all();
-        PushChat("Retrying failed model downloads...");
+        PushChat("Mengunduh ulang model yang gagal...");
     }
 }
 
