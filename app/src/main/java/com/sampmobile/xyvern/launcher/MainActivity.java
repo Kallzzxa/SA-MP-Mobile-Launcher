@@ -5,6 +5,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -48,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivHome, ivPlay, ivSettings;
     private TextView tvHome, tvPlay, tvSettings;
     private boolean launcherInitialized = false;
+    private MediaPlayer welcomePlayer;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -55,6 +60,7 @@ public class MainActivity extends AppCompatActivity {
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
+        if (savedInstanceState == null) playWelcomeSound();
         Config.currentContext = this;
         checkFirstRun();
 
@@ -67,6 +73,40 @@ public class MainActivity extends AppCompatActivity {
             launcherInitialized = true;
             initializeLauncherUi();
         });
+    }
+
+    private void playWelcomeSound() {
+        try {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+            welcomePlayer = MediaPlayer.create(this, R.raw.hopepride_welcome, attributes,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE);
+            if (welcomePlayer == null) return;
+            welcomePlayer.setOnCompletionListener(player -> releaseWelcomeSound());
+            welcomePlayer.setOnErrorListener((player, what, extra) -> {
+                Log.w("MainActivity", "Welcome sound failed: " + what + "/" + extra);
+                releaseWelcomeSound();
+                return true;
+            });
+            welcomePlayer.start();
+        } catch (RuntimeException e) {
+            Log.w("MainActivity", "Welcome sound unavailable", e);
+            releaseWelcomeSound();
+        }
+    }
+
+    private void releaseWelcomeSound() {
+        MediaPlayer player = welcomePlayer;
+        welcomePlayer = null;
+        if (player != null) player.release();
+    }
+
+    @Override
+    protected void onStop() {
+        releaseWelcomeSound();
+        super.onStop();
     }
 
     private void initializeLauncherUi() {

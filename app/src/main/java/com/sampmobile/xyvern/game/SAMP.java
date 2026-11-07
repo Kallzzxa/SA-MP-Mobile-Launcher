@@ -58,7 +58,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                mLoadingScreen.hide();
+                if (mLoadingScreen != null) mLoadingScreen.hide();
             }
         });
     }
@@ -79,7 +79,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     }
 
     public void exitGame(){
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+        if (!com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+        }
         finishAndRemoveTask();
         System.exit(0);
     }
@@ -90,6 +92,13 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         final String leftBtnText = new String(bArr3, StandardCharsets.UTF_8);
         final String rightBtnText = new String(bArr4, StandardCharsets.UTF_8);
         runOnUiThread(() -> { this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText); });
+    }
+
+    // A server may close an existing dialog without asking the player to reply.
+    public void hideDialog() {
+        runOnUiThread(() -> {
+            if (mDialog != null && mDialog.isShow) mDialog.Hide();
+        });
     }
 
     private native void onInputEnd(byte[] str);

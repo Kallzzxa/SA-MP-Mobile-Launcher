@@ -1,5 +1,6 @@
 ﻿#include <jni.h>
 #include <pthread.h>
+#include <atomic>
 #include <syscall.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
@@ -58,6 +59,7 @@ CPlayerTags* pPlayerTags = nullptr;
 CSnapShotHelper* pSnapShotHelper = nullptr;
 CAudioStream* pAudioStream = nullptr;
 CJavaWrapper* pJavaWrapper = nullptr;
+static std::atomic<bool> g_javaReady{false};
 CSettings* pSettings = nullptr;
 //CVoice* pVoice = nullptr;
 
@@ -223,6 +225,9 @@ void ClearModelCache()
 
 void DoInitStuff()
 {
+    // The GTA engine can start while Activity.onCreate is still configuring
+    // the Java UI, storage and settings. Publish those before constructing CNetGame.
+    if (!g_javaReady.load(std::memory_order_acquire) || !pGame || !pUI || !g_pszStorage) return;
 	if (bGameInited == false)
 	{
 		ClearModelCache();
@@ -291,7 +296,7 @@ extern "C" {
 		}
 
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
-
+        g_javaReady.store(true, std::memory_order_release);
 	}
 	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{
@@ -375,7 +380,7 @@ extern "C" {
 
 void MainLoop()
 {
-	if (pGame->bIsGameExiting) return;
+	if (!pGame || pGame->bIsGameExiting) return;
 
 	DoInitStuff();
 
@@ -393,7 +398,7 @@ void MainLoop()
 
 }
 
-void InitGui()
+bool InitGui()
 {
 	// new voice
 	if (pSettings)
@@ -412,13 +417,27 @@ void InitGui()
         pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), fontData);
         LOGI("Loaded font from assets: %s (size: %zu)", font_path.c_str(), fontData.size());
     } else {
-        // Fallback to file (should probably not happen if assets are correct, but safe to keep)
-	    std::string file_path = string_format("%sfonts/%s", g_pszStorage, FONT_NAME);
-	    pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), file_path.c_str());
-        LOGI("Loaded font from file: %s", file_path.c_str());
+        // Preserve the installed font when present. Only fall back to a bundled
+        // font when the optional downloaded font is missing.
+        std::string file_path = g_pszStorage ? string_format("%sfonts/%s", g_pszStorage, FONT_NAME) : "";
+        FILE* fontFile = file_path.empty() ? nullptr : fopen(file_path.c_str(), "rb");
+        if (fontFile) {
+            fclose(fontFile);
+            pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), file_path);
+        } else {
+            fontData = LoadAsset("Fonts/HELVETICANEUELTCYR-MDCOND.TTF");
+            pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), fontData);
+            LOGI("Optional game UI font missing; using bundled or default font");
+        }
     }
-	pUI->initialize();
+    if (!pUI->initialize()) {
+        LOGE("SA-MP UI initialization failed");
+        delete pUI;
+        pUI = nullptr;
+        return false;
+    }
 	pUI->performLayout();
+    return true;
 }
 
 #include "game/multitouch.h"

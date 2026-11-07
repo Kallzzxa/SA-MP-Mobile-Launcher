@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "localplayer.h"
+#include "passenger_sync_fields.h"
 #include "../gui/gui.h"
 #include "../game/Timer.h"
 
@@ -109,10 +110,11 @@ void CLocalPlayer::ResetAllSyncAttributes()
     m_byteCurInterior = 0;
     m_LastVehicle = 0xFFFF;
     m_bInRCMode = false;
+    m_bPassengerDriveByMode = false;
 
     memset(&m_SpawnInfo, 0, sizeof(PLAYER_SPAWN_INFO));
     memset(&m_LastSendOnFootSync, 0, sizeof(ONFOOT_SYNC_DATA));
-    memset(&m_LastSendOnFootSync, 0, sizeof(INCAR_SYNC_DATA));
+    memset(&m_InCarData, 0, sizeof(INCAR_SYNC_DATA));
     memset(&m_TrailerData, 0, sizeof(TRAILER_SYNC_DATA));
     memset(&m_PassengerData, 0, sizeof(PASSENGER_SYNC_DATA));
     memset(&m_aimSync, 0, sizeof(AIM_SYNC_DATA));
@@ -803,7 +805,7 @@ void CLocalPlayer::SendInCarFullSyncData()
     if (!pVehiclePool) return;
 
     CVehicle *pVehicle = m_pPlayerPed->GetCurrentVehicle();
-    if (!pVehicle) return;
+    if (!pVehicle || !pVehicle->m_pVehicle) return;
 
     VEHICLEID vehicleid = pVehiclePool->FindIDFromGtaPtr(m_pPlayerPed->GetGtaVehicle());
     if (vehicleid == INVALID_VEHICLE_ID) return;
@@ -876,41 +878,18 @@ void CLocalPlayer::SendInCarFullSyncData()
 
     icSync.TrailerID = 0;
     CVehicle *pTrailer = pVehicle->GetTrailer();
-
-    if (pTrailer && pTrailer->m_pVehicle)
+    if (pTrailer && pTrailer->m_pVehicle && pTrailer->GetTractor() == pVehicle)
     {
-        if (pTrailer->GetTractor() == pVehicle)
+        VEHICLEID trailerId = pVehiclePool->FindIDFromGtaPtr(pTrailer->m_pVehicle);
+        if (trailerId != 0 && trailerId != INVALID_VEHICLE_ID && trailerId < MAX_VEHICLES)
         {
-             pVehicle->SetTrailer(pTrailer);
-             icSync.TrailerID = pVehiclePool->FindIDFromGtaPtr(pTrailer->m_pVehicle);
-             
-             if (icSync.TrailerID != INVALID_VEHICLE_ID && icSync.TrailerID < MAX_VEHICLES)
-             {
-                TRAILER_SYNC_DATA trSync;
-                RwMatrix matTrailer;
-                
-                pTrailer->m_pVehicle->GetMatrix(&matTrailer);
-                
-                trSync.trailerID = icSync.TrailerID;
-                trSync.vecPos = matTrailer.pos;
-                
-                CQuaternion syncQuat;
-                syncQuat.SetFromMatrix(&matTrailer);
-                trSync.quat = syncQuat;
-                
-                trSync.vecMoveSpeed = pTrailer->m_pVehicle->GetMoveSpeed();
-                trSync.vecTurnSpeed = pTrailer->m_pVehicle->GetTurnSpeed(); // TurnSpeed สำคัญสำหรับรถพ่วง
-
-                RakNet::BitStream bsTrailerSync;
-                bsTrailerSync.Write((uint8_t)ID_TRAILER_SYNC);
-                bsTrailerSync.Write((char*)&trSync, sizeof(TRAILER_SYNC_DATA));
-                pNetGame->GetRakClient()->Send(&bsTrailerSync, HIGH_PRIORITY, UNRELIABLE_SEQUENCED, 0);
-             }
+            pVehicle->SetTrailer(pTrailer);
+            icSync.TrailerID = trailerId;
         }
     }
-    else 
+    else if (!pTrailer)
     {
-        pVehicle->SetTrailer(NULL);
+        pVehicle->SetTrailer(nullptr);
     }
 
     if ((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastUpdateInCarData) > 500 || 
@@ -924,6 +903,10 @@ void CLocalPlayer::SendInCarFullSyncData()
         memcpy(&m_InCarData, &icSync, sizeof(INCAR_SYNC_DATA));
         m_dwLastUpdateInCarData = CTimer::m_snTimeInMillisecondsNonClipped;
     }
+
+    // Send the driver/attachment update first on the sequenced channel, so a
+    // receiver can associate this trailer snapshot with the correct vehicle.
+    if (icSync.TrailerID != 0) SendTrailerData(icSync.TrailerID);
 }
 
 void CLocalPlayer::SendTrailerData(VEHICLEID vehicleId)
@@ -935,7 +918,7 @@ void CLocalPlayer::SendTrailerData(VEHICLEID vehicleId)
     if(!pVehiclePool) return;
 
     CVehicle* pTrailer = pVehiclePool->GetAt(vehicleId);
-    if(pTrailer)
+    if(pTrailer && pTrailer->m_pVehicle)
     {
         RwMatrix matTrailer = pTrailer->m_pVehicle->GetMatrix().ToRwMatrix();
         CQuaternion syncQuat;
@@ -971,10 +954,6 @@ void CLocalPlayer::SendPassengerFullSyncData()
     CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
     if (!pVehiclePool) return;
 
-    uint16_t lrAnalog, udAnalog;
-    uint8_t exKeys = m_pPlayerPed->GetAdditionalKeys();
-    uint16_t wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog);
-
     PASSENGER_SYNC_DATA psSync;
     memset(&psSync, 0, sizeof(PASSENGER_SYNC_DATA));
 
@@ -982,21 +961,21 @@ void CLocalPlayer::SendPassengerFullSyncData()
     psSync.VehicleID = pVehiclePool->FindIDFromGtaPtr(pGtaVehicle);
     
     if (psSync.VehicleID == INVALID_VEHICLE_ID) return;
+    const int seat = m_pPlayerPed->GetVehicleSeatID();
+    if (seat < 1 || seat > 7) return;
+    uint16_t lrAnalog, udAnalog;
+    uint8_t exKeys = m_pPlayerPed->GetAdditionalKeys();
+    uint16_t wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog);
 
     psSync.lrAnalog = lrAnalog;
     psSync.udAnalog = udAnalog;
     psSync.wKeys = wKeys;
     
-    psSync.byteCurrentWeapon = (exKeys << 6) | (psSync.byteCurrentWeapon & 0x3F);
-    psSync.byteCurrentWeapon ^= (psSync.byteCurrentWeapon ^ m_pPlayerPed->GetCurrentWeapon()) & 0x3F;
-
+    psSync.DriveBySeatAdditionalKeyWeapon = MakePassengerSyncFlags(
+            static_cast<uint8_t>(seat), m_bPassengerDriveByMode, false,
+            static_cast<uint8_t>(m_pPlayerPed->GetCurrentWeapon()), exKeys);
     psSync.bytePlayerHealth = (uint8_t)m_pPlayerPed->GetHealth();
     psSync.bytePlayerArmour = (uint8_t)m_pPlayerPed->GetArmour();
-
-    psSync.byteSeatFlags = m_pPlayerPed->GetVehicleSeatID(); 
-    
-    uint8_t byteUnk = psSync.byteSeatFlags & 0x7F;
-    psSync.byteSeatFlags = (byteUnk ^ (m_pPlayerPed->IsInPassengerDriveByMode() << 6)) & 0x40 ^ byteUnk;
 
     psSync.vecPos = m_pPlayerPed->m_pPed->GetPosition();
 

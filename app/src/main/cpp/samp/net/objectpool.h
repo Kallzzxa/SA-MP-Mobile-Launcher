@@ -15,7 +15,7 @@ public:
 
 	
 	CObject* GetAt(OBJECTID ObjectID) {
-		if (ObjectID <= MAX_OBJECTS && m_bObjectSlotState[ObjectID])
+		if (ObjectID < MAX_OBJECTS && m_bObjectSlotState[ObjectID])
 			return m_pObjects[ObjectID];
 		
 		return nullptr;

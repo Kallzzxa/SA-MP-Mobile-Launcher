@@ -4,6 +4,9 @@
 #include "../audiostream.h"
 #include "game/BuildingRemoval.h"
 #include "dl/dlmanager.h"
+#include "object_material_reader.h"
+#include "object_move_reader.h"
+#include <cmath>
 #include "../java/editobject.h"
 
 extern CGame *pGame;
@@ -234,239 +237,95 @@ void ScrGangZoneStopFlash(RPCParameters *rpcParams)
 
 int iTotalObjects = 0;
 
+// Read every material in the object creation packet, not just the first one.
+// Keep the packet reader bounded; malformed material data must not reach rendering.
+static bool ReadAndApplyObjectMaterial(RakNet::BitStream& data, CObject* object, bool creating) {
+	ObjectMaterialData material{};
+	auto decode = [](char* text, size_t length, RakNet::BitStream& stream) {
+		return stringCompressor && stringCompressor->DecodeString(text, static_cast<int>(length), &stream);
+	};
+	if (!ReadObjectMaterial(data, decode, material)) return false;
+	if (!object || material.index >= 16) return true;
+	if (material.type == 1) {
+		if (strlen(material.txd) < 32 && strlen(material.texture) < 32) {
+			if (creating && material.model > 20000) material.model = 0xFFFF;
+			object->SetMaterial(material.model, material.index, material.txd, material.texture, material.color);
+		}
+	} else if (strlen(material.font) < 32 && (creating || material.font[0] != '\0')) {
+		object->SetMaterialText(material.index, material.text, material.size, material.font,
+				material.fontSize, material.bold, material.fontColor, material.backgroundColor, material.alignment);
+	}
+	return true;
+}
+
 void ScrCreateObject(RPCParameters* rpcParams)
 {
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	OBJECTID ObjectID;
-	int iModel;
-	CVector vecPos;
-	CVector vecRot;
-	float fDrawDistance;
-	uint8_t byteNoCameraCol;
-	OBJECTID AttachedObjectID;
-	VEHICLEID AttachedVehicleID;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
-	bsData.Read(iModel);
-	bsData.Read(vecPos.x);
-	bsData.Read(vecPos.y);
-	bsData.Read(vecPos.z);
-	bsData.Read(vecRot.x);
-	bsData.Read(vecRot.y);
-	bsData.Read(vecRot.z);
-	bsData.Read(fDrawDistance);
-	bsData.Read(byteNoCameraCol);
-	bsData.Read(AttachedVehicleID);
-	bsData.Read(AttachedObjectID);
-
-	CVector vecAttachOffset;
-	CVector vecAttachRot;
-	uint8_t bSyncRotation;
-
-	if (AttachedObjectID != INVALID_OBJECT_ID || AttachedVehicleID != INVALID_VEHICLE_ID)
-	{
-		bsData.Read(vecAttachOffset.x);
-		bsData.Read(vecAttachOffset.y);
-		bsData.Read(vecAttachOffset.z);
-		bsData.Read(vecAttachRot.x);
-		bsData.Read(vecAttachRot.y);
-		bsData.Read(vecAttachRot.z);
-		bsData.Read(bSyncRotation);
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData <= 0 || !pNetGame) return;
+	const int bits = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(rpcParams->input, (static_cast<unsigned int>(bits) + 7u) / 8u, false);
+	data.SetWriteOffset(bits);
+	OBJECTID objectId, attachedObject;
+	VEHICLEID attachedVehicle;
+	int model;
+	CVector pos{}, rot{}, attachOffset{}, attachRot{};
+	float drawDistance;
+	uint8_t noCameraCollision, syncRotation = 0;
+	if (!data.Read(objectId) || !data.Read(model) ||
+		!data.Read(pos.x) || !data.Read(pos.y) || !data.Read(pos.z) ||
+		!data.Read(rot.x) || !data.Read(rot.y) || !data.Read(rot.z) ||
+		!data.Read(drawDistance) || !data.Read(noCameraCollision) ||
+		!data.Read(attachedVehicle) || !data.Read(attachedObject)) return;
+	if (attachedObject != INVALID_OBJECT_ID || attachedVehicle != INVALID_VEHICLE_ID) {
+		if (!data.Read(attachOffset.x) || !data.Read(attachOffset.y) || !data.Read(attachOffset.z) ||
+			!data.Read(attachRot.x) || !data.Read(attachRot.y) || !data.Read(attachRot.z) ||
+			!data.Read(syncRotation)) return;
 	}
-
-	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	int actualModel = iModel;
-	if (iModel < 0) {
-		actualModel = DLManager::Instance().GetVirtualModelId(iModel);
+	if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
+		!std::isfinite(rot.x) || !std::isfinite(rot.y) || !std::isfinite(rot.z) ||
+		!std::isfinite(drawDistance) || !std::isfinite(attachOffset.x) ||
+		!std::isfinite(attachOffset.y) || !std::isfinite(attachOffset.z) ||
+		!std::isfinite(attachRot.x) || !std::isfinite(attachRot.y) || !std::isfinite(attachRot.z)) return;
+	uint8_t materialCount;
+	if (!data.Read(materialCount)) return;
+	CObjectPool* pool = pNetGame->GetObjectPool();
+	if (!pool || objectId >= MAX_OBJECTS) return;
+	const int actualModel = model < 0 ? DLManager::Instance().GetVirtualModelId(model) : model;
+	if (!pool->New(objectId, actualModel, pos, rot, drawDistance)) return;
+	CObject* object = pool->GetAt(objectId);
+	if (!object) return;
+	++iTotalObjects;
+	if (attachedObject != INVALID_OBJECT_ID)
+		object->SetAttachedObject(attachedObject, &attachOffset, &attachRot, syncRotation);
+	else if (attachedVehicle != INVALID_VEHICLE_ID)
+		object->SetAttachedVehicle(attachedVehicle, &attachOffset, &attachRot);
+	for (unsigned int i = 0; i < materialCount; ++i) {
+		if (!ReadAndApplyObjectMaterial(data, object, true)) return;
 	}
-	pObjectPool->New(ObjectID, actualModel, vecPos, vecRot, fDrawDistance);
-
-	CObject* pObject = pObjectPool->GetAt(ObjectID);
-	if (AttachedObjectID != INVALID_OBJECT_ID)
-	{
-		if (pObject) {
-			pObject->SetAttachedObject(AttachedObjectID, &vecAttachOffset, &vecAttachRot, bSyncRotation);
-		}
-	}
-	else if (AttachedVehicleID != INVALID_VEHICLE_ID)
-	{
-		if (pObject) {
-			pObject->SetAttachedVehicle(AttachedVehicleID, &vecAttachOffset, &vecAttachRot);
-		}
-	}
-
-	uint8_t byteMaterialsCount;
-	bsData.Read(byteMaterialsCount);
-	if (byteMaterialsCount > 0)
-	{
-		char txdname[256];
-		char texturename[256];
-		uint8_t byteType;
-		uint8_t byteMaterialIndex;
-		uint16_t MaterialModel;
-		uint8_t byteLength;
-		uint32_t dwColor;
-
-		// Material Text
-		uint8_t byteMaterialSize;
-		uint8_t byteFontNameLength;
-		char szFontName[32];
-		uint8_t byteFontSize;
-		uint8_t byteFontBold;
-		uint32_t dwFontColor;
-		uint32_t dwBackgroundColor;
-		uint8_t byteAlign;
-		char szText[2048];
-
-		bsData.Read(byteType);
-
-		if (byteType == 1) // material
-		{
-			bsData.Read(byteMaterialIndex);
-			bsData.Read(MaterialModel);
-			bsData.Read(byteLength);
-			bsData.Read(txdname, byteLength);
-			txdname[byteLength] = '\0';
-			bsData.Read(byteLength);
-			bsData.Read(texturename, byteLength);
-			texturename[byteLength] = '\0';
-			bsData.Read(dwColor);
-
-			if (strlen(txdname) < 32 && strlen(texturename) < 32)
-			{
-				if (MaterialModel == 0xFFFF || MaterialModel > 20000)
-					MaterialModel = 0xFFFF;
-
-				CObject* pObject = pObjectPool->GetAt(ObjectID);
-				if (pObject)
-					pObject->SetMaterial(MaterialModel, byteMaterialIndex, txdname, texturename, dwColor);
-			}
-		}
-		else if (byteType == 2) // material text
-		{
-			bsData.Read(byteMaterialIndex);
-			bsData.Read(byteMaterialSize);
-			bsData.Read(byteFontNameLength);
-			bsData.Read(szFontName, byteFontNameLength);
-			szFontName[byteFontNameLength] = '\0';
-			bsData.Read(byteFontSize);
-			bsData.Read(byteFontBold);
-			bsData.Read(dwFontColor);
-			bsData.Read(dwBackgroundColor);
-			bsData.Read(byteAlign);
-			stringCompressor->DecodeString(szText, 2048, &bsData);
-
-			if(strlen(szFontName) <= 32)
-			{
-				if(pObject)
-				{
-					pObject->SetMaterialText(byteMaterialIndex, szText, byteMaterialSize, szFontName, byteFontSize, byteFontBold, dwFontColor, dwBackgroundColor, byteAlign);
-				}
-			}
-		}
-	}
-
-
-	iTotalObjects++;
-	//LOGI("CreateObject: model %d; Total objects: %d", iModel, iTotalObjects);
-	//MyLog2("CreateObject: model %d; Total objects: %d", iModel, iTotalObjects);
-	//MyLog2("CreateObject: id: %d model: %d x: %f y: %f z: %f", iTotalObjects, iModel, vecPos.x, vecPos.y, vecPos.z);
 }
 
 void ScrDestroyObject(RPCParameters *rpcParams)
 {
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	OBJECTID ObjectID;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
-
-	iTotalObjects--;
-	//LOGI("DestroyObject; Total objects: %d", iTotalObjects);
-
-	CObjectPool *pObjectPool = pNetGame->GetObjectPool();
-	pObjectPool->Delete(ObjectID);
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData <= 0 || !pNetGame) return;
+	const int bits = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(rpcParams->input, (static_cast<unsigned int>(bits) + 7u) / 8u, false);
+	data.SetWriteOffset(bits);
+	OBJECTID objectId;
+	CObjectPool* pool = pNetGame->GetObjectPool();
+	if (!pool || !data.Read(objectId) || !pool->GetAt(objectId)) return;
+	pool->Delete(objectId);
+	--iTotalObjects;
 }
 
 void ScrSetObjectMaterial(RPCParameters* rpcParams)
 {
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	OBJECTID ObjectID;
-	uint8_t byteMaterialType;
-	uint8_t byteMaterialIndex;
-	uint16_t wModelID;
-	uint8_t byteLength;
-	char txdname[256], texname[256], fontname[256];
-	uint32_t dwColor;
-	uint8_t byteMaterialSize;
-	uint8_t byteFontSize;
-	uint8_t byteBold;
-	uint32_t dwFontColor;
-	uint32_t dwBackColor;
-	uint8_t byteTextAlignment;
-	char text[2048];
-
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
-
-	CObject* pObject = pObjectPool->GetAt(ObjectID);
-
-	bsData.Read(byteMaterialType);
-	if (byteMaterialType == 1)
-	{
-		bsData.Read(byteMaterialIndex);
-		bsData.Read(wModelID);
-		bsData.Read(byteLength);
-		bsData.Read(txdname, byteLength);
-		txdname[byteLength] = '\0';
-		bsData.Read(byteLength);
-		bsData.Read(texname, byteLength);
-		texname[byteLength] = '\0';
-		bsData.Read(dwColor);
-		if (strlen(txdname) < 32 && strlen(texname) < 32)
-		{
-			if (pObject)
-				pObject->SetMaterial(wModelID, byteMaterialIndex, txdname, texname, dwColor);
-		}
-	}
-	else if (byteMaterialType == 2)
-	{
-		bsData.Read(byteMaterialIndex);
-		bsData.Read(byteMaterialSize);
-		bsData.Read(byteLength);
-		bsData.Read(fontname, byteLength);
-		bsData.Read(byteFontSize);
-		bsData.Read(byteBold);
-		bsData.Read(dwFontColor);
-		bsData.Read(dwBackColor);
-		bsData.Read(byteTextAlignment);
-
-		stringCompressor->DecodeString(text, 2048, &bsData);
-
-
-		if (strlen(fontname) > 0 && strlen(fontname) < 32)
-		{
-			if (pObject) {
-				pObject->SetMaterialText(
-					byteMaterialIndex,
-					text,
-					byteMaterialSize,
-					fontname,
-					byteFontSize,
-					byteBold,
-					dwFontColor,
-					dwBackColor,
-					byteTextAlignment
-				);
-			}
-		}
-	}
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData <= 0 || !pNetGame) return;
+	const int bits = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(rpcParams->input, (static_cast<unsigned int>(bits) + 7u) / 8u, false);
+	data.SetWriteOffset(bits);
+	OBJECTID objectId;
+	CObjectPool* pool = pNetGame->GetObjectPool();
+	if (!pool || !data.Read(objectId)) return;
+	ReadAndApplyObjectMaterial(data, pool->GetAt(objectId), false);
 }
 
 void ScrEditObject(RPCParameters* rpcParams)
@@ -1977,49 +1836,28 @@ void ScrStopAudioStream(RPCParameters* rpcParams)
 
 void ScrMoveObject(RPCParameters* rpcParams)
 {
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	OBJECTID ObjectID;
-	float fPad0, fPad1, fPad2;
-	float fPosX, fPosY, fPosZ;
-	float fSpeed;
-	float fRotX, fRotY, fRotZ;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
-	bsData.Read(fPad0);
-	bsData.Read(fPad1);
-	bsData.Read(fPad2);
-	bsData.Read(fPosX);
-	bsData.Read(fPosY);
-	bsData.Read(fPosZ);
-	bsData.Read(fSpeed);
-	bsData.Read(fRotX);
-	bsData.Read(fRotY);
-	bsData.Read(fRotZ);
-
-	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	CObject* pObject = pObjectPool->GetAt(ObjectID);
-	if (pObject) {
-		pObject->MoveTo(fPosX, fPosY, fPosZ, fSpeed, fRotX, fRotY, fRotZ);
-	}
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData <= 0 || !pNetGame) return;
+	const int bits = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(rpcParams->input, (static_cast<unsigned int>(bits) + 7u) / 8u, false);
+	data.SetWriteOffset(bits);
+	ObjectMoveData move{};
+	if (!ReadObjectMove(data, move)) return;
+	CObjectPool* pool = pNetGame->GetObjectPool();
+	CObject* object = pool ? pool->GetAt(move.id) : nullptr;
+	if (object) object->MoveTo(move.x, move.y, move.z, move.speed, move.rotX, move.rotY, move.rotZ);
 }
 
 void ScrStopObject(RPCParameters* rpcParams)
 {
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	OBJECTID ObjectID;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
-
-	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	CObject* pObject = pObjectPool->GetAt(ObjectID);
-
-	if (pObject) {
-		pObject->StopMoving();
-	}
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData <= 0 || !pNetGame) return;
+	const int bits = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(rpcParams->input, (static_cast<unsigned int>(bits) + 7u) / 8u, false);
+	data.SetWriteOffset(bits);
+	OBJECTID id;
+	if (!data.Read(id)) return;
+	CObjectPool* pool = pNetGame->GetObjectPool();
+	CObject* object = pool ? pool->GetAt(id) : nullptr;
+	if (object) object->StopMoving();
 }
 
 void AttachCameraToObject(RPCParameters *rpcParams)

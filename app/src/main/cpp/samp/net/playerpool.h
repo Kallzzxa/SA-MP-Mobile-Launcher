@@ -6,11 +6,19 @@ public:
 	CPlayerPool();
 	~CPlayerPool();
 
-	void SetPlayerName(PLAYERID playerId, char* szName) { strcpy(m_szPlayerNames[playerId], szName); }
-	char* GetPlayerName(PLAYERID playerId){ return m_szPlayerNames[playerId]; }
+	void SetPlayerName(PLAYERID playerId, char* szName) {
+		if (playerId >= MAX_PLAYERS || !szName) return;
+		strncpy(m_szPlayerNames[playerId], szName, MAX_PLAYER_NAME);
+		m_szPlayerNames[playerId][MAX_PLAYER_NAME] = '\0';
+	}
+	char* GetPlayerName(PLAYERID playerId) {
+		return playerId < MAX_PLAYERS ? m_szPlayerNames[playerId] : nullptr;
+	}
 
 	void SetLocalPlayerName(const char* szPlayerName) {
-		strcpy(m_szLocalPlayerName, szPlayerName);
+		if (!szPlayerName) return;
+		strncpy(m_szLocalPlayerName, szPlayerName, MAX_PLAYER_NAME);
+		m_szLocalPlayerName[MAX_PLAYER_NAME] = '\0';
 	}
 	
 	char* GetLocalPlayerName() {
@@ -39,7 +47,7 @@ public:
 
 	
 	CRemotePlayer* GetAt(PLAYERID playerId) {
-		if (playerId > MAX_PLAYERS || 
+		if (playerId >= MAX_PLAYERS ||
 			m_bPlayerSlotState[playerId] == false ||
 			m_pPlayers[playerId] == nullptr) {
 			return nullptr;
@@ -49,7 +57,7 @@ public:
 	}
 
 	bool GetSlotState(PLAYERID playerId) {
-		if (playerId > MAX_PLAYERS) {
+		if (playerId >= MAX_PLAYERS) {
 			return false;
 		}
 

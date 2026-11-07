@@ -184,35 +184,29 @@ void DialogBox(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] DialogBox");
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+	if (!rpcParams || !rpcParams->input || rpcParams->numberOfBitsOfData < 16) return;
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
 
 	int16_t wDialogID;
 	uint8_t byteDialogStyle;
 	uint8_t byteLength;
-	char szTitle[256 + 1];
-	char szButton1[256 + 1];
-	char szButton2[256 + 1];
-	char szMessage[4096 + 1];
-	memset(szTitle, 0, sizeof(szTitle));
-	memset(szButton1, 0, sizeof(szButton1));
-	memset(szButton2, 0, sizeof(szButton2));
-	memset(szMessage, 0, sizeof(szMessage));
+	char szTitle[257] = {};
+	char szButton1[257] = {};
+	char szButton2[257] = {};
+	char szMessage[4097] = {};
 
-	bsData.Read(wDialogID);
-	bsData.Read(byteDialogStyle);
-	// title
-	bsData.Read(byteLength);
-	bsData.Read(szTitle, byteLength);
-	// button1
-	bsData.Read(byteLength);
-	bsData.Read(szButton1, byteLength);
-	// button2
-	bsData.Read(byteLength);
-	bsData.Read(szButton2, byteLength);
-	// message
-	stringCompressor->DecodeString(szMessage, 4096, &bsData);
+	if (!bsData.Read(wDialogID)) return;
+	if (wDialogID < 0) {
+		if (pJavaWrapper) pJavaWrapper->HideDialog();
+		return;
+	}
+	if (!bsData.Read(byteDialogStyle) || byteDialogStyle > 5) return;
+	if (!bsData.Read(byteLength) || !bsData.Read(szTitle, byteLength)) return;
+	if (!bsData.Read(byteLength) || !bsData.Read(szButton1, byteLength)) return;
+	if (!bsData.Read(byteLength) || !bsData.Read(szButton2, byteLength)) return;
+	if (!stringCompressor->DecodeString(szMessage, 4096, &bsData)) return;
 
 	Log::addParameter("wDialogID", wDialogID);
 	Log::addParameter("byteDialogStyle", (int)byteDialogStyle);
@@ -221,36 +215,7 @@ void DialogBox(RPCParameters *rpcParams)
 	Log::addParameter("szButton2", szButton2);
 	Log::addParameter("szMessage", szMessage);
 	
-	if (wDialogID == 65535 || wDialogID < 0) //Fix Blank Dialog
-	{
-		pNetGame->SendDialogResponse(wDialogID, 1, -1, " ");
-		return;
-	}
-
-	DialogStyle style;
-	switch (byteDialogStyle)
-	{
-	case 0:
-		style = DialogStyle::MSGBOX;
-		break;
-	case 1:
-		style = DialogStyle::INPUT;
-		break;
-	case 2:
-		style = DialogStyle::LIST;
-		break;
-	case 3:
-		style = DialogStyle::PASSWORD;
-		break;
-	case 4:
-		style = DialogStyle::TABLIST;
-		break;
-	case 5:
-		style = DialogStyle::TABLIST_HEADERS;
-		break;
-	}
-
-	if (pUI) 
+	if (pUI && pJavaWrapper)
 	{
 		if (strcmp(szButton2, "") == 0)
 		{
@@ -955,25 +920,20 @@ void ScmEvent(RPCParameters *rpcParams)
 void UpdateScoresPingsIPs(RPCParameters *rpcParams)
 {
 	Log::traceLastFunc("[RPC-IN] Update scores and pings");
+	if (!rpcParams || !rpcParams->input || !pNetGame || !pNetGame->GetPlayerPool()) return;
+	int bitLength = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream data(reinterpret_cast<unsigned char*>(rpcParams->input), (bitLength + 7) / 8, false);
+	CPlayerPool* players = pNetGame->GetPlayerPool();
 
-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
-
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
-	PLAYERID playerId;
-	int iPlayerScore;
-	int iPlayerPing;
-
-	for (int i = 0; i < (iBitLength / 8) / 10; i++) {
-		bsData.Read(playerId);
-		bsData.Read(iPlayerScore);
-		bsData.Read(iPlayerPing);
-
-		FLog("RPC_PINGIP: (%d): score: %d, ping: %d", playerId, iPlayerScore, iPlayerPing);
-
-		pPlayerPool->UpdatePlayerScore(playerId, iPlayerScore);
-		pPlayerPool->UpdatePlayerPing(playerId, iPlayerPing);
+	for (int i = 0; i < (bitLength / 8) / 10; ++i) {
+		PLAYERID playerId;
+		int score, ping;
+		if (!data.Read(playerId) || !data.Read(score) || !data.Read(ping)) break;
+		players->UpdatePlayerScore(playerId, score);
+		players->UpdatePlayerPing(playerId, ping);
+	}
+	if (pUI && pUI->playertablist() && pUI->playertablist()->visible()) {
+		pUI->playertablist()->refresh();
 	}
 }
 

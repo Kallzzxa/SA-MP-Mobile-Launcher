@@ -433,8 +433,9 @@ bool CGame::RemovePlayer(CPlayerPed* pPed)
 {
 	if (!pPed) return false;
 
+	const auto playerNumber = pPed->m_bytePlayerNumber;
 	delete pPed;
-	bUsedPlayerSlots[pPed->m_bytePlayerNumber] = false;
+	bUsedPlayerSlots[playerNumber] = false;
 	return true;
 }
 
@@ -723,7 +724,7 @@ void LightsCreate(RpWorld* world) {
     CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x0046FC08 + 1 : 0x55BDCC), world);
 }
 
-void InitGui();
+bool InitGui();
 
 bool CGame::InitialiseRenderWare() {
     FLog("InitialiseRenderWare ..");
@@ -755,12 +756,13 @@ bool CGame::InitialiseRenderWare() {
 
 
     const auto camera = RwCameraCreate();
-    if (!camera) {
+    if (!camera) return false;
+
+    const auto frame = RwFrameCreate();
+    if (!frame) {
         CameraDestroy(camera);
         return false;
     }
-
-    const auto frame = RwFrameCreate();
     rwObjectHasFrameSetFrame(&camera->object.object, frame);
     camera->frameBuffer = RwRasterCreate(RsGlobal->maximumWidth, RsGlobal->maximumHeight, 0, rwRASTERTYPECAMERA);
     camera->zBuffer = RwRasterCreate(RsGlobal->maximumWidth, RsGlobal->maximumHeight, 0, rwRASTERTYPEZBUFFER);
@@ -795,7 +797,7 @@ bool CGame::InitialiseRenderWare() {
     CGame::m_pWorkingMatrix1 = RwMatrixCreate();
     CGame::m_pWorkingMatrix2 = RwMatrixCreate();
 
-    InitGui();
+    if (!InitGui()) return false;
 
     return true;
 }
