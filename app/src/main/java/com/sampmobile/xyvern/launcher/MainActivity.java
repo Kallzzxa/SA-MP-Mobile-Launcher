@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         pa.setOffscreenPageLimit(3);
 
         initNav();
-        updateNavUI(0);
+        updateNavUI(pa.getCurrentItem());
     }
 
     private void initNav() {
@@ -108,24 +108,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateNavUI(int position) {
-        if (navHome == null || navPlay == null || navSettings == null ||
-                tvHome == null || tvPlay == null || tvSettings == null) return;
-        navHome.setBackground(null);
-        navPlay.setBackground(null);
-        navSettings.setBackground(null);
-        tvHome.setVisibility(View.GONE);
-        tvPlay.setVisibility(View.GONE);
-        tvSettings.setVisibility(View.GONE);
-
-        if (position == 0) {
-            navHome.setBackgroundResource(R.drawable.bg_nav_active);
-            tvHome.setVisibility(View.VISIBLE);
-        } else if (position == 1) {
-            navPlay.setBackgroundResource(R.drawable.bg_nav_active);
-            tvPlay.setVisibility(View.VISIBLE);
-        } else if (position == 2) {
-            navSettings.setBackgroundResource(R.drawable.bg_nav_active);
-            tvSettings.setVisibility(View.VISIBLE);
+        if (navHome == null || navPlay == null || navSettings == null) return;
+        View[] tabs = {navHome, navPlay, navSettings};
+        ImageView[] icons = {ivHome, ivPlay, ivSettings};
+        TextView[] labels = {tvHome, tvPlay, tvSettings};
+        for (int i = 0; i < tabs.length; i++) {
+            boolean selected = i == position;
+            tabs[i].setBackgroundResource(selected ? R.drawable.bg_hope_nav_selected : 0);
+            tabs[i].setSelected(selected);
+            int color = android.graphics.Color.parseColor(selected ? "#79D5FF" : "#8397AD");
+            androidx.core.widget.ImageViewCompat.setImageTintList(icons[i],
+                    android.content.res.ColorStateList.valueOf(color));
+            labels[i].setTextColor(color);
         }
     }
 
