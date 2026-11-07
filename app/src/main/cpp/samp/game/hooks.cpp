@@ -1777,12 +1777,15 @@ void InstallSpecialHooks()
     // Keep the engine decompressor from reading one word past the end of its
     // source block (see crash_native.txt: RLEDecompress, four byte load at
     // end-2 of a page aligned block). Every call gets a padded copy.
-    g_rleGuardHookResult = shadowhook_hook_sym_name(
+    // The vendored shadowhook returns an opaque pointer here, so success is
+    // judged by whether the original function was resolved.
+    shadowhook_hook_sym_name(
             "libGTASA.so",
             "_Z13RLEDecompressPhjPKhjj",
             (void*)RLEDecompressPaddedHook,
             (void**)&orig_RLEDecompressPadded);
-    FLog("RLEDecompress guard: hook result %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);
+    g_rleGuardHookResult = (orig_RLEDecompressPadded != nullptr) ? 1 : 0;
+    FLog("RLEDecompress guard: installed %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);
 
     //CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
 
