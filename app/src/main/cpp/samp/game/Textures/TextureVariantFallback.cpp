@@ -81,8 +81,16 @@ bool VariantExists(const char* database, int format)
     return access(path, R_OK) == 0;
 }
 
+// The uncompressed variant needs no block decoding at all, so it cannot come
+// out black because of a format the GPU cannot read, and it never reaches the
+// RLE decompressor. When a database ships it, that is the safest choice.
+constexpr bool kPreferUncompressed = true;
+
 int PickExistingVariant(const char* database, int requested)
 {
+    if (kPreferUncompressed && requested != DF_UNC && VariantExists(database, DF_UNC))
+        return DF_UNC;
+
     if (VariantExists(database, requested)) return requested;
 
     for (int candidate : kVariantOrder)
@@ -134,6 +142,30 @@ bool LoadThumbsHook(void* thiz, int format, bool setEntries)
     return result;
 }
 
+// TextureDatabaseRuntime::Load(withName, fullyLoad, forcedFormat) runs before
+// any database is touched, so it is the second chance to pick a variant that
+// exists when the LoadThumbs hook is unavailable in this build.
+typedef void* (*LoadFn)(const char* withName, bool fullyLoad, int forcedFormat);
+LoadFn orig_Load = nullptr;
+
+void* LoadHook(const char* withName, bool fullyLoad, int forcedFormat)
+{
+    if (!orig_Load) return nullptr;
+
+    int chosen = forcedFormat;
+    if (withName)
+    {
+        chosen = PickExistingVariant(withName, forcedFormat);
+        if (chosen != forcedFormat)
+        {
+            g_texVariantFallbacks++;
+            FLog("texdb '%s': load variant %d instead of %d", withName, chosen, forcedFormat);
+        }
+    }
+
+    return orig_Load(withName, fullyLoad, chosen);
+}
+
 } // namespace
 
 void TextureVariantFallback::Initialise()
@@ -141,6 +173,11 @@ void TextureVariantFallback::Initialise()
     CHook::InlineHook("_ZN15TextureDatabase10LoadThumbsE21TextureDatabaseFormatb",
                       LoadThumbsHook, &orig_LoadThumbs);
 
-    FLog("TextureVariantFallback: LoadThumbs hook %s",
-         orig_LoadThumbs ? "installed" : "not installed (symbol missing)");
+    CHook::InlineHook("_ZN22TextureDatabaseRuntime4LoadEPKcb21TextureDatabaseFormat",
+                      LoadHook, &orig_Load);
+
+    FLog("TextureVariantFallback: LoadThumbs hook %s, Load hook %s, prefer unc=%d",
+         orig_LoadThumbs ? "installed" : "not installed (symbol missing)",
+         orig_Load ? "installed" : "not installed (symbol missing)",
+         (int)kPreferUncompressed);
 }

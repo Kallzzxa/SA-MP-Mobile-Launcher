@@ -495,7 +495,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	//MicroIcon::Hide();
 	//Network::OnRaknetDisconnect();
 
-	if (pUI) pUI->chat()->addInfoMessage("The server is restarting..");
+	if (pUI) pUI->chat()->addInfoMessage("Server sedang dimulai ulang..");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -656,7 +656,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	if (iVersion != 4062 && pUI) {
 		pUI->chat()->addDebugMessage(
 			"Custom models disabled: this server streams 0.3.DL artwork, but we joined as version %d. "
-			"Set the client version to 0.3.DL to enable it.", iVersion);
+			"Setel versi klien ke 0.3.DL untuk mengaktifkannya.", iVersion);
 	}
 
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
@@ -1083,7 +1083,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	if (strcasecmp(cmd.c_str(), "/fps") == 0) {
 		if (pSettings) {
 			pSettings->Get().iFPSCounter = !pSettings->Get().iFPSCounter;
-			if (pUI) pUI->chat()->addInfoMessage("FPS Counter: %s", pSettings->Get().iFPSCounter ? "Enabled" : "Disabled");
+			if (pUI) pUI->chat()->addInfoMessage("Penghitung FPS: %s", pSettings->Get().iFPSCounter ? "Aktif" : "Nonaktif");
 		}
 		return;
 	}
@@ -1092,13 +1092,13 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	// "/dl retry" re-arms failed downloads instead of toggling the indicator.
 	if (strcasecmp(cmd.c_str(), "/dl retry") == 0 || strcasecmp(cmd.c_str(), "/dlr") == 0) {
 		DLManager::Instance().RequestRetryFailed();
-		if (pUI) pUI->chat()->addInfoMessage("Retrying failed model downloads.");
+		if (pUI) pUI->chat()->addInfoMessage("Mencoba ulang unduhan model yang gagal.");
 		return;
 	}
 	if (strcasecmp(cmd.c_str(), "/dl") == 0 || strcasecmp(cmd.c_str(), "/models") == 0) {
 		DLManager::Instance().ToggleOverlay();
 		if (pUI) pUI->chat()->addInfoMessage(DLManager::Instance().IsOverlayForced()
-			? "Model download indicator pinned." : "Model download indicator will auto-hide.");
+			? "Indikator unduhan model disematkan." : "Indikator unduhan model akan tersembunyi otomatis.");
 		return;
 	}
 
@@ -1150,7 +1150,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 
 	// Client-side command: Reconnect
 	if (strcasecmp(cmd.c_str(), "/reconnect") == 0 || strcasecmp(cmd.c_str(), "/rec") == 0) {
-		if (pUI) pUI->chat()->addInfoMessage("Reconnecting to server...");
+		if (pUI) pUI->chat()->addInfoMessage("Menghubungkan ulang ke server...");
 		ShutdownForGameModeRestart();
 		return;
 	}
@@ -1159,7 +1159,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	if (strcasecmp(cmd.c_str(), "/clearchat") == 0 || strcasecmp(cmd.c_str(), "/cc") == 0) {
 		if (pUI) {
 			for (int i = 0; i < 20; i++) pUI->chat()->addDebugMessage(" ");
-			pUI->chat()->addInfoMessage("Chat cleared.");
+			pUI->chat()->addInfoMessage("Obrolan dibersihkan.");
 		}
 		return;
 	}

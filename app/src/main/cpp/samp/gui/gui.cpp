@@ -129,16 +129,16 @@ bool UI::initialize()
 		this->addChild(button);
 		return button;
 	};
-	m_defenseScaleDown = makeEditorButton("SIZE -", ImVec2(0.0f, 0.0f), [this]() {
+	m_defenseScaleDown = makeEditorButton("UKURAN -", ImVec2(0.0f, 0.0f), [this]() {
 		m_defenseEditScale = std::max(0.5f, m_defenseEditScale - 0.1f);
 	});
 	m_defenseScaleUp = makeEditorButton("SIZE +", ImVec2(0.0f, 0.0f), [this]() {
 		m_defenseEditScale = std::min(1.8f, m_defenseEditScale + 0.1f);
 	});
-	m_defenseSave = makeEditorButton("SAVE", ImVec2(0.0f, 0.0f), [this]() {
+	m_defenseSave = makeEditorButton("SIMPAN", ImVec2(0.0f, 0.0f), [this]() {
 		FinishDefenseButtonEditor(true);
 	});
-	m_defenseCancel = makeEditorButton("CANCEL", ImVec2(0.0f, 0.0f), [this]() {
+	m_defenseCancel = makeEditorButton("BATAL", ImVec2(0.0f, 0.0f), [this]() {
 		FinishDefenseButtonEditor(false);
 	});
 
@@ -383,7 +383,7 @@ void UI::ToggleDefenseButtonEditor()
 	m_defenseTouchIds.clear();
 	LocalPlayerKeys.bKeys[ePadKeys::KEY_BLOCK] = false;
 	if (m_chat)
-		m_chat->addInfoMessage("Drag DEF to move, adjust size, then save.");
+		m_chat->addInfoMessage("Geser DEF untuk memindahkan, atur ukuran, lalu simpan.");
 }
 
 void UI::FinishDefenseButtonEditor(bool save)
@@ -395,11 +395,11 @@ void UI::FinishDefenseButtonEditor(bool save)
 		pSettings->Get().fDefenseButtonScale = m_defenseEditScale;
 		pSettings->SaveDefenseButtonSettings();
 		if (m_chat)
-			m_chat->addInfoMessage("DEF button layout saved.");
+			m_chat->addInfoMessage("Tata letak tombol DEF tersimpan.");
 	}
 	else if (m_chat)
 	{
-		m_chat->addInfoMessage("DEF button edit cancelled.");
+		m_chat->addInfoMessage("Pengaturan tombol DEF dibatalkan.");
 	}
 
 	m_defenseEditorActive = false;

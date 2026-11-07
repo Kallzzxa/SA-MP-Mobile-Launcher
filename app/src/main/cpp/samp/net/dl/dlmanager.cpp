@@ -484,12 +484,12 @@ bool DLManager::RegisterCustomModels() {
     }
 
     char msg[128];
-    snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
+    snprintf(msg, sizeof(msg), "Terdaftar %d model khusus.", registered);
     PushChat(msg);
     if (skippedFull > 0) {
         char warn[128];
         snprintf(warn, sizeof(warn),
-                 "Warning: %d models skipped (model store full).",
+                 "Peringatan: %d model dilewati (penyimpanan model penuh).",
                  skippedFull);
         PushChat(warn);
     }
@@ -1421,26 +1421,26 @@ void DLManager::RenderImGui() {
     const size_t settled = done + failed;
 
     if (failed > 0 && !busy && !finished) {
-        snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
+        snprintf(label, sizeof(label), "Unduhan model: %zu gagal (/dlr untuk mencoba lagi)", failed);
     } else if (finished) {
         if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
+            snprintf(label, sizeof(label), "Model siap (%zu dilewati)", failed);
         } else {
-            snprintf(label, sizeof(label), "Models ready");
+            snprintf(label, sizeof(label), "Model siap");
         }
         fraction = 1.0f;
         showBar = total > 0;
     } else if (total > 0) {
         fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
         if (failed > 0) {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
+            snprintf(label, sizeof(label), "Mengunduh model %zu/%d (%zu dilewati)",
                      settled, total, failed);
         } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+            snprintf(label, sizeof(label), "Mengunduh model %zu/%d", done, total);
         }
         showBar = true;
     } else {
-        snprintf(label, sizeof(label), "Downloading models");
+        snprintf(label, sizeof(label), "Mengunduh model");
     }
 
     // ---- Layout: bottom-left, measured, scaled by screen size.

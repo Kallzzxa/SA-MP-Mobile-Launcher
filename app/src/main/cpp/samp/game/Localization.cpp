@@ -15,6 +15,8 @@
 #include "Localization.h"
 #include "../vendor/shadowhook/patch.h"
 
+#include <dlfcn.h>
+
 namespace
 {
 
@@ -161,6 +163,7 @@ uint16_t g_dictionaryLength[kDictionarySize] = {};
 typedef void (*PrintStringFn)(float posX, float posY, const uint16_t* text);
 
 PrintStringFn orig_PrintString = nullptr;
+PrintStringFn orig_PrintStringFromBottom = nullptr;
 
 volatile unsigned long long g_translatedCount = 0;
 volatile unsigned long long g_unmatchedCyrillicCount = 0;
@@ -254,18 +257,53 @@ const char16_t* Lookup(const uint16_t* text, uint32_t length, uint32_t hash)
     return nullptr;
 }
 
-void PrintStringHook(float posX, float posY, const uint16_t* text)
+void PrintThrough(PrintStringFn target, float posX, float posY, const uint16_t* text)
 {
-    if (!orig_PrintString) return;
+    if (!target) return;
 
     if (const uint16_t* translated = Localization::Translate(text))
     {
-        g_translatedCount++;
-        orig_PrintString(posX, posY, translated);
+        target(posX, posY, translated);
         return;
     }
 
-    orig_PrintString(posX, posY, text);
+    target(posX, posY, text);
+}
+
+// Top-left anchored text.
+void PrintStringHook(float posX, float posY, const uint16_t* text)
+{
+    PrintThrough(orig_PrintString, posX, posY, text);
+}
+
+// Bottom anchored text, which is what the pause menu, its items and the map
+// hint use. Hooking only PrintString left those in Russian.
+void PrintStringFromBottomHook(float posX, float posY, const uint16_t* text)
+{
+    PrintThrough(orig_PrintStringFromBottom, posX, posY, text);
+}
+
+void* GtasaHandle()
+{
+    static void* handle = dlopen("libGTASA.so", RTLD_NOW | RTLD_NOLOAD);
+    return handle;
+}
+
+bool HookFontSymbol(const char* symbol, PrintStringFn hookFn, PrintStringFn* slot)
+{
+    if (!symbol || !slot) return false;
+
+    void* lib = GtasaHandle();
+    if (!lib) return false;
+
+    void* address = dlsym(lib, symbol);
+    if (!address) return false;
+
+    // The address based hook in Initialise may already have covered it.
+    if (*slot) return true;
+
+    shadowhook_hook_sym_name("libGTASA.so", symbol, (void*)hookFn, (void**)slot);
+    return *slot != nullptr;
 }
 
 } // namespace
@@ -284,8 +322,37 @@ void Localization::Initialise()
     const uintptr_t printString = g_libGTASA + (VER_x32 ? 0x005AA200 + 1 : 0x6CDEB0);
     CHook::InlineHook(printString, PrintStringHook, &orig_PrintString);
 
-    FLog("Localization: Indonesian table with %u entries, font hook %s",
-         (unsigned)kDictionarySize, orig_PrintString ? "installed" : "not installed");
+    // The pause menu and the map hint draw bottom anchored text through a
+    // different entry point, so that one has to be covered as well.
+    const char* fromBottomSymbols[] =
+    {
+        "_ZN5CFont21PrintStringFromBottomEffPt",
+        "_ZN5CFont21PrintStringFromBottomEffPKt",
+    };
+    for (const char* symbol : fromBottomSymbols)
+    {
+        if (HookFontSymbol(symbol, PrintStringFromBottomHook, &orig_PrintStringFromBottom)) break;
+    }
+
+    // Same idea for the top anchored entry point, in case the address above is
+    // not the one this build exports.
+    if (!orig_PrintString)
+    {
+        const char* printStringSymbols[] =
+        {
+            "_ZN5CFont11PrintStringEffPt",
+            "_ZN5CFont11PrintStringEffPKt",
+        };
+        for (const char* symbol : printStringSymbols)
+        {
+            if (HookFontSymbol(symbol, PrintStringHook, &orig_PrintString)) break;
+        }
+    }
+
+    FLog("Localization: Indonesian table with %u entries, hooks printString=%d printStringFromBottom=%d",
+         (unsigned)kDictionarySize,
+         orig_PrintString ? 1 : 0,
+         orig_PrintStringFromBottom ? 1 : 0);
 }
 
 const uint16_t* Localization::Translate(const uint16_t* gxt)
@@ -297,7 +364,10 @@ const uint16_t* Localization::Translate(const uint16_t* gxt)
 
     const uint32_t hash = HashText(gxt, length);
     if (const char16_t* translated = Lookup(gxt, length, hash))
+    {
+        g_translatedCount++;
         return reinterpret_cast<const uint16_t*>(translated);
+    }
 
     // Nothing in the table: it is dynamic content (names, chat, textdraws) and
     // stays as it is, but a Cyrillic interface string is worth reporting so the

@@ -136,6 +136,8 @@ void Render2dStuff_hook()
     if (pUI) pUI->render();
     return;
 }*/
+static bool g_bTouchControlsLogged = false;
+
 void Render2dStuff()
 {
     if( CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x001BB7F4 + 1 : 0x24EA90)) ) // emu_IsAltRenderTarget()
@@ -154,7 +156,18 @@ void Render2dStuff()
     CHook::CallFunction<void>("_ZN4CHud4DrawEv");
     //	GPS::Draw();
     //
-    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(false); // CTouchInterface::DrawAll
+    // This is where the engine paints the Android touch controls. The previous
+    // build passed false here, which hid every on-screen button while the
+    // widgets themselves kept being created and their input kept running, so
+    // the player was left with no run, jump, crouch, attack or vehicle
+    // controls at all. Drawing them is the whole fix: the widgets, their
+    // layout files and their input handling were never removed.
+    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(true); // CTouchInterface::DrawAll
+    if (!g_bTouchControlsLogged)
+    {
+        g_bTouchControlsLogged = true;
+        FLog("Touch controls: CTouchInterface::DrawAll(true) called from Render2dStuff");
+    }
 
     CHook::CallFunction<void>("_Z12emu_GammaSeth", 1);
 
