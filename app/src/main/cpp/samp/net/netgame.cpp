@@ -1,3 +1,4 @@
+#include "remote_sync_packet_reader.h"
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -110,7 +111,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
-    pJavaWrapper->HideLoadingScreen();
+    if (pJavaWrapper) pJavaWrapper->HideLoadingScreen();
 
     const char* sampVer = SAMP_VERSION;
     if(pSettings)
@@ -857,14 +858,12 @@ void CNetGame::Packet_AimSync(Packet* pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
 	
-	uint8_t bytePacketId;
 	PLAYERID PlayerId;
 	AIM_SYNC_DATA aimSync;
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerId);
-	bsData.Read((char*)& aimSync, sizeof(AIM_SYNC_DATA));
-
-	CRemotePlayer* pPlayer = m_pPools->pPlayerPool->GetAt(PlayerId);
+	if (!ReadRemoteSyncPacket(bsData, PlayerId, aimSync)) return;
+	CPlayerPool* pool = GetPlayerPool();
+	if (!pool) return;
+	CRemotePlayer* pPlayer = pool->GetAt(PlayerId);
 	if (pPlayer)
 		pPlayer->StoreAimFullSyncData(&aimSync);
 }
@@ -876,14 +875,12 @@ void CNetGame::Packet_BulletSync(Packet* pkt)
 	if (GetGameState() != GAMESTATE_CONNECTED) return;
 
 	BULLET_SYNC_DATA btSync;
-	uint8_t bytePacketId = 0;
 	PLAYERID PlayerID = 0;
 
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerID);
-	bsData.Read((char*)&btSync, sizeof(BULLET_SYNC_DATA));
+	if (!ReadRemoteSyncPacket(bsData, PlayerID, btSync)) return;
 
 	CPlayerPool* pPlayerPool = GetPlayerPool();
+	if (!pPlayerPool) return;
 	CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
 	if (pRemotePlayer)
 		pRemotePlayer->StoreBulletFullSyncData(&btSync);
@@ -896,15 +893,13 @@ void CNetGame::Packet_PassengerSync(Packet* pkt)
 
 	if (GetGameState() == GAMESTATE_CONNECTED)
 	{
-		uint8_t bytePacketId;
 		PLAYERID PlayerID;
 		PASSENGER_SYNC_DATA psSync;
 
-		bsData.Read(bytePacketId);
-		bsData.Read(PlayerID);
-		bsData.Read((char*)& psSync, sizeof(PASSENGER_SYNC_DATA));
-
-		CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
+		if (!ReadRemoteSyncPacket(bsData, PlayerID, psSync)) return;
+		CPlayerPool* pool = GetPlayerPool();
+		if (!pool) return;
+		CRemotePlayer* pRemotePlayer = pool->GetAt(PlayerID);
 		if (pRemotePlayer) {
 			pRemotePlayer->StorePassengerFullSyncData(&psSync);
 		}
@@ -987,8 +982,11 @@ void CNetGame::Packet_VoiceData(Packet* pkt)
 void CNetGame::UpdatePlayerScoresAndPings()
 {
 	static uint32_t dwLastUpdateTick = 0;
+	static bool requested = false;
 
-	if (CTimer::m_snTimeInMillisecondsNonClipped - dwLastUpdateTick > 3000) {
+	if (GetGameState() != GAMESTATE_CONNECTED || !m_pRakClient) return;
+	if (!requested || CTimer::m_snTimeInMillisecondsNonClipped - dwLastUpdateTick >= 3000) {
+		requested = true;
 		dwLastUpdateTick = CTimer::m_snTimeInMillisecondsNonClipped;
 
 		RakNet::BitStream bsSend;
@@ -998,9 +996,9 @@ void CNetGame::UpdatePlayerScoresAndPings()
 
 void CNetGame::SendDialogResponse(uint16_t wDialogID, uint8_t byteButtonID, uint16_t wListBoxItem, const char* szInput)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+	if (GetGameState() != GAMESTATE_CONNECTED || !szInput) return;
 
-	uint8_t length = strlen(szInput);
+	uint8_t length = static_cast<uint8_t>(strnlen(szInput, UINT8_MAX));
 
 	RakNet::BitStream bsSend;
 	bsSend.Write(wDialogID);
@@ -1013,10 +1011,10 @@ void CNetGame::SendDialogResponse(uint16_t wDialogID, uint8_t byteButtonID, uint
 
 void CNetGame::SendChatMessage(const char* szMsg)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+	if (GetGameState() != GAMESTATE_CONNECTED || !szMsg) return;
 
 	RakNet::BitStream bsSend;
-	uint8_t byteTextLen = strlen(szMsg);
+	uint8_t byteTextLen = static_cast<uint8_t>(strnlen(szMsg, UINT8_MAX));
 
 	bsSend.Write(byteTextLen);
 	bsSend.Write(szMsg, byteTextLen);
@@ -1029,6 +1027,14 @@ static std::string TrimString(const std::string& str) {
 	if (first == std::string::npos) return "";
 	size_t last = str.find_last_not_of(" 	\r\n");
 	return str.substr(first, (last - first + 1));
+}
+
+// Match the complete command token, so /micposition or /dlracing still
+// reach the server rather than being swallowed by similarly named local commands.
+static bool IsCommand(const std::string& input, const char* name) {
+	size_t length = strlen(name);
+	return input.size() >= length && strncasecmp(input.c_str(), name, length) == 0 &&
+		(input.size() == length || input[length] == ' ' || input[length] == '\t');
 }
 
 void CNetGame::SendChatCommand(const char* szCommand)
@@ -1044,6 +1050,15 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
+	// PC-style chat timestamps; affects messages received after toggling.
+	if (strcasecmp(cmd.c_str(), "/timestamp") == 0) {
+		if (pUI && pUI->chat()) {
+			bool enabled = pUI->chat()->toggleTimestamps();
+			pUI->chat()->addInfoMessage("Chat timestamps: %s", enabled ? "ON" : "OFF");
+		}
+		return;
+	}
+
 	// Client-side command: Toggle FPS overlay
 	if (strcasecmp(cmd.c_str(), "/fps") == 0) {
 		if (pSettings) {
@@ -1055,7 +1070,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 
 	// Client-side command: Toggle the model download indicator (/dl or /models).
 	// "/dl retry" re-arms failed downloads instead of toggling the indicator.
-	if (strncasecmp(cmd.c_str(), "/dl retry", 9) == 0 || strncasecmp(cmd.c_str(), "/dlr", 4) == 0) {
+	if (strcasecmp(cmd.c_str(), "/dl retry") == 0 || strcasecmp(cmd.c_str(), "/dlr") == 0) {
 		DLManager::Instance().RequestRetryFailed();
 		if (pUI) pUI->chat()->addInfoMessage("Retrying failed model downloads.");
 		return;
@@ -1081,7 +1096,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	}
 
 	// Client-side command: Adjust mic button position (/micpos <x> <y>)
-	if (strncasecmp(cmd.c_str(), "/micpos", 7) == 0) {
+	if (IsCommand(cmd, "/micpos")) {
 		float newX = 0.0f, newY = 0.0f;
 		if (sscanf(cmd.c_str() + 7, "%f %f", &newX, &newY) == 2) {
 			if (pUI && pUI->voicebutton()) {
@@ -1100,7 +1115,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	}
 
 	// Client-side command: Voice volume (/vvol <0-100> or /voicevol)
-	if (strncasecmp(cmd.c_str(), "/vvol", 5) == 0 || strncasecmp(cmd.c_str(), "/voicevol", 9) == 0) {
+	if (IsCommand(cmd, "/vvol") || IsCommand(cmd, "/voicevol")) {
 		int vol = 100;
 		const char* arg = (strncasecmp(cmd.c_str(), "/voicevol", 9) == 0) ? (cmd.c_str() + 9) : (cmd.c_str() + 5);
 		if (sscanf(arg, "%d", &vol) == 1) {
@@ -1132,7 +1147,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	// Client-side command: Show client help
 	if (strcasecmp(cmd.c_str(), "/cmds") == 0 || strcasecmp(cmd.c_str(), "/help") == 0) {
 		if (pUI) {
-			pUI->chat()->addInfoMessage("Client commands: /q, /fps, /rec, /cc, /dl [retry], /micpos <x y>, /vvol <0-100>");
+			pUI->chat()->addInfoMessage("Client commands: /q, /fps, /timestamp, /rec, /cc, /dl [retry], /micpos <x y>, /vvol <0-100>");
 		}
 		// Also allow server /help to pass through to server if connected
 	}
@@ -1295,9 +1310,8 @@ void CNetGame::Packet_TrailerSync(Packet *pkt)
 	memset(&trSync, 0, sizeof(TRAILER_SYNC_DATA));
 
 	RakNet::BitStream bsTrailerSync((unsigned char *)pkt->data, pkt->length, false);
-	bsTrailerSync.Read(bytePacketId);
-	bsTrailerSync.Read(playerId);
-	bsTrailerSync.Read((char*)&trSync, sizeof(TRAILER_SYNC_DATA));
+	if (!bsTrailerSync.Read(bytePacketId) || !bsTrailerSync.Read(playerId) ||
+		!bsTrailerSync.Read((char*)&trSync, sizeof(TRAILER_SYNC_DATA))) return;
 
 	if(GetPlayerPool()) 
 	{

@@ -45,9 +45,7 @@ public class CustomKeyboard {
 
     private String mSavedInput = null;
 
-    private final int mMaxHistory = 20;
-    private ArrayList<String> mInputHistory = null;
-    private int mCurrentHistoryMessage = 0;
+    private final InputHistory mInputHistory = new InputHistory(20);
 
     private Runnable mAnimTask = null;
 
@@ -69,71 +67,27 @@ public class CustomKeyboard {
         mButtonHistoryPrev = layout.findViewById(R.id.main_but_input_prev);
         mButtonHistoryNext = layout.findViewById(R.id.main_but_input_next);
 
-        mInputHistory = new ArrayList<String>();
 
-        mButtonSlash.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mInputEt.getText().insert(mInputEt.getSelectionStart(), "/");
-            }
+        mButtonSlash.setOnClickListener(view -> {
+            int cursor = Math.max(0, mInputEt.getSelectionStart());
+            mInputEt.getText().insert(cursor, "/");
         });
+        mButtonHistoryPrev.setOnClickListener(view -> showHistory(
+                mInputHistory.previous(mInputEt.getText().toString())));
+        mButtonHistoryNext.setOnClickListener(view -> showHistory(
+                mInputHistory.next(mInputEt.getText().toString())));
 
-        mButtonHistoryPrev.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mCurrentHistoryMessage--;
-                if(mCurrentHistoryMessage < 0)
-                {
-                    mCurrentHistoryMessage = 0;
-                }
-                if(mCurrentHistoryMessage <= 0)
-                {
-                    mInputEt.setText("");
-                    return;
-                }
-
-                mInputEt.setText(mInputHistory.get(mCurrentHistoryMessage - 1));
-                mInputEt.setSelection(mInputEt.getText().length());
+        mInputEt.setOnEditorActionListener((textView, action, event) -> {
+            boolean enter = event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                    && event.getAction() == KeyEvent.ACTION_DOWN;
+            if (enter || action == EditorInfo.IME_ACTION_DONE || action == EditorInfo.IME_ACTION_NEXT
+                    || action == EditorInfo.IME_ACTION_SEND || action == EditorInfo.IME_ACTION_GO) {
+                String input = mInputEt.getText().toString();
+                mInputEt.setText("");
+                OnInputEnd(input);
+                return true;
             }
-        });
-
-        mButtonHistoryNext.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mCurrentHistoryMessage++;
-                if((mCurrentHistoryMessage - 1) >= mInputHistory.size())
-                {
-                    mCurrentHistoryMessage--;
-                }
-                if(mCurrentHistoryMessage <= 0)
-                {
-                    return;
-                }
-
-                mInputEt.setText(mInputHistory.get(mCurrentHistoryMessage - 1));
-                mInputEt.setSelection(mInputEt.getText().length());
-            }
-        });
-
-        mInputEt.setOnEditorActionListener(new EditText.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView textView, int i, KeyEvent keyEvent)
-            {
-                if(i== EditorInfo.IME_ACTION_DONE || i == EditorInfo.IME_ACTION_NEXT)
-                {
-                    Editable editableText = mInputEt.getText();
-                    if(editableText != null)
-                    {
-                        String str = editableText.toString();
-
-                        mInputEt.setText("");
-
-                        OnInputEnd(str);
-                    }
-
-                }
-                return false;
-            }
+            return false;
         });
 
         HideInputLayout();
@@ -141,7 +95,7 @@ public class CustomKeyboard {
 
     public void onHeightChanged(int height)
     {
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mInputLayout.getLayoutParams();
+        android.view.ViewGroup.MarginLayoutParams params = (android.view.ViewGroup.MarginLayoutParams) mInputLayout.getLayoutParams();
         params.setMargins(0, 0 , 0, height);
         mInputLayout.setLayoutParams(params);
     }
@@ -172,7 +126,7 @@ public class CustomKeyboard {
 
         mInputLayout.postDelayed(mAnimTask, 60);
 
-        mCurrentHistoryMessage = 0;
+        mInputHistory.reset();
 
         if(mSavedInput != null)
         {
@@ -184,7 +138,7 @@ public class CustomKeyboard {
     public void HideInputLayout()
     {
 
-        mCurrentHistoryMessage = 0;
+        mInputHistory.reset();
 
         if(mInputEt.getEditableText() != null)
         {
@@ -207,17 +161,15 @@ public class CustomKeyboard {
         mIsShowing = false;
     }
 
+    private void showHistory(String text) {
+        mInputEt.setText(text);
+        mInputEt.setSelection(mInputEt.getText().length());
+    }
+
     private void OnInputEnd(String str)
     {
-        if(mInputHistory.size() >= mMaxHistory)
-        {
-            mInputHistory.remove(mInputHistory.size() - 1);
-        }
-        mInputHistory.add(0, str);
-
+        mInputHistory.add(str);
         InputListener listener = (InputListener)mContext;
-
         listener.OnInputEnd(str);
     }
 }
-

@@ -41,7 +41,7 @@ public class GameDataVerifier {
 
         for (String relativePath : ESSENTIAL_FILES) {
             File target = new File(baseDir, relativePath);
-            if (!target.exists() || target.length() == 0) {
+            if (!target.isFile() || target.length() == 0) {
                 missingFiles.add(relativePath);
             } else {
                 totalSize += target.length();

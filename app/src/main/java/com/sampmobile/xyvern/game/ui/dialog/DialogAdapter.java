@@ -118,7 +118,7 @@ public class DialogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>
                     iArr2[0] = (int) textWidth;
                 }
             } else {
-                String[] split = str.split("\t");
+                String[] split = DialogColumns.split(str);
                 int length = split.length;
                 if (length > 4) {
                     length = 4;
@@ -161,51 +161,45 @@ public class DialogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>
                 viewHolder.mFields[i2].setText("");
             }
         }
-        String str = this.mRowsList.get(viewHolder.getAdapterPosition());
-        if (!this.mTablist) {
+        int position = viewHolder.getAdapterPosition();
+        if (position == RecyclerView.NO_POSITION || position >= mRowsList.size()) return;
+        String str = mRowsList.get(position);
+        if (!mTablist) {
             viewHolder.mFields[0].setText(Util.getColoredString(str));
         } else {
-            String[] split = str.split("\t");
-            int length = split.length;
-            if (length > 4) {
-                length = 4;
-            }
-            for (int i3 = 0; i3 < 4; i3++) {
-                if (length > i3) {
-                    viewHolder.mFields[i3].setText(Util.getColoredString(split[i3]));
-                }
+            String[] columns = DialogColumns.split(str);
+            for (int column = 0; column < Math.min(4, columns.length); column++) {
+                viewHolder.mFields[column].setText(Util.getColoredString(columns[column]));
             }
         }
-        if (this.mCurrentSelectedPosition == viewHolder.getAdapterPosition()) {
-            this.mCurrentSelectedView = viewHolder.mRowBg;
-            viewHolder.mRowBg.setVisibility(View.VISIBLE);
-            this.mOnClickListener.onClick(viewHolder.getAdapterPosition(), viewHolder.mFields[0].getText().toString());
-        } else {
-            viewHolder.mRowBg.setVisibility(View.GONE);
+        boolean selected = mCurrentSelectedPosition == position;
+        viewHolder.mRowBg.setVisibility(selected ? View.VISIBLE : View.GONE);
+        if (selected && mOnClickListener != null) {
+            mOnClickListener.onClick(position, responseText(position));
         }
         ViewGroup.LayoutParams layoutParams2 = viewHolder.getMView().getLayoutParams();
-        layoutParams2.width = this.mNeedMatchParent ? -1 : -2;
+        layoutParams2.width = mNeedMatchParent ? -1 : -2;
         viewHolder.getMView().setLayoutParams(layoutParams2);
 
-        viewHolder.getMView().setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                if (viewHolder.getAdapterPosition() != DialogAdapter.this.mCurrentSelectedPosition) {
-                    if (DialogAdapter.this.mCurrentSelectedView != null) {
-                        DialogAdapter.this.mCurrentSelectedView.startAnimation(DialogAdapter.this.buttonHide);
-                        DialogAdapter.this.mCurrentSelectedView.setVisibility(View.GONE);
-                    }
-                    int unused = DialogAdapter.this.mCurrentSelectedPosition = viewHolder.getAdapterPosition();
-                    View unused2 = DialogAdapter.this.mCurrentSelectedView = viewHolder.mRowBg;
-                    viewHolder.mRowBg.startAnimation(DialogAdapter.this.buttonShow);
-                    viewHolder.mRowBg.setVisibility(View.VISIBLE);
-                    DialogAdapter.this.mOnClickListener.onClick(viewHolder.getAdapterPosition(), viewHolder.mFields[0].getText().toString());
-                }
-                else if (DialogAdapter.this.mOnDoubleClickListener != null) {
-                    view.startAnimation(DialogAdapter.this.buttonScale);
-                    DialogAdapter.this.mOnDoubleClickListener.onDoubleClick();
-                }
+        viewHolder.getMView().setOnClickListener(view -> {
+            int clicked = viewHolder.getAdapterPosition();
+            if (clicked == RecyclerView.NO_POSITION || clicked >= mRowsList.size()) return;
+            if (clicked != mCurrentSelectedPosition) {
+                int old = mCurrentSelectedPosition;
+                mCurrentSelectedPosition = clicked;
+                if (old >= 0 && old < getItemCount()) notifyItemChanged(old);
+                notifyItemChanged(clicked);
+                if (mOnClickListener != null) mOnClickListener.onClick(clicked, responseText(clicked));
+            } else if (mOnDoubleClickListener != null) {
+                view.startAnimation(buttonScale);
+                mOnDoubleClickListener.onDoubleClick();
             }
         });
+    }
+
+    private String responseText(int position) {
+        String row = mRowsList.get(position);
+        return Util.getStringWithoutColors(mTablist ? DialogColumns.split(row)[0] : row);
     }
 
     public int getItemCount() {

@@ -11,6 +11,7 @@ public:
 	void hide();
 
 	void assemble();
+	void refresh();
 
 	virtual void performLayout() override;
 	virtual void draw(ImGuiRenderer* renderer) override;
