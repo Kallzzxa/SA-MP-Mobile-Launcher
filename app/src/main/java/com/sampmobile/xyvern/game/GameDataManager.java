@@ -129,10 +129,10 @@ public final class GameDataManager {
         }
     }
 
-    private static void markInstalled(Context a, DataInfo info) {
+    private static void markInstalled(Context a, DataInfo info) throws Exception {
         try {
             File root = a.getExternalFilesDir(null);
-            if (root == null) return;
+            if (root == null) throw new Exception("Penyimpanan tidak tersedia.");
             File marker = new File(root, MARKER);
             File parent = marker.getParentFile();
             if (parent != null && !parent.exists()) parent.mkdirs();
@@ -142,7 +142,7 @@ public final class GameDataManager {
             a.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
                     .edit().putString(KEY_DATA_VERSION, info.version).apply();
         } catch (Exception e) {
-            android.util.Log.e("GameDataManager", "markInstalled failed", e);
+            throw new Exception("Gagal menyimpan status instalasi data game.", e);
         }
     }
 
@@ -175,7 +175,7 @@ public final class GameDataManager {
         if (a.isFinishing()) return; dismissLoading(); setImmersive(a, false);
         LinearLayout root = panel(a); root.setPadding(dp(a,24),dp(a,24),dp(a,24),dp(a,22));
         ImageView icon=iconView(a,R.drawable.ic_gear,56);
-        TextView title=text(a,"M-SAMP Maintenance",22,true); title.setGravity(Gravity.CENTER);
+        TextView title=text(a,"HopePride Maintenance",22,true); title.setGravity(Gravity.CENTER);
         TextView msg=text(a,"Client SAMP sedang maintenance untuk update.",14,false); msg.setTextColor(Color.LTGRAY); msg.setGravity(Gravity.CENTER);
         Button exit=button(a,"KELUAR"); exit.setOnClickListener(v -> { a.finishAffinity(); android.os.Process.killProcess(android.os.Process.myPid()); });
         root.addView(icon); addGap(a,root,8); root.addView(title); addGap(a,root,10); root.addView(msg); addGap(a,root,22); root.addView(exit);
@@ -264,19 +264,25 @@ public final class GameDataManager {
                 } catch (Exception ignored) {}
                 if (s.phase == GameDataDownloadService.PHASE_DONE) {
                     unregisterProgressUi();
+                    ui.dialog.dismiss();
                     dismissLoading();
                     setImmersive(a, false);
                     Toast.makeText(a, "Game data siap dimainkan", Toast.LENGTH_SHORT).show();
                     ReadyCallback cb = readyCallback;
-                    if (cb != null && !a.isFinishing()) cb.onReady();
+                    readyCallback = null;
+                    if (cb != null && !a.isFinishing() && !a.isDestroyed()) cb.onReady();
                 } else if (s.phase == GameDataDownloadService.PHASE_FAILED) {
                     unregisterProgressUi();
-                    if (!a.isFinishing()) {
+                    ui.dialog.dismiss();
+                    setImmersive(a, false);
+                    if (!a.isFinishing() && !a.isDestroyed()) {
                         new AlertDialog.Builder(a).setTitle("Download gagal")
                                 .setMessage(s.error == null ? "Silakan coba lagi." : s.error)
                                 .setCancelable(false)
-                                .setPositiveButton("COBA LAGI", (x, w) ->
-                                        GameDataDownloadService.autoResume(a))
+                                .setPositiveButton("COBA LAGI", (x, w) -> {
+                                    registerProgressUi(a);
+                                    GameDataDownloadService.autoResume(a);
+                                })
                                 .setNegativeButton("KELUAR", (x, w) -> a.finishAffinity())
                                 .show();
                     }

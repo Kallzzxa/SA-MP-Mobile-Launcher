@@ -96,15 +96,19 @@ public class HomeFragment extends Fragment {
 
         btnVerifyData.setOnClickListener(v -> runVerification());
 
-        runVerification();
-
         return view;
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        if (!isDownloading) {
+        int phase = GameDataDownloadService.getState().phase;
+        if (phase == GameDataDownloadService.PHASE_CONNECT
+                || phase == GameDataDownloadService.PHASE_DOWNLOAD
+                || phase == GameDataDownloadService.PHASE_EXTRACT) {
+            showDownloadProgress();
+            observeDownload(true);
+        } else if (!isDownloading) {
             runVerification();
         }
     }
@@ -114,9 +118,12 @@ public class HomeFragment extends Fragment {
         tvDataDesc.setText("Verifying game files...");
         btnVerifyData.setEnabled(false);
 
+        final Context appContext = requireContext().getApplicationContext();
+        final View currentView = getView();
         executor.execute(() -> {
-            GameDataVerifier.VerificationResult result = GameDataVerifier.verifyGameData(requireContext());
+            GameDataVerifier.VerificationResult result = GameDataVerifier.verifyGameData(appContext);
             mainHandler.post(() -> {
+                if (currentView == null || getView() != currentView || !isAdded() || isDownloading) return;
                 btnVerifyData.setEnabled(true);
                 if (result.isValid) {
                     dotStatus.setBackgroundResource(R.drawable.bg_dot_green);
@@ -154,6 +161,13 @@ public class HomeFragment extends Fragment {
 
     private void startOnlineDataDownload() {
         if (getContext() == null) return;
+        showDownloadProgress();
+        observeDownload(false);
+        GameDataDownloadService.start(requireContext(),
+                GameDataDownloadService.ACTION_ASSETS, DATA_ZIP_URL, "assets", 666478908L, "");
+    }
+
+    private void showDownloadProgress() {
         isDownloading = true;
         pbDownload.setVisibility(View.VISIBLE);
         tvDownloadProgress.setVisibility(View.VISIBLE);
@@ -163,13 +177,16 @@ public class HomeFragment extends Fragment {
         tvDownloadProgress.setText("0%");
         tvDataDesc.setText("Connecting to asset server...");
         btnDownloadData.setEnabled(false);
+        btnVerifyData.setEnabled(false);
+    }
 
-        // Run in GameDataDownloadService so it survives the Activity and
-        // resumes via Range + .part with retry; we only observe progress here.
+    private void observeDownload(boolean replayState) {
+        if (listener != null) return;
+        final View currentView = getView();
         GameDataDownloadService.Listener l = s -> {
             if (!isAdded() || getContext() == null) return;
             mainHandler.post(() -> {
-                if (!isAdded()) return;
+                if (!isAdded() || currentView == null || getView() != currentView || !isDownloading) return;
                 if (s.phase == GameDataDownloadService.PHASE_EXTRACT) {
                     pbDownload.setProgress(s.percent);
                     tvDownloadProgress.setText("Extracting " + s.percent + "% ("
@@ -181,14 +198,17 @@ public class HomeFragment extends Fragment {
                     btnDownloadData.setEnabled(true);
                     Toast.makeText(getContext(), "Game assets successfully installed!", Toast.LENGTH_LONG).show();
                     GameDataDownloadService.removeListener(this.listener);
+                    this.listener = null;
                     runVerification();
                 } else if (s.phase == GameDataDownloadService.PHASE_FAILED) {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
+                    btnVerifyData.setEnabled(true);
                     tvDataDesc.setText("Download error: " + s.error + "\nTap Download Assets to resume.");
                     GameDataDownloadService.removeListener(this.listener);
+                    this.listener = null;
                 } else if (s.phase == GameDataDownloadService.PHASE_DOWNLOAD) {
                     pbDownload.setProgress(s.percent);
                     tvDownloadProgress.setText(s.percent + "% (" + (s.bytes / 1048576)
@@ -198,8 +218,9 @@ public class HomeFragment extends Fragment {
         };
         this.listener = l;
         GameDataDownloadService.addListener(l);
-        GameDataDownloadService.start(requireContext(),
-                GameDataDownloadService.ACTION_ASSETS, DATA_ZIP_URL, "assets", 666478908L, "");
+        // Catch a state transition that happened just before registration.
+        GameDataDownloadService.State state = GameDataDownloadService.getState();
+        if (replayState && state.phase != GameDataDownloadService.PHASE_IDLE) l.onState(state);
     }
 
     private volatile GameDataDownloadService.Listener listener;
@@ -208,7 +229,13 @@ public class HomeFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         if (listener != null) { GameDataDownloadService.removeListener(listener); listener = null; }
+        isDownloading = false;
+    }
+
+    @Override
+    public void onDestroy() {
         executor.shutdownNow();
+        super.onDestroy();
     }
 
     private void unzipFile(File zipFile, File targetDir) throws Exception {

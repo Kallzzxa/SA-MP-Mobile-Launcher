@@ -86,7 +86,9 @@ public class PlayFragment extends Fragment {
         Button btnAdd = view.findViewById(R.id.btn_add_server);
         btnAdd.setOnClickListener(v -> showAddServerDialog());
 
-        loadData();
+        // Favorites are local and must be visible even when the hosted list is offline.
+        switchTab(showingFavorites);
+        loadData(view);
 
         return view;
     }
@@ -95,7 +97,14 @@ public class PlayFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         stopPingTask();
+        adapter = null;
+        rvServers = null;
+    }
+
+    @Override
+    public void onDestroy() {
         queryExecutor.shutdownNow();
+        super.onDestroy();
     }
 
     private void switchTab(boolean favorites) {
@@ -105,7 +114,7 @@ public class PlayFragment extends Fragment {
         updateList();
     }
 
-    private void loadData() {
+    private void loadData(View view) {
         queryExecutor.execute(() -> {
             try {
                 URL url = new URL(HOSTED_URL);
@@ -141,6 +150,7 @@ public class PlayFragment extends Fragment {
 
                     if (getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
+                            if (!isAdded() || getView() != view) return;
                             hostedServers.clear();
                             hostedServers.addAll(fetched);
                             updateList();
@@ -210,6 +220,7 @@ public class PlayFragment extends Fragment {
                         String[] info = query.mo7164b();
                         if (getActivity() != null) {
                             getActivity().runOnUiThread(() -> {
+                                if (!isAdded() || !detailDialog.isShowing()) return;
                                 if (info != null) {
                                     tvName.setText(info[3]);
                                     tvOnline.setText(info[1] + " / " + info[2]);
@@ -434,6 +445,7 @@ public class PlayFragment extends Fragment {
 
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
+                        if (!isAdded() || !addDialog.isShowing() || getView() == null) return;
                         if (serverAlreadyExists(finalIp, finalPort)) {
                             Toast.makeText(getContext(), "Server tersebut sudah ada!", Toast.LENGTH_SHORT).show();
                             addDialog.dismiss();

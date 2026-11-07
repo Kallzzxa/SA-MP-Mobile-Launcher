@@ -67,7 +67,8 @@ android {
             isJniDebuggable = false
             isMinifyEnabled = false
 
-            signingConfig = signingConfigs.getByName("release")
+            // Debug APKs use the local debug key, never the release signing key.
+            signingConfig = signingConfigs.getByName("debug")
 
             externalNativeBuild {
                 cmake {

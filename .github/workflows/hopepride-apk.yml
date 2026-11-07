@@ -1,0 +1,63 @@
+name: HopePride Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'arena/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source and LFS binaries
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.2.11394342 cmake;3.22.1'
+          accept-android-sdk-licenses: true
+
+      - name: Check required native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for lib in \
+            app/src/main/jniLibs/armeabi-v7a/libGTASA.so \
+            app/src/main/jniLibs/arm64-v8a/libGTASA.so \
+            app/src/main/cpp/samp/vendor/GlossHook/libs/ARM/libGlossHook.so \
+            app/src/main/cpp/samp/vendor/GlossHook/libs/ARM64/libGlossHook.so; do
+            if [ ! -s "$lib" ] || head -c 40 "$lib" | grep -q 'version https://git-lfs.github.com/spec'; then
+              echo "Missing Git LFS binary: $lib" >&2
+              exit 1
+            fi
+          done
+
+      - name: Run unit tests and build debug APK
+        run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/HopePride-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HopePride-debug
+          path: artifacts/HopePride-debug.apk
+          if-no-files-found: error
+          retention-days: 14

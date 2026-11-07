@@ -16,7 +16,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.499"
-        app:srcCompat="@drawable/samp_logo" />
+        android:contentDescription="@string/hopepride_logo_description"
+        app:srcCompat="@drawable/hopepride_logo" />
 
     <ProgressBar
         android:id="@+id/progressBar2"

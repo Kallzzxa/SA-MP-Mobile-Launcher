@@ -25,6 +25,7 @@ import com.joom.paranoid.Obfuscate;
 import com.sampmobile.xyvern.R;
 import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
+import com.sampmobile.xyvern.launcher.util.LauncherVersion;
 
 import org.ini4j.Wini;
 
@@ -83,13 +84,14 @@ public class SettingsFragment extends Fragment {
         adapter.setDropDownViewResource(R.layout.spinner_item);
         autoCompleteTextView.setAdapter(adapter);
 
-        // Migrasi sekali: petakan nilai VERSION lama (0-4) ke skema baru (0-1).
-        // 4 (dulu R5) -> 1, nilai > 1 lainnya -> 0. Disimpan permanen.
+        // Keep all currently supported selections. Only normalize legacy/out-of-range values.
         SharedPreferenceCore versionPrefs = new SharedPreferenceCore();
         int rawVersion = versionPrefs.getInt(requireContext().getApplicationContext(), "VERSION", 0);
-        if (rawVersion > 1) {
-            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", rawVersion == 4 ? 1 : 0);
+        int versionIndex = LauncherVersion.normalizeIndex(rawVersion, titles.length);
+        if (versionIndex != rawVersion) {
+            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", versionIndex);
         }
+        autoCompleteTextView.setSelection(versionIndex);
 
         File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
         try {
