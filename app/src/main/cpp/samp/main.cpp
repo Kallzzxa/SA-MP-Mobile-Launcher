@@ -214,6 +214,32 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
         CrashLogHex(uiSp);
         CrashLogPut("\n");
 
+        // First argument registers: a null pointer here (file handle, entity)
+        // is the usual cause of engine crashes after a failed file open.
+#if defined(__aarch64__)
+        CrashLogPut("x0:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[0]);
+        CrashLogPut("\nx1:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[1]);
+        CrashLogPut("\nx2:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[2]);
+        CrashLogPut("\n");
+#elif defined(__arm__)
+        CrashLogPut("r0:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r0);
+        CrashLogPut("\nr1:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r1);
+        CrashLogPut("\nr2:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r2);
+        CrashLogPut("\n");
+#endif
+
+        CrashLogPut("base libGTASA: ");
+        CrashLogHex(g_libGTASA);
+        CrashLogPut("\nbase libsamp:  ");
+        CrashLogHex(g_libSAMP);
+        CrashLogPut("\n");
+
         if (g_libGTASA) { CrashLogPut("pc-libGTASA: "); CrashLogHex(uiPc - g_libGTASA); CrashLogPut("\n"); }
         if (g_libSAMP)  { CrashLogPut("pc-libsamp:  "); CrashLogHex(uiPc - g_libSAMP);  CrashLogPut("\n"); }
         if (g_libGTASA) { CrashLogPut("lr-libGTASA: "); CrashLogHex(uiLr - g_libGTASA); CrashLogPut("\n"); }
@@ -221,6 +247,30 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
     }
 
     CrashLogPut("========================\n");
+}
+
+// Hand the signal to whoever owned it before us (the AML crash logger on
+// device), so its symbolised report is still produced. Handler chaining is
+// skipped for SIG_DFL/SIG_IGN.
+static void CrashChainPrevious(int iSignum, siginfo_t* pInfo, void* pContextPtr, struct sigaction* pPrevious)
+{
+    if (!pPrevious) return;
+
+    if (pPrevious->sa_flags & SA_SIGINFO)
+    {
+        if (pPrevious->sa_sigaction &&
+            pPrevious->sa_sigaction != (void*)SIG_DFL &&
+            pPrevious->sa_sigaction != (void*)SIG_IGN)
+        {
+            pPrevious->sa_sigaction(iSignum, pInfo, pContextPtr);
+        }
+    }
+    else if (pPrevious->sa_handler &&
+             pPrevious->sa_handler != SIG_DFL &&
+             pPrevious->sa_handler != SIG_IGN)
+    {
+        pPrevious->sa_handler(iSignum);
+    }
 }
 
 // Restore the default disposition and return: the faulting instruction runs
@@ -244,24 +294,28 @@ extern uintptr_t g_dwLastRetAddrCrash;
 void handler(int signum, siginfo_t *info, void* contextPtr)
 {
     CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act_old);
     CrashRestoreDefault(signum);
 }
 
 void handler1(int signum, siginfo_t *info, void* contextPtr)
 {
     CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act1_old);
     CrashRestoreDefault(signum);
 }
 
 void handler2(int signum, siginfo_t *info, void* contextPtr)
 {
     CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act2_old);
     CrashRestoreDefault(signum);
 }
 
 void handler3(int signum, siginfo_t *info, void* contextPtr)
 {
     CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act3_old);
     CrashRestoreDefault(signum);
 }
 
