@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import java.io.FileOutputStream;
 import java.io.InputStream;

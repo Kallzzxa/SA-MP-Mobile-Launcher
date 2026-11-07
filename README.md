@@ -114,7 +114,7 @@ Output lokal: `app/build/outputs/apk/debug/app-debug.apk`<br />
 Artifact GitHub Actions: `HopePride-debug.apk`
 
 > [!IMPORTANT]
-> Package ID `com.hopepride.samp` adalah aplikasi baru bagi Android, bukan pembaruan dari `com.sampmobile.xyvern`. Cadangkan data lama sebelum menghapus aplikasi lama; file game perlu disalin atau diunduh ke direktori aplikasi baru. Favorit dan pengaturan tidak berpindah otomatis. Namespace Java/JNI tetap menggunakan nama lama untuk menjaga kompatibilitas library native.
+> Package ID `com.hopepride.samp` adalah aplikasi baru bagi Android, bukan pembaruan dari `com.hopepride.samp`. Cadangkan data lama sebelum menghapus aplikasi lama; file game perlu disalin atau diunduh ke direktori aplikasi baru. Favorit dan pengaturan tidak berpindah otomatis. Namespace Java/JNI tetap menggunakan nama lama untuk menjaga kompatibilitas library native.
 
 ## 🔧 Konfigurasi sebelum rilis
 

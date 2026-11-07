@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.fragments;
+package com.hopepride.samp.launcher.fragments;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -23,11 +23,11 @@ import com.downloader.PRDownloader;
 import com.downloader.PRDownloaderConfig;
 import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.game.GameDataDownloadService;
-import com.sampmobile.xyvern.launcher.MainActivity;
-import com.sampmobile.xyvern.launcher.data.FilesData;
-import com.sampmobile.xyvern.launcher.util.GameDataVerifier;
+import com.hopepride.samp.R;
+import com.hopepride.samp.game.GameDataDownloadService;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.data.FilesData;
+import com.hopepride.samp.launcher.util.GameDataVerifier;
 
 import org.json.JSONArray;
 import org.json.JSONObject;

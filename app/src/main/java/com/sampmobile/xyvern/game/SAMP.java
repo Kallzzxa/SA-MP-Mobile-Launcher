@@ -1,9 +1,9 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.widget.FrameLayout;
 
-import com.sampmobile.xyvern.cef.CefClientManager;
-import com.sampmobile.xyvern.cef.CefJavaManager;
+import com.hopepride.samp.cef.CefClientManager;
+import com.hopepride.samp.cef.CefJavaManager;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -15,14 +15,14 @@ import android.widget.Toast;
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.game.ui.AttachEdit;
-import com.sampmobile.xyvern.game.ui.CustomKeyboard;
-import com.sampmobile.xyvern.game.ui.LoadingScreen;
+import com.hopepride.samp.game.ui.AttachEdit;
+import com.hopepride.samp.game.ui.CustomKeyboard;
+import com.hopepride.samp.game.ui.LoadingScreen;
 import androidx.activity.OnBackPressedCallback;
-import com.sampmobile.xyvern.game.ui.dialog.DialogManager;
-import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
-import com.sampmobile.xyvern.launcher.util.SignatureChecker;
-import com.sampmobile.xyvern.launcher.util.ServerInput;
+import com.hopepride.samp.game.ui.dialog.DialogManager;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.SignatureChecker;
+import com.hopepride.samp.launcher.util.ServerInput;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -148,7 +148,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.i(TAG, "**** onCreate");
-        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_START");
+        com.hopepride.samp.diagnostics.Diagnostics.event("GAME_ACTIVITY_START");
         super.onCreate(savedInstanceState);
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName())) {
@@ -165,7 +165,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 if (!cleoDir.exists()) cleoDir.mkdirs();
             }
 
-            boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
+            boolean amlEnabled = getSharedPreferences("com.hopepride.samp", MODE_PRIVATE)
                     .getBoolean("aml_enabled", true);
             if (amlEnabled) {
                 try {
@@ -176,7 +176,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 }
             }
 
-            boolean cleoEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
+            boolean cleoEnabled = getSharedPreferences("com.hopepride.samp", MODE_PRIVATE)
                     .getBoolean("cleo_enabled", true);
             if (cleoEnabled) {
                 try {
@@ -201,9 +201,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         // ============================================================
         try {
             android.content.SharedPreferences cefPrefs = getSharedPreferences(
-                    com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
+                    com.hopepride.samp.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
             boolean cefEnabled = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
-            com.sampmobile.xyvern.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
+            com.hopepride.samp.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
             if (!cefEnabled) {
                 Log.i(TAG, "SA:MP Mobile CEF disabled in settings");
             } else {
@@ -227,7 +227,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         String password = getIntent().getStringExtra("server_password");
         if (password == null) password = "";
         String nickname = getIntent().getStringExtra("nickname");
-        if (nickname == null) nickname = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
+        if (nickname == null) nickname = getSharedPreferences("com.hopepride.samp", MODE_PRIVATE)
                 .getString("nickname", "AndroidUser");
         if (!ServerInput.isValidHost(ip) || !ServerInput.isValidPort(port)
                 || !ServerInput.isValidPassword(password) || !ServerInput.isValidNickname(nickname)) {
@@ -238,9 +238,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         try {
             initAssetManager(getAssets());
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ASSET_MANAGER_READY");
+            com.hopepride.samp.diagnostics.Diagnostics.event("GAME_ASSET_MANAGER_READY");
         } catch (UnsatisfiedLinkError e) {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_ASSET_MANAGER_FAILED", e);
+            com.hopepride.samp.diagnostics.Diagnostics.error("GAME_ASSET_MANAGER_FAILED", e);
             Log.e(TAG, "initAssetManager failed", e);
             Toast.makeText(this, "Library game tidak dapat dimulai. Periksa instalasi APK.", Toast.LENGTH_LONG).show();
             finish();
@@ -266,16 +266,16 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private void startGameAfterDataReady(String ip, int port, String password, String nickname) {
         try {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_SETTINGS_PREPARE");
+            com.hopepride.samp.diagnostics.Diagnostics.event("GAME_SETTINGS_PREPARE");
             updateSettingsIni(ip, port, password, nickname);
             File external = getExternalFilesDir(null);
             if (external == null) throw new java.io.IOException("Penyimpanan game tidak tersedia.");
             String storagePath = external.getAbsolutePath();
             if (!storagePath.endsWith("/")) storagePath += "/";
             initializeSAMP(storagePath);
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_NATIVE_INITIALIZATION_REQUESTED");
+            com.hopepride.samp.diagnostics.Diagnostics.event("GAME_NATIVE_INITIALIZATION_REQUESTED");
         } catch (Exception | UnsatisfiedLinkError e) {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_NATIVE_INITIALIZATION_FAILED", e);
+            com.hopepride.samp.diagnostics.Diagnostics.error("GAME_NATIVE_INITIALIZATION_FAILED", e);
             Log.e(TAG, "Gagal inisialisasi game", e);
             Toast.makeText(this, "Gagal memulai game: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
@@ -366,7 +366,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
-        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_DESTROY");
+        com.hopepride.samp.diagnostics.Diagnostics.event("GAME_ACTIVITY_DESTROY");
         super.onDestroy();
         instance = null;
         // Mematikan paksa proses game saat keluar untuk menghindari crash "destroyed mutex" 

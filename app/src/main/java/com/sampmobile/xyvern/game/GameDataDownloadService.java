@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -44,8 +44,8 @@ import java.util.regex.Pattern;
  */
 public class GameDataDownloadService extends Service {
 
-    public static final String ACTION_GAME_DATA = "com.sampmobile.xyvern.action.DOWNLOAD_GAME_DATA";
-    public static final String ACTION_ASSETS = "com.sampmobile.xyvern.action.DOWNLOAD_ASSETS";
+    public static final String ACTION_GAME_DATA = "com.hopepride.samp.action.DOWNLOAD_GAME_DATA";
+    public static final String ACTION_ASSETS = "com.hopepride.samp.action.DOWNLOAD_ASSETS";
 
     public static final String EXTRA_URL = "url";          // page or direct url
     public static final String EXTRA_VERSION = "version";
@@ -223,7 +223,7 @@ public class GameDataDownloadService extends Service {
     // ------------------------------------------------------------ job ------
     private void runJob(String action, String pageUrl, String version, long expectedSize, String sentinel) {
         String stage = "DATA_DOWNLOAD_SETUP";
-        com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
+        com.hopepride.samp.diagnostics.Diagnostics.event(stage);
         try {
             Context c = this;
             File base = getExternalFilesDir(null);
@@ -236,7 +236,7 @@ public class GameDataDownloadService extends Service {
 
             // 1. Resolve page -> direct url (MediaFire), persisted for resume.
             stage = "DATA_DOWNLOAD_RESOLVE";
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
+            com.hopepride.samp.diagnostics.Diagnostics.event(stage);
             String resolvedKey = DownloadSafety.resolvedKey(versionTag);
             String direct = prefs(this).getString(resolvedKey, "");
             if (direct == null || direct.isEmpty()) {
@@ -251,18 +251,18 @@ public class GameDataDownloadService extends Service {
 
             // 2. + 3. Download with full resume + retry-with-backoff.
             stage = "DATA_DOWNLOAD_TRANSFER";
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
+            com.hopepride.samp.diagnostics.Diagnostics.event(stage);
             downloadLoop(direct, part, expectedSize);
 
             // 5. Verify size BEFORE extract.
             stage = "DATA_DOWNLOAD_VERIFY_SIZE";
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
+            com.hopepride.samp.diagnostics.Diagnostics.event(stage);
             if (expectedSize > 0 && part.length() != expectedSize)
                 throw new Exception("Ukuran file tidak sesuai (" + part.length()
                         + " / " + expectedSize + "). Download corrupt.");
 
             stage = "DATA_DOWNLOAD_EXTRACT";
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event(stage);
+            com.hopepride.samp.diagnostics.Diagnostics.event(stage);
             setState(PHASE_EXTRACT, 100, part.length(), part.length(), "Menyiapkan ekstrak...", null);
             updateNotification(buildNotification("Mengekstrak...", 100));
             if (part.renameTo(finalZip)) {
@@ -273,9 +273,9 @@ public class GameDataDownloadService extends Service {
                     // Extract from our cache instead of staging over a user's files.zip.
                     unzipTo(c, finalZip, base);
                 }
-                boolean complete = com.sampmobile.xyvern.launcher.util.GameDataVerifier
+                boolean complete = com.hopepride.samp.launcher.util.GameDataVerifier
                         .verifyGameData(c).isValid;
-                if (!complete) com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_FILES_INCOMPLETE");
+                if (!complete) com.hopepride.samp.diagnostics.Diagnostics.event("DATA_FILES_INCOMPLETE");
                 try { if (finalZip.exists()) finalZip.delete(); } catch (Exception ignored) {}
                 clearPending(c);
                 setState(PHASE_DONE, 100, 100, 100, complete
@@ -284,12 +284,12 @@ public class GameDataDownloadService extends Service {
             } else {
                 throw new Exception("Gagal menyiapkan file hasil unduhan.");
             }
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_DOWNLOAD_DONE");
+            com.hopepride.samp.diagnostics.Diagnostics.event("DATA_DOWNLOAD_DONE");
         } catch (Exception e) {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.error(stage + "_FAILED", e);
+            com.hopepride.samp.diagnostics.Diagnostics.error(stage + "_FAILED", e);
             if (e instanceof java.net.HttpRetryException) {
                 int code = ((java.net.HttpRetryException) e).responseCode();
-                if (code >= 100 && code <= 599) com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_HTTP_" + code);
+                if (code >= 100 && code <= 599) com.hopepride.samp.diagnostics.Diagnostics.event("DATA_HTTP_" + code);
             }
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             setState(PHASE_FAILED, sState.percent, sState.bytes, sState.total, "Gagal", msg);
@@ -311,7 +311,7 @@ public class GameDataDownloadService extends Service {
             } catch (Exception e) {
                 if (mCancelled) throw new Exception("Download dibatalkan.");
                 if (isTransient(e) && ++attempt <= MAX_RETRIES) {
-                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_DOWNLOAD_RETRY_" + attempt);
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_DOWNLOAD_RETRY_" + attempt);
                     long backoffMs = RETRY_BACKOFF_MS * (1L << Math.min(attempt - 1, 4));
                     setState(sState.phase, sState.percent, sState.bytes, sState.total,
                             "Terputus — retry " + attempt + "/" + MAX_RETRIES, null);
@@ -513,7 +513,7 @@ public class GameDataDownloadService extends Service {
 
     private PendingIntent openMainIntent() {
         Intent i = new Intent();
-        i.setClassName(getPackageName(), "com.sampmobile.xyvern.launcher.MainActivity");
+        i.setClassName(getPackageName(), "com.hopepride.samp.launcher.MainActivity");
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;

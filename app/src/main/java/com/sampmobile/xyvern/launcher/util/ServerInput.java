@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 /** Input constraints for the SA-MP client and its native INI reader. */
 public final class ServerInput {

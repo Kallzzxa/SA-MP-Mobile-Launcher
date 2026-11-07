@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
-        android:name="com.sampmobile.xyvern.diagnostics.HopeApplication"
+        android:name="com.hopepride.samp.diagnostics.HopeApplication"
         android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
         android:banner="@drawable/hopepride_banner"
@@ -46,7 +46,7 @@
         </provider>
 
         <activity
-            android:name="com.sampmobile.xyvern.game.SAMP"
+            android:name="com.hopepride.samp.game.SAMP"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
@@ -84,7 +84,7 @@
             android:foregroundServiceType="dataSync" />
 
         <service
-            android:name="com.sampmobile.xyvern.launcher.util.FirebaseMessageReceiver"
+            android:name="com.hopepride.samp.launcher.util.FirebaseMessageReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui;
+package com.hopepride.samp.game.ui;
 
 import java.util.ArrayList;
 import java.util.List;

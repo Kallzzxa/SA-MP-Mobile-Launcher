@@ -847,7 +847,7 @@ void DLManager_InitJniCache(JNIEnv* env) {
 
 // ---------------------------------------------------------------------------
 // JNI HTTPS download: delegates https:// URLs to Android's HttpURLConnection
-// via com.sampmobile.xyvern.game.DLHttpClient. The JVM's TLS stack (system
+// via com.hopepride.samp.game.DLHttpClient. The JVM's TLS stack (system
 // trust store, full cert validation) is used — cert validation is NEVER
 // disabled. Worker threads attach/detach around the call.
 //
