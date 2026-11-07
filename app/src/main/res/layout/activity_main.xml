@@ -22,11 +22,11 @@
     <LinearLayout
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:background="#0B0F19"
+        android:layout_height="70dp"
+        android:background="#0D1522"
         android:orientation="horizontal"
         android:gravity="center"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="18dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout

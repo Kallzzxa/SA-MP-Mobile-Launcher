@@ -1,258 +1,126 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="@dimen/_250sdp"
-    android:layout_height="@dimen/_350sdp"
-    android:layout_gravity="center"
-    android:background="@color/colorPrimary">
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_round"
+    android:fillViewport="true"
+    android:scrollbars="none">
 
-
-    <Button
-        android:id="@+id/server_connect"
-        android:layout_width="@dimen/_72sdp"
-        android:layout_height="@dimen/_28sdp"
-        android:background="@drawable/ic_buttoncolor"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="Connect"
-        android:textAllCaps="false"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_9sdp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.935"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.961" />
-
-    <Button
-        android:id="@+id/save_favorites"
-        android:layout_width="@dimen/_72sdp"
-        android:layout_height="@dimen/_28sdp"
-        android:background="@drawable/ic_buttoncolor3"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="Delete"
-        android:textAllCaps="false"
-        android:textColor="@color/black"
-        android:textSize="@dimen/_9sdp"
-        android:visibility="visible"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.437"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.961" />
-
-    <TextView
-        android:id="@+id/server_hostname"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:gravity="center"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="Gor Grigoryan"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_14sdp"
-        android:textStyle="bold"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.199" />
+        android:orientation="vertical"
+        android:padding="22dp">
 
-    <View
-        android:layout_width="@dimen/_200sdp"
-        android:layout_height="@dimen/_3sdp"
-        android:background="#0284C7"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.496"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.034" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:letterSpacing="0.08"
+                android:text="SERVER DETAILS"
+                android:textColor="#38BDF8"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/server_close"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Tutup"
+                android:padding="11dp"
+                app:srcCompat="@drawable/ic_close" />
+        </LinearLayout>
 
-    <EditText
-        android:id="@+id/server_password"
-        android:layout_width="@dimen/_190sdp"
-        android:layout_height="@dimen/_35sdp"
-        android:background="@drawable/ic_nickname_bg"
-        android:ems="10"
-        android:focusable="auto"
-        android:fontFamily="@font/montserrat_regular"
-        android:hint="Username"
-        android:imeOptions="flagNoExtractUi"
-        android:inputType="textPersonName"
-        android:paddingStart="@dimen/_15sdp"
-        android:textColor="@color/white"
-        android:textColorHint="@color/gray"
-        android:textSize="@dimen/_11sdp"
-        android:visibility="visible"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.768" />
+        <TextView
+            android:id="@+id/server_hostname"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:text="Server"
+            android:textColor="#F8FAFC"
+            android:textSize="20sp" />
 
-    <TextView
-        android:id="@+id/textView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="IP: "
-        android:textColor="#CACACA"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.1"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.3" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_server_card"
+            android:orientation="vertical"
+            android:padding="14dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ALAMAT SERVER" android:textColor="#94A3B8" android:textSize="10sp" />
+            <TextView android:id="@+id/server_ip" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:fontFamily="@font/montserrat_medium" android:textColor="#F8FAFC" android:textSize="13sp" />
+            <TextView android:id="@+id/server_port" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:textColor="#94A3B8" android:textSize="12sp" />
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="12dp" android:background="#26384D" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="PEMAIN" android:textColor="#94A3B8" android:textSize="10sp" />
+            <TextView android:id="@+id/server_online" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:fontFamily="@font/montserrat_medium" android:textColor="#F8FAFC" android:textSize="13sp" />
+            <TextView android:id="@+id/server_mode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:ellipsize="end" android:maxLines="2" android:textColor="#CBD5E1" android:textSize="12sp" />
+            <TextView android:id="@+id/server_language" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:ellipsize="end" android:maxLines="1" android:textColor="#CBD5E1" android:textSize="12sp" />
+        </LinearLayout>
 
-    <TextView
-        android:id="@+id/server_ip"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="127.0.0.1"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.112"
-        app:layout_constraintStart_toEndOf="@+id/textView"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.3" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:fontFamily="@font/montserrat_bold" android:text="Nickname" android:textColor="#F8FAFC" android:textSize="12sp" />
+        <EditText
+            android:id="@+id/server_password"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/ic_nickname_bg"
+            android:fontFamily="@font/montserrat_regular"
+            android:hint="Nama pemain"
+            android:inputType="textNoSuggestions"
+            android:maxLength="24"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:singleLine="true"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#94A3B8"
+            android:textSize="13sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:fontFamily="@font/montserrat_bold" android:text="Password server (opsional)" android:textColor="#F8FAFC" android:textSize="12sp" />
+        <EditText
+            android:id="@+id/server_join_password"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/ic_nickname_bg"
+            android:hint="Kosongkan jika tidak diperlukan"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:maxLength="127"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:singleLine="true"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#94A3B8"
+            android:textSize="13sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Password server tersimpan dalam konfigurasi game di perangkat." android:textColor="#94A3B8" android:textSize="10sp" />
 
-    <TextView
-        android:id="@+id/textView2"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Port: "
-        android:textColor="#CACACA"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.106"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.42" />
-
-    <TextView
-        android:id="@+id/server_port"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="7777"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.125"
-        app:layout_constraintStart_toEndOf="@+id/textView2"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.42" />
-
-    <TextView
-        android:id="@+id/textView3"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Players/Maxplayers: "
-        android:textColor="#CACACA"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.177"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.53" />
-
-    <TextView
-        android:id="@+id/server_online"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="50/50"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.09"
-        app:layout_constraintStart_toEndOf="@+id/textView3"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.53" />
-
-    <TextView
-        android:id="@+id/textView4"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Mode: "
-        android:textColor="#CACACA"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.11"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.639" />
-
-    <TextView
-        android:id="@+id/server_mode"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Android"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.2"
-        app:layout_constraintStart_toEndOf="@+id/textView4"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.64" />
-
-    <TextView
-        android:id="@+id/textView5"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Language: "
-        android:textColor="#CACACA"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.126"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.752" />
-
-    <TextView
-        android:id="@+id/server_language"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_regular"
-        android:gravity="left|center"
-        android:text="Russian"
-        android:textColor="@color/white"
-        android:textSize="@dimen/_12sdp"
-        app:layout_constraintBottom_toTopOf="@+id/server_password"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.1"
-        app:layout_constraintStart_toEndOf="@+id/textView5"
-        app:layout_constraintTop_toBottomOf="@+id/server_hostname"
-        app:layout_constraintVertical_bias="0.75" />
-
-    <ImageView
-        android:id="@+id/server_close"
-        android:layout_width="@dimen/_20sdp"
-        android:layout_height="@dimen/_20sdp"
-        android:layout_marginTop="@dimen/_15sdp"
-        android:layout_marginEnd="@dimen/_15sdp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@drawable/ic_close" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <Button
+            android:id="@+id/server_connect"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#0284C7"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="Masuk server"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/save_favorites"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="4dp"
+            android:backgroundTint="#243348"
+            android:fontFamily="@font/montserrat_medium"
+            android:text="Hapus favorit"
+            android:textAllCaps="false"
+            android:textColor="#F8FAFC" />
+    </LinearLayout>
+</ScrollView>

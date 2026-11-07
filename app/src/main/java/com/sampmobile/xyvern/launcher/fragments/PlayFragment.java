@@ -31,6 +31,7 @@ import com.sampmobile.xyvern.game.SAMP;
 import com.sampmobile.xyvern.launcher.MainActivity;
 import com.sampmobile.xyvern.launcher.util.SAMPServerInfo;
 import com.sampmobile.xyvern.launcher.util.SampQueryAPI;
+import com.sampmobile.xyvern.launcher.util.ServerInput;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -57,7 +58,8 @@ public class PlayFragment extends Fragment {
     private ServerAdapter adapter;
     private final ArrayList<SAMPServerInfo> hostedServers = new ArrayList<>();
     private final ArrayList<SAMPServerInfo> currentServers = new ArrayList<>();
-    private TextView tabFavorites, tabHosted;
+    private TextView tabFavorites, tabHosted, emptyServers;
+    private boolean hostedLoading = true;
     private boolean showingFavorites = true;
 
     private Handler pingHandler;
@@ -79,6 +81,7 @@ public class PlayFragment extends Fragment {
 
         tabFavorites = view.findViewById(R.id.tab_favorites);
         tabHosted = view.findViewById(R.id.tab_hosted);
+        emptyServers = view.findViewById(R.id.empty_servers);
 
         tabFavorites.setOnClickListener(v -> switchTab(true));
         tabHosted.setOnClickListener(v -> switchTab(false));
@@ -99,6 +102,7 @@ public class PlayFragment extends Fragment {
         stopPingTask();
         adapter = null;
         rvServers = null;
+        emptyServers = null;
     }
 
     @Override
@@ -115,6 +119,7 @@ public class PlayFragment extends Fragment {
     }
 
     private void loadData(View view) {
+        hostedLoading = true;
         queryExecutor.execute(() -> {
             try {
                 URL url = new URL(HOSTED_URL);
@@ -148,18 +153,23 @@ public class PlayFragment extends Fragment {
                         fetched.add(server);
                     }
 
-                    if (getActivity() != null) {
-                        getActivity().runOnUiThread(() -> {
-                            if (!isAdded() || getView() != view) return;
-                            hostedServers.clear();
-                            hostedServers.addAll(fetched);
-                            updateList();
-                        });
-                    }
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (!isAdded() || getView() != view) return;
+                        hostedServers.clear();
+                        hostedServers.addAll(fetched);
+                        hostedLoading = false;
+                        updateList();
+                    });
                 }
                 connection.disconnect();
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.w("PlayFragment", "Gagal memuat daftar Hosted", e);
+            } finally {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (!isAdded() || getView() != view) return;
+                    hostedLoading = false;
+                    updateList();
+                });
             }
         });
     }
@@ -172,6 +182,13 @@ public class PlayFragment extends Fragment {
             currentServers.addAll(hostedServers);
         }
 
+        if (emptyServers != null) {
+            emptyServers.setVisibility(currentServers.isEmpty() ? View.VISIBLE : View.GONE);
+            emptyServers.setText(showingFavorites
+                    ? "Belum ada server favorit.\nTambahkan server untuk mulai bermain."
+                    : hostedLoading ? "Memuat daftar server..."
+                    : "Daftar Hosted kosong atau tidak dapat dimuat.\nPeriksa koneksi internet dan coba lagi nanti.");
+        }
         if (adapter == null) {
             adapter = new ServerAdapter(currentServers, this::showServerDetailDialog);
             rvServers.setAdapter(adapter);
@@ -195,16 +212,17 @@ public class PlayFragment extends Fragment {
         TextView tvMode = detailDialog.findViewById(R.id.server_mode);
         TextView tvLanguage = detailDialog.findViewById(R.id.server_language);
         EditText etUsername = detailDialog.findViewById(R.id.server_password);
+        EditText etServerPassword = detailDialog.findViewById(R.id.server_join_password);
         Button btnConnect = detailDialog.findViewById(R.id.server_connect);
         Button btnDelete = detailDialog.findViewById(R.id.save_favorites);
         ImageView btnClose = detailDialog.findViewById(R.id.server_close);
 
         tvName.setText(server.getServerName());
         tvIp.setText(server.getAddress());
-        tvPort.setText(String.valueOf(server.getPort()));
+        tvPort.setText("Port: " + server.getPort());
         tvOnline.setText(server.getCurrentPlayerCount() + " / " + server.getMaxPlayerCount());
-        tvMode.setText(server.getServerMode() != null ? server.getServerMode() : "Loading...");
-        tvLanguage.setText(server.getLanguage() != null ? server.getLanguage() : "Loading...");
+        tvMode.setText("Mode: " + (server.getServerMode() != null ? server.getServerMode() : "Memuat..."));
+        tvLanguage.setText("Bahasa: " + (server.getLanguage() != null ? server.getLanguage() : "Memuat..."));
 
         SharedPreferences sp = requireContext().getSharedPreferences("com.sampmobile.xyvern", Context.MODE_PRIVATE);
         String currentNick = sp.getString("nickname", "");
@@ -224,12 +242,12 @@ public class PlayFragment extends Fragment {
                                 if (info != null) {
                                     tvName.setText(info[3]);
                                     tvOnline.setText(info[1] + " / " + info[2]);
-                                    tvMode.setText(info[4]);
-                                    tvLanguage.setText(info[5]);
+                                    tvMode.setText("Mode: " + info[4]);
+                                    tvLanguage.setText("Bahasa: " + info[5]);
                                 } else {
                                     tvOnline.setText("OFFLINE");
-                                    tvMode.setText("-");
-                                    tvLanguage.setText("-");
+                                    tvMode.setText("Mode: -");
+                                    tvLanguage.setText("Bahasa: -");
                                 }
                             });
                         }
@@ -247,7 +265,7 @@ public class PlayFragment extends Fragment {
 
         if (server.getType() == SAMPServerInfo.Official.CUSTOM) {
             btnDelete.setVisibility(View.VISIBLE);
-            btnDelete.setText("Delete");
+            btnDelete.setText("Hapus favorit");
             btnDelete.setOnClickListener(v -> {
                 stopPingTask();
                 ArrayList<SAMPServerInfo> customServers = loadCustomServers();
@@ -274,8 +292,17 @@ public class PlayFragment extends Fragment {
 
         btnConnect.setOnClickListener(v -> {
             String newNick = etUsername.getText().toString().trim();
-            if (newNick.isEmpty()) {
-                Toast.makeText(getContext(), "Silakan masukkan username!", Toast.LENGTH_SHORT).show();
+            if (!ServerInput.isValidNickname(newNick)) {
+                etUsername.setError("Nickname 3–24 karakter: huruf, angka, _ [ ] ( ) $ @ . =");
+                return;
+            }
+            String password = etServerPassword.getText().toString();
+            if (!ServerInput.isValidPassword(password)) {
+                etServerPassword.setError("Password server maksimal 127 karakter ASCII tanpa spasi.");
+                return;
+            }
+            if (!ServerInput.isValidHost(server.getAddress()) || !ServerInput.isValidPort(server.getPort())) {
+                Toast.makeText(getContext(), "Alamat atau port server tidak valid.", Toast.LENGTH_LONG).show();
                 return;
             }
             sp.edit().putString("nickname", newNick).apply();
@@ -300,6 +327,8 @@ public class PlayFragment extends Fragment {
             Intent intent = new Intent(getActivity(), SAMP.class);
             intent.putExtra("ip", server.getAddress());
             intent.putExtra("port", server.getPort());
+            intent.putExtra("nickname", newNick);
+            intent.putExtra("server_password", password);
             startActivity(intent);
         });
 
@@ -415,7 +444,11 @@ public class PlayFragment extends Fragment {
             }
 
             ip = ip.trim();
-            if (port < 1 || port > 65535) {
+            if (!ServerInput.isValidHost(ip)) {
+                Toast.makeText(getContext(), "Alamat server tidak valid!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (!ServerInput.isValidPort(port)) {
                 Toast.makeText(getContext(), "Port harus di antara 1 dan 65535!", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -495,7 +528,7 @@ public class PlayFragment extends Fragment {
             holder.boundKey = serverKey;
 
             // Default display
-            holder.tvName.setText(server.getServerName() + " |");
+            holder.tvName.setText(server.getServerName());
             holder.tvAddress.setText("Address: " + serverKey);
             holder.tvPlayers.setText("Players: " + server.getCurrentPlayerCount() + " / " + server.getMaxPlayerCount());
             holder.tvMode.setText("Gamemode: " + (server.getServerMode() != null ? server.getServerMode() : "Loading..."));
@@ -535,7 +568,7 @@ public class PlayFragment extends Fragment {
         }
 
         private void applyServerInfo(ViewHolder holder, String[] info) {
-            holder.tvName.setText(info[3] + " |");
+            holder.tvName.setText(info[3]);
             holder.tvPlayers.setText("Players: " + info[1] + " / " + info[2]);
             holder.tvMode.setText("Gamemode: " + info[4]);
             holder.ivLock.setVisibility("1".equals(info[0]) ? View.VISIBLE : View.GONE);

@@ -115,7 +115,7 @@ public class HomeFragment extends Fragment {
 
     private void runVerification() {
         if (getContext() == null) return;
-        tvDataDesc.setText("Verifying game files...");
+        tvDataDesc.setText("Memeriksa file inti game...");
         btnVerifyData.setEnabled(false);
 
         final Context appContext = requireContext().getApplicationContext();
@@ -127,12 +127,12 @@ public class HomeFragment extends Fragment {
                 btnVerifyData.setEnabled(true);
                 if (result.isValid) {
                     dotStatus.setBackgroundResource(R.drawable.bg_dot_green);
-                    tvDataTitle.setText("Game Data Ready");
-                    tvDataDesc.setText("All core GTA SA & SAMP files are verified (" + (result.totalSizeBytes / 1048576) + " MB). Ready to play!");
+                    tvDataTitle.setText("File inti ditemukan");
+                    tvDataDesc.setText("File inti ditemukan (" + (result.totalSizeBytes / 1048576) + " MB). Pilih server untuk mulai bermain.");
                     btnVerifyData.setVisibility(View.GONE);
                     btnDownloadData.setVisibility(View.VISIBLE);
                     btnDownloadData.setEnabled(true);
-                    btnDownloadData.setText("PLAY");
+                    btnDownloadData.setText("Pilih server");
                     btnDownloadData.setOnClickListener(v -> {
                         if (getActivity() instanceof MainActivity) {
                             ((MainActivity) getActivity()).changeTab(1);
@@ -140,16 +140,16 @@ public class HomeFragment extends Fragment {
                     });
                 } else {
                     dotStatus.setBackgroundResource(R.drawable.bg_dot_red);
-                    tvDataTitle.setText("Game Data Incomplete");
-                    tvDataDesc.setText("Verification failed (" + result.missingFiles.size() + " files missing).\nDownload the official asset package or copy files manually.");
+                    tvDataTitle.setText("Data belum lengkap");
+                    tvDataDesc.setText("File yang belum ditemukan: " + android.text.TextUtils.join(", ", result.missingFiles) + ".\nUnduh atau salin data secara manual.");
                     btnVerifyData.setVisibility(View.VISIBLE);
-                    btnVerifyData.setText("Verify");
+                    btnVerifyData.setText("Periksa");
                     btnDownloadData.setVisibility(View.VISIBLE);
                     btnDownloadData.setEnabled(true);
-                    btnDownloadData.setText("Download Assets");
+                    btnDownloadData.setText("Unduh data");
                     btnDownloadData.setOnClickListener(v -> {
                         if (isDownloading) {
-                            Toast.makeText(getContext(), "Download in progress...", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "Unduhan sedang berlangsung...", Toast.LENGTH_SHORT).show();
                         } else {
                             startOnlineDataDownload();
                         }
@@ -164,7 +164,7 @@ public class HomeFragment extends Fragment {
         showDownloadProgress();
         observeDownload(false);
         GameDataDownloadService.start(requireContext(),
-                GameDataDownloadService.ACTION_ASSETS, DATA_ZIP_URL, "assets", 666478908L, "");
+                GameDataDownloadService.ACTION_ASSETS, DATA_ZIP_URL, "assets", 0L, "");
     }
 
     private void showDownloadProgress() {
@@ -175,7 +175,7 @@ public class HomeFragment extends Fragment {
         pbDownload.setMax(100);
         pbDownload.setProgress(0);
         tvDownloadProgress.setText("0%");
-        tvDataDesc.setText("Connecting to asset server...");
+        tvDataDesc.setText("Menghubungkan ke server unduhan...");
         btnDownloadData.setEnabled(false);
         btnVerifyData.setEnabled(false);
     }
@@ -189,14 +189,14 @@ public class HomeFragment extends Fragment {
                 if (!isAdded() || currentView == null || getView() != currentView || !isDownloading) return;
                 if (s.phase == GameDataDownloadService.PHASE_EXTRACT) {
                     pbDownload.setProgress(s.percent);
-                    tvDownloadProgress.setText("Extracting " + s.percent + "% ("
+                    tvDownloadProgress.setText("Mengekstrak " + s.percent + "% ("
                             + s.bytes + "/" + s.total + ")");
                 } else if (s.phase == GameDataDownloadService.PHASE_DONE) {
                     isDownloading = false;
                     pbDownload.setVisibility(View.GONE);
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
-                    Toast.makeText(getContext(), "Game assets successfully installed!", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), "Data game berhasil dipasang!", Toast.LENGTH_LONG).show();
                     GameDataDownloadService.removeListener(this.listener);
                     this.listener = null;
                     runVerification();
@@ -206,7 +206,7 @@ public class HomeFragment extends Fragment {
                     tvDownloadProgress.setVisibility(View.GONE);
                     btnDownloadData.setEnabled(true);
                     btnVerifyData.setEnabled(true);
-                    tvDataDesc.setText("Download error: " + s.error + "\nTap Download Assets to resume.");
+                    tvDataDesc.setText("Unduhan gagal: " + s.error + "\nKetuk Unduh data untuk mencoba lagi.");
                     GameDataDownloadService.removeListener(this.listener);
                     this.listener = null;
                 } else if (s.phase == GameDataDownloadService.PHASE_DOWNLOAD) {
@@ -287,7 +287,7 @@ public class HomeFragment extends Fragment {
                 mainHandler.post(() -> {
                     pbDownload.setIndeterminate(false);
                     pbDownload.setProgress(percent);
-                    tvDownloadProgress.setText("Extracting " + percent + "% (" + curProcessed + "/" + tot + ")");
+                    tvDownloadProgress.setText("Mengekstrak " + percent + "% (" + curProcessed + "/" + tot + ")");
                 });
             }
         }

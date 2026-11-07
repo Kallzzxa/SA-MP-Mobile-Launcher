@@ -1,87 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingVertical="12dp"
-    android:background="?attr/selectableItemBackground">
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/bg_server_card"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground"
+    android:padding="16dp">
 
-    <!-- Row 1: Server Name (Header) -->
     <TextView
         android:id="@+id/tv_server_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="SERVER NAME"
-        android:textColor="#FFFFFF"
-        android:textSize="15sp"
+        android:ellipsize="end"
         android:fontFamily="@font/montserrat_bold"
+        android:maxLines="2"
+        android:text="Server"
+        android:textColor="#F8FAFC"
+        android:textSize="15sp"
+        app:layout_constraintEnd_toStartOf="@id/iv_lock"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Row 2: Lock Icon + Address -->
     <ImageView
         android:id="@+id/iv_lock"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
-        android:layout_marginTop="6dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="Server dengan password"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
         app:srcCompat="@drawable/ic_password_on"
-        app:tint="#00E676"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_server_name" />
+        app:tint="#38BDF8" />
 
     <TextView
         android:id="@+id/tv_server_address"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
-        android:text="Address: 127.0.0.1:7777"
-        android:textColor="#8A8F98"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:fontFamily="@font/montserrat_medium"
+        android:maxLines="1"
+        android:text="Address"
+        android:textColor="#38BDF8"
         android:textSize="12sp"
-        android:fontFamily="@font/montserrat_regular"
-        app:layout_constraintStart_toEndOf="@id/iv_lock"
-        app:layout_goneMarginStart="0dp"
-        app:layout_constraintTop_toTopOf="@id/iv_lock"
-        app:layout_constraintBottom_toBottomOf="@id/iv_lock"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_server_name" />
 
-    <!-- Row 3: Gamemode (clean independent line) -->
     <TextView
         android:id="@+id/tv_server_mode"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="Gamemode: Unknown"
-        android:textColor="#8A8F98"
-        android:textSize="12sp"
+        android:layout_marginTop="12dp"
+        android:ellipsize="end"
         android:fontFamily="@font/montserrat_regular"
+        android:maxLines="1"
+        android:text="Gamemode"
+        android:textColor="#94A3B8"
+        android:textSize="12sp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/iv_lock"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/tv_server_address" />
 
-    <!-- Row 4: Players count (clean independent line) -->
     <TextView
         android:id="@+id/tv_server_status"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="Players: 0 / 100"
-        android:textColor="#8A8F98"
+        android:layout_marginTop="5dp"
+        android:fontFamily="@font/montserrat_medium"
+        android:text="Players"
+        android:textColor="#CBD5E1"
         android:textSize="12sp"
-        android:fontFamily="@font/montserrat_regular"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_server_mode"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Divider line -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="12dp"
-        android:background="#14FFFFFF"
-        app:layout_constraintTop_toBottomOf="@id/tv_server_status"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
+        app:layout_constraintTop_toBottomOf="@id/tv_server_mode" />
 </androidx.constraintlayout.widget.ConstraintLayout>

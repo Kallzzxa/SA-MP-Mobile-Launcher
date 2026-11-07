@@ -52,7 +52,7 @@
             android:launchMode="singleTask"
             android:process=":game"
             android:windowSoftInputMode="adjustPan"
-            android:exported="true" />
+            android:exported="false" />
 
         <activity
             android:name=".launcher.MainActivity"
