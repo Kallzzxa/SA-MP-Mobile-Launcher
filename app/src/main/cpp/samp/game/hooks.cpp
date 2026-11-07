@@ -1,4 +1,6 @@
 #include <GLES2/gl2.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #include "../main.h"
 #include "../vendor/shadowhook/patch.h"
 #include "game.h"
@@ -1477,50 +1479,92 @@ int OS_FileRead_hook(void* a1, void* a2, int a3)
 
 // Original RLE function pointer
 // ---------------------------------------------------------------------------
-// Engine over-read guard for RLEDecompress.
+// RLEDecompress guard.
 //
-// crash_native.txt shows the engine faulting inside RLEDecompress with a four
-// byte load whose source is two bytes before an unmapped page boundary, i.e.
-// the decompressor touches the word right after the compressed block. The
-// decompressed result is fine; only that trailing read is unsafe, and it only
-// faults when the block happens to sit at the end of a page (Scudo allocations
-// are page aligned, so this is routine).
+// crash_native.txt (post-guard build, rle-guard hook=1 calls=4 padded=4) shows
+// the engine still faulting inside RLEDecompress on a 16 byte load whose source
+// sits 14 bytes before an unmapped page boundary. Four calls were hooked and
+// four were padded, so the fault happened inside a call that already received a
+// 64 byte padded copy: the decompressor keeps consuming input past the declared
+// block end until the output is full, i.e. the caller supplies a compressed
+// block that is shorter than the data it decodes (truncated or mismatched
+// texture data), and the engine has no input bound check.
 //
-// Every call is forwarded with the source copied into a buffer that carries a
-// trailing zero pad, so the block can never end at the very edge of a mapping.
-// The decompressor still receives the original srcSize, so its behaviour is
-// unchanged; only the bytes it should not have read become readable zeros.
+// Therefore the padding now covers the worst case the loop can reach, which is
+// bounded by the output length, and the guard records the caller and sizes of
+// every call so the next report identifies the asset and the call site.
 // ---------------------------------------------------------------------------
+#ifndef SYS_gettid
+#define SYS_gettid __NR_gettid
+#endif
+
 typedef void* (*RLEDecompressPaddedFn)(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape);
 
 static RLEDecompressPaddedFn orig_RLEDecompressPadded = nullptr;
 
-// Reported by the native crash handler so the next report proves which build
-// ran and whether the guard was live.
+// Reported by the native crash handler so every report proves which build ran
+// and what the last decompression looked like.
 volatile int g_rleGuardHookResult = -1;  // -1 = not attempted yet
 volatile unsigned long long g_rleGuardCalls = 0;
 volatile unsigned long long g_rleGuardPads = 0;
+volatile unsigned long long g_rleGuardLastCaller = 0;
+volatile unsigned long long g_rleGuardLastSrcSize = 0;
+volatile unsigned long long g_rleGuardLastDestSize = 0;
+volatile unsigned long long g_rleGuardLastPad = 0;
 
-static void* RLEDecompressPaddedHook(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape)
+static const uint32_t RLE_GUARD_MAX_PAD = 4u * 1024u * 1024u;   // worst case copy
+static const uintptr_t RLE_GUARD_PAGE = 0x1000u;
+
+static void* RLEDecompressGuarded(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape)
 {
-    g_rleGuardCalls++;
-
     if (!orig_RLEDecompressPadded) return nullptr;
-    if (!src || srcSize == 0) return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
 
-    // The tail read is four bytes wide; 64 bytes of slack also covers a short
-    // block that is followed by more of the same run.
-    const size_t uiPad = 64;
-    uint8_t* pPadded = static_cast<uint8_t*>(malloc((size_t)srcSize + uiPad));
-    if (!pPadded)
+    const unsigned long long uiCaller = (unsigned long long)(uintptr_t)__builtin_return_address(0);
+    const unsigned long long uiCall = ++g_rleGuardCalls;
+    g_rleGuardLastCaller = uiCaller;
+    g_rleGuardLastSrcSize = srcSize;
+    g_rleGuardLastDestSize = destSize;
+
+    if (!src || srcSize == 0 || !dest || destSize == 0)
         return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
 
-    memcpy(pPadded, src, srcSize);
-    memset(pPadded + srcSize, 0, uiPad);
+    // The engine can consume up to one input byte per output byte while it
+    // fills the destination, so the output length bounds how far past the block
+    // it may walk. Add one token of slack for the word wide tail read.
+    const unsigned long long uiPadWanted = (unsigned long long)destSize + 64ull;
+    uint32_t uiPad = (uiPadWanted < (unsigned long long)RLE_GUARD_MAX_PAD) ? (uint32_t)uiPadWanted : RLE_GUARD_MAX_PAD;
+    g_rleGuardLastPad = uiPad;
+
+    if (uiCall <= 24)
+    {
+        const uint8_t* pHead = static_cast<const uint8_t*>(src);
+        FLog("RLE#%llu tid=%d caller=%p caller-gtasa=%llx src=%p srcSize=%x dst=%p dstSize=%x pad=%x head=%02x%02x%02x%02x%02x%02x%02x%02x",
+             uiCall,
+             (int)syscall(SYS_gettid),
+             (void*)(uintptr_t)uiCaller,
+             (unsigned long long)(uiCaller - (unsigned long long)g_libGTASA),
+             src, srcSize, dest, destSize, uiPad,
+             pHead[0], pHead[1], pHead[2], pHead[3],
+             pHead[4], pHead[5], pHead[6], pHead[7]);
+    }
+
+    // Fast path: the block plus the worst case over-read stays inside the page
+    // that holds the source, so no read can reach an unmapped page.
+    const uintptr_t uiSrc = (uintptr_t)src;
+    const uintptr_t uiReachEnd = uiSrc + (uintptr_t)srcSize + (uintptr_t)uiPad - 1;
+    if ((uiSrc & ~(RLE_GUARD_PAGE - 1)) == (uiReachEnd & ~(RLE_GUARD_PAGE - 1)))
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    uint8_t* pCopy = static_cast<uint8_t*>(malloc((size_t)srcSize + (size_t)uiPad));
+    if (!pCopy)
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    memcpy(pCopy, src, srcSize);
+    memset(pCopy + srcSize, 0, uiPad);
     g_rleGuardPads++;
 
-    void* pResult = orig_RLEDecompressPadded(dest, destSize, pPadded, srcSize, escape);
-    free(pPadded);
+    void* pResult = orig_RLEDecompressPadded(dest, destSize, pCopy, srcSize, escape);
+    free(pCopy);
     return pResult;
 }
 
@@ -1782,7 +1826,7 @@ void InstallSpecialHooks()
     shadowhook_hook_sym_name(
             "libGTASA.so",
             "_Z13RLEDecompressPhjPKhjj",
-            (void*)RLEDecompressPaddedHook,
+            (void*)RLEDecompressGuarded,
             (void**)&orig_RLEDecompressPadded);
     g_rleGuardHookResult = (orig_RLEDecompressPadded != nullptr) ? 1 : 0;
     FLog("RLEDecompress guard: installed %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);

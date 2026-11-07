@@ -198,6 +198,10 @@ static void CrashLogOpen()
 extern volatile int g_rleGuardHookResult;
 extern volatile unsigned long long g_rleGuardCalls;
 extern volatile unsigned long long g_rleGuardPads;
+extern volatile unsigned long long g_rleGuardLastCaller;
+extern volatile unsigned long long g_rleGuardLastSrcSize;
+extern volatile unsigned long long g_rleGuardLastDestSize;
+extern volatile unsigned long long g_rleGuardLastPad;
 
 static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
 {
@@ -286,6 +290,19 @@ static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
     CrashLogHex((uintptr_t)g_rleGuardCalls);
     CrashLogPut(" padded=");
     CrashLogHex((uintptr_t)g_rleGuardPads);
+    CrashLogPut("\n");
+
+    // Last decompression the guard saw: locates the asset and the caller.
+    CrashLogPut("rle-last:   caller=");
+    CrashLogHex((uintptr_t)g_rleGuardLastCaller);
+    CrashLogPut(" caller-gtasa=");
+    CrashLogHex((uintptr_t)(g_rleGuardLastCaller - (unsigned long long)g_libGTASA));
+    CrashLogPut(" srcSize=");
+    CrashLogHex((uintptr_t)g_rleGuardLastSrcSize);
+    CrashLogPut(" dstSize=");
+    CrashLogHex((uintptr_t)g_rleGuardLastDestSize);
+    CrashLogPut(" pad=");
+    CrashLogHex((uintptr_t)g_rleGuardLastPad);
     CrashLogPut("\n");
 
     CrashLogPut("========================\n");
