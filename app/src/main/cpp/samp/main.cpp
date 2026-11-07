@@ -14,6 +14,9 @@
 #include "java/jniutil.h"
 #include "net/dl/dlmanager.h"
 #include <dlfcn.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 #include "StackTrace.h"
 
 // voice
@@ -119,7 +122,118 @@ void DoDebugStuff()
 		//ped->SetGravityProcessing(false);
 	}
 }
-struct sigaction act_old;
+// ---------------------------------------------------------------------------
+// Fatal signal reporting.
+//
+// FLog()/fprintf() are not async-signal-safe: if SIGSEGV lands on a thread that
+// already holds the stdio or heap lock, the handler deadlocks and the crash is
+// never recorded. The report below uses open()/write() only.
+// ---------------------------------------------------------------------------
+static int g_iCrashLogFd = -1;
+
+static void CrashLogPut(const char* szText)
+{
+    if (g_iCrashLogFd < 0 || !szText) return;
+    size_t uiLen = 0;
+    while (szText[uiLen]) uiLen++;
+    if (uiLen) (void)!write(g_iCrashLogFd, szText, uiLen);
+}
+
+static void CrashLogHex(uintptr_t uiValue)
+{
+    static const char szDigits[] = "0123456789abcdef";
+    char szBuf[2 + sizeof(uintptr_t) * 2];
+    int iLen = (int)(2 + sizeof(uintptr_t) * 2);
+    szBuf[0] = '0';
+    szBuf[1] = 'x';
+    for (int i = iLen - 1; i >= 2; i--)
+    {
+        szBuf[i] = szDigits[uiValue & 0xF];
+        uiValue >>= 4;
+    }
+    (void)!write(g_iCrashLogFd, szBuf, (size_t)iLen);
+}
+
+static void CrashLogOpen()
+{
+    if (g_iCrashLogFd >= 0) return;
+
+    const char* szRoot = g_pszStorage;
+    if (!szRoot) return;
+
+    const char szName[] = "crash_native.txt";
+    char szPath[512];
+    size_t i = 0;
+    while (szRoot[i] && i + sizeof(szName) < sizeof(szPath))
+    {
+        szPath[i] = szRoot[i];
+        i++;
+    }
+    for (size_t k = 0; k < sizeof(szName); k++)
+    {
+        szPath[i++] = szName[k];
+    }
+
+    g_iCrashLogFd = open(szPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+}
+
+static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
+{
+    CrashLogOpen();
+    if (g_iCrashLogFd < 0) return;
+
+    CrashLogPut("\n===== native crash =====\n");
+    CrashLogPut("signal: ");
+    CrashLogHex((uintptr_t)iSignum);
+    CrashLogPut("\nfault:  ");
+    CrashLogHex((uintptr_t)(pInfo ? pInfo->si_addr : nullptr));
+    CrashLogPut("\n");
+
+    if (pContext)
+    {
+#if defined(__aarch64__)
+        uintptr_t uiPc = (uintptr_t)pContext->uc_mcontext.pc;
+        uintptr_t uiLr = (uintptr_t)pContext->uc_mcontext.regs[30];
+        uintptr_t uiFp = (uintptr_t)pContext->uc_mcontext.regs[29];
+        uintptr_t uiSp = (uintptr_t)pContext->uc_mcontext.sp;
+#elif defined(__arm__)
+        uintptr_t uiPc = (uintptr_t)pContext->uc_mcontext.arm_pc;
+        uintptr_t uiLr = (uintptr_t)pContext->uc_mcontext.arm_lr;
+        uintptr_t uiFp = (uintptr_t)pContext->uc_mcontext.arm_fp;
+        uintptr_t uiSp = (uintptr_t)pContext->uc_mcontext.arm_sp;
+#else
+        uintptr_t uiPc = 0, uiLr = 0, uiFp = 0, uiSp = 0;
+#endif
+        CrashLogPut("pc:     ");
+        CrashLogHex(uiPc);
+        CrashLogPut("\nlr:     ");
+        CrashLogHex(uiLr);
+        CrashLogPut("\nfp:     ");
+        CrashLogHex(uiFp);
+        CrashLogPut("\nsp:     ");
+        CrashLogHex(uiSp);
+        CrashLogPut("\n");
+
+        if (g_libGTASA) { CrashLogPut("pc-libGTASA: "); CrashLogHex(uiPc - g_libGTASA); CrashLogPut("\n"); }
+        if (g_libSAMP)  { CrashLogPut("pc-libsamp:  "); CrashLogHex(uiPc - g_libSAMP);  CrashLogPut("\n"); }
+        if (g_libGTASA) { CrashLogPut("lr-libGTASA: "); CrashLogHex(uiLr - g_libGTASA); CrashLogPut("\n"); }
+        if (g_libSAMP)  { CrashLogPut("lr-libsamp:  "); CrashLogHex(uiLr - g_libSAMP);  CrashLogPut("\n"); }
+    }
+
+    CrashLogPut("========================\n");
+}
+
+// Restore the default disposition and return: the faulting instruction runs
+// again and terminates the process instead of looping through this handler.
+static void CrashRestoreDefault(int iSignum)
+{
+    struct sigaction dfl;
+    memset(&dfl, 0, sizeof(dfl));
+    dfl.sa_handler = SIG_DFL;
+    sigemptyset(&dfl.sa_mask);
+    sigaction(iSignum, &dfl, nullptr);
+}
+
 struct sigaction act1_old;
 struct sigaction act2_old;
 struct sigaction act3_old;
@@ -128,86 +242,26 @@ extern int g_iLastProcessedSkinCollision, g_iLastProcessedEntityCollision, g_iLa
 extern uintptr_t g_dwLastRetAddrCrash;
 void handler(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act_old.sa_sigaction)
-	{
-		act_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGSEGV)
-	{
-		FLog("SIGSEGV | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashRestoreDefault(signum);
 }
 
 void handler1(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act1_old.sa_sigaction)
-	{
-		act1_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGABRT)
-	{
-		FLog("SIGABRT | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashRestoreDefault(signum);
 }
 
 void handler2(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act2_old.sa_sigaction)
-	{
-		act2_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGFPE)
-	{
-		FLog("SIGFPE | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashRestoreDefault(signum);
 }
 
 void handler3(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act3_old.sa_sigaction)
-	{
-		act3_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGBUS)
-	{
-		FLog("SIGBUS | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashRestoreDefault(signum);
 }
 
 
