@@ -119,22 +119,21 @@ bool ProbeVariant(const char* database, int format, VariantFiles& files)
     return files.Any();
 }
 
+// Mixing variants is what breaks the database: LoadThumbs would hand the engine
+// the thumb list of variant B while the runtime object was created for variant
+// A, and the resulting entries carry null fields - which is exactly the crash
+// still reported (SortEntries, fault 0x58, x1 = 0) in a build that logged
+// "variant-fallback=1". The engine's own choice is therefore always honoured;
+// the hook only reports what is on disk so the data set can be judged.
+constexpr bool kAllowVariantSwitch = false;
+
 int PickExistingVariant(const char* database, int requested)
 {
-    // DF_Default and DF_ALL mean "the engine decides", which includes knowing
-    // the GPU and the data set. Never second guess those.
     if (requested >= DF_Default) return requested;
-
-    if (kForceVariant && requested != DF_UNC && VariantExists(database, DF_UNC))
-        return DF_UNC;
 
     VariantFiles requestedFiles;
     ProbeVariant(database, requested, requestedFiles);
 
-    // Whatever form the requested variant exists in - complete or partial - it
-    // belongs to the engine to judge. Only a variant that is completely absent
-    // is replaced, because replacing a present variant is what produced the
-    // empty entry array that crashed SortEntries.
     if (requestedFiles.Any()) return requested;
 
     for (int candidate : kVariantOrder)
@@ -145,20 +144,22 @@ int PickExistingVariant(const char* database, int requested)
         if (!ProbeVariant(database, candidate, candidateFiles)) continue;
         if (!candidateFiles.Complete()) continue;
 
-        // Only accept a replacement that carries the same supporting files the
-        // requested variant would have had; a lone thumbnail list with no data
-        // file is what produces an empty entry array.
         if (requestedFiles.dat && !candidateFiles.dat) continue;
         if (requestedFiles.toc && !candidateFiles.toc) continue;
 
-        FLog("texdb '%s': variant %d file set tmb=%d dat=%d toc=%d is incomplete, using %d",
-             database, requested,
-             (int)requestedFiles.tmb, (int)requestedFiles.dat, (int)requestedFiles.toc,
-             candidate);
-        return candidate;
+        if (kAllowVariantSwitch)
+        {
+            g_texVariantFallbacks++;
+            FLog("texdb '%s': variant %d is absent, using variant %d", database, requested, candidate);
+            return candidate;
+        }
+
+        FLog("texdb '%s': variant %d is absent, variant %d would be available (switch disabled)",
+             database, requested, candidate);
+        return requested;
     }
 
-    return requested;   // nothing usable: leave the engine's own error path intact
+    return requested;
 }
 
 bool LoadThumbsHook(void* thiz, int format, bool setEntries)
@@ -223,6 +224,44 @@ void* LoadHook(const char* withName, bool fullyLoad, int forcedFormat)
     }
 
     return orig_Load(withName, fullyLoad, chosen);
+}
+
+// One shot dump of what the installed data set actually contains, database by
+// database and variant by variant. This is the evidence needed to tell a
+// missing variant apart from a corrupt one, without guessing.
+void LogDatabaseInventory()
+{
+    if (!g_pszStorage)
+    {
+        FLog("texdb inventory: storage not resolved yet, skipped");
+        return;
+    }
+
+    const char* databases[] = { "samp", "mobile", "txd", "gta3", "gta_int", "cutscene", "player", "menu" };
+
+    for (const char* database : databases)
+    {
+        char line[512] = {};
+        size_t used = 0;
+        bool found = false;
+
+        for (int format : kVariantOrder)
+        {
+            VariantFiles files;
+            if (!ProbeVariant(database, format, files)) continue;
+            if (!files.Any()) continue;
+
+            found = true;
+            const int written = snprintf(line + used, sizeof(line) - used, " %s(tmb=%d dat=%d toc=%d)",
+                                         SuffixForFormat(format) ? SuffixForFormat(format) : "?",
+                                         (int)files.tmb, (int)files.dat, (int)files.toc);
+            if (written <= 0 || static_cast<size_t>(written) >= sizeof(line) - used) break;
+            used += static_cast<size_t>(written);
+        }
+
+        if (found) FLog("texdb '%s' variants:%s", database, line);
+        else       FLog("texdb '%s': no variant files on disk", database);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,10 +340,14 @@ void TextureVariantFallback::Initialise()
     CHook::InlineHook("_ZN22TextureDatabaseRuntime11SortEntriesEb",
                       SortEntriesHook, &orig_SortEntries);
 
+    LogDatabaseInventory();
+
     FLog("TextureVariantFallback: LoadThumbs hook %s, Load hook %s, force variant=%d",
          orig_LoadThumbs ? "installed" : "not installed (symbol missing)",
          orig_Load ? "installed" : "not installed (symbol missing)",
          (int)kForceVariant);
+    FLog("TextureVariantFallback: variant switching %s",
+         kAllowVariantSwitch ? "enabled" : "disabled (log only)");
     FLog("TextureVariantFallback: SortEntries guard %s",
          orig_SortEntries ? "installed" : "not installed (symbol missing)");
 }

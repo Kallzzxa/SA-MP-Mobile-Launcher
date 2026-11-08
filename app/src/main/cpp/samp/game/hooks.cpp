@@ -1,5 +1,6 @@
 #include <GLES2/gl2.h>
 #include <sys/syscall.h>
+#include <dirent.h>
 #include <unistd.h>
 #include "../main.h"
 #include "../vendor/shadowhook/patch.h"
@@ -1171,6 +1172,35 @@ void CRadar_ClearBlip_hook(uint32_t a2)
 // True when the folder really contains this game's data (texdb, data, models
 // or the SAMP folder). Used to reject the engine's legacy default path
 // (/Android/data/com.samp.mobile/samp.data) which belongs to another package.
+// Bounded directory listing used once at start up: which text tables are
+// installed decides whether the interface can be shown in another language at
+// all, and which texdb folders exist decides what the renderer can load.
+static void LogDirectoryInventory(const char* relative, int maxEntries)
+{
+    if (!g_pszStorage || !relative) return;
+
+    char path[512];
+    const int written = snprintf(path, sizeof(path), "%s/%s", g_pszStorage, relative);
+    if (written <= 0 || static_cast<size_t>(written) >= sizeof(path)) return;
+
+    DIR* directory = opendir(path);
+    if (!directory)
+    {
+        FLog("inventory: %s not found", relative);
+        return;
+    }
+
+    int shown = 0;
+    struct dirent* entry;
+    while ((entry = readdir(directory)) != nullptr && shown < maxEntries)
+    {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        FLog("inventory: %s/%s", relative, entry->d_name);
+        shown++;
+    }
+    closedir(directory);
+}
+
 static bool StorageHasGameData(const char* path)
 {
     if (!path || !*path) return false;
@@ -1218,6 +1248,9 @@ void NvUtilInit_hook()
         g_pszStorage = launcherStorage;
 
     FLog("Storage: using '%s'", g_pszStorage ? g_pszStorage : "(null)");
+
+    LogDirectoryInventory("Text", 24);
+    LogDirectoryInventory("texdb", 24);
 
     ReadSettingFile();
 
