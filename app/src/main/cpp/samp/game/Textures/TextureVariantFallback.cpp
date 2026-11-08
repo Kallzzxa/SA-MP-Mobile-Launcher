@@ -265,19 +265,6 @@ void LogDatabaseInventory()
     }
 }
 
-bool DatabaseFilesPresent(const char* database)
-{
-    if (!database) return false;
-
-    for (int format : kVariantOrder)
-    {
-        VariantFiles files;
-        if (ProbeVariant(database, format, files) && files.Any()) return true;
-    }
-
-    return false;
-}
-
 // ---------------------------------------------------------------------------
 // TextureDatabaseRuntime::SortEntries(bool)
 //
@@ -355,6 +342,19 @@ bool SortEntriesHook(void* thiz, bool arg)
 }
 
 } // namespace
+
+bool TextureVariantFallback::DatabaseFilesPresent(const char* database)
+{
+    if (!database) return false;
+
+    for (int format : kVariantOrder)
+    {
+        VariantFiles files;
+        if (ProbeVariant(database, format, files) && files.Any()) return true;
+    }
+
+    return false;
+}
 
 void TextureVariantFallback::Initialise()
 {
