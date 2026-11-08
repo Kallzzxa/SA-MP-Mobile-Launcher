@@ -94,15 +94,7 @@ jobs:
         run: |
           shopt -s nullglob
           for report in app/build/test-results/testDebugUnitTest/*.xml; do
-            python3 - "$report" <<'PYEOF'
-import sys, xml.etree.ElementTree as ET
-tree = ET.parse(sys.argv[1])
-for case in tree.iter('testcase'):
-    for failure in list(case.findall('failure')) + list(case.findall('error')):
-        message = (failure.get('message') or '').strip().replace('\n', ' ')
-        name = case.get('classname', '') + '.' + case.get('name', '')
-        print('::error title=Unit test ' + name + '::' + message[:900])
-PYEOF
+            python3 -c "import sys,xml.etree.ElementTree as ET;t=ET.parse(sys.argv[1]);[print('::error title=Unit test '+c.get('classname','')+'.'+c.get('name','')+'::'+((f.get('message') or '').strip().replace(chr(10),' '))[:900]) for c in t.iter('testcase') for f in list(c.findall('failure'))+list(c.findall('error'))]" "$report"
           done
 
       - name: Upload build log on failure
