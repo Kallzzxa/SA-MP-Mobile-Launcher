@@ -1,4 +1,4 @@
-package com.hopepride.samp;
+package com.hopepride.samp.launcher;
 
 import java.util.ArrayList;
 
