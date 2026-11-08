@@ -130,17 +130,18 @@ public class GameDataExtractorTest {
         assertEquals(1, summary.files);
     }
 
-    @Test public void replacesStaleDirectoryLeftByInterruptedInstall() throws Exception {
+    @Test public void replacesStaleDirectoryWhereAFileMustGo() throws Exception {
         assertTrue(root.mkdirs());
-        File stale = new File(root, "models");
+        // An interrupted install can leave an empty folder behind where the archive
+        // expects a file. Writing into it used to raise FileNotFoundException.
+        File stale = new File(root, "data.txt");
         assertTrue(stale.mkdirs());
 
-        writeZip(new String[]{"models/model.dff"}, new String[]{"dff"});
-
+        writeZip(new String[]{"data.txt"}, new String[]{"isi"});
         GameDataExtractor.Summary summary = GameDataExtractor.extract(archive, root, null);
 
-        File model = new File(root, "models/model.dff");
-        assertTrue(model.isFile());
+        assertTrue(stale.isFile());
+        assertEquals("isi", read(stale));
         assertTrue(summary.recovered >= 1);
     }
 
