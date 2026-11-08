@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui.dialog;
+package com.hopepride.samp.game.ui.dialog;
 
 import android.app.Activity;
 import android.content.Context;
@@ -20,9 +20,9 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import com.joom.paranoid.Obfuscate;
 import com.nvidia.devtech.NvEventQueueActivity;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.util.CustomRecyclerView;
-import com.sampmobile.xyvern.launcher.util.Util;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.CustomRecyclerView;
+import com.hopepride.samp.launcher.util.Util;
 
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;

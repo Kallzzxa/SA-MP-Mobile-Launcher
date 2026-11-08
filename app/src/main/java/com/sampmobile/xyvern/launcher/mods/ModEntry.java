@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.mods;
+package com.hopepride.samp.launcher.mods;
 
 import java.io.File;
 import java.util.Locale;

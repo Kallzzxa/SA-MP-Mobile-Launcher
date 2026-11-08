@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -18,8 +18,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.util.GameDataVerifier;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.GameDataVerifier;
 
 import org.json.JSONObject;
 
@@ -77,7 +77,7 @@ public final class GameDataManager {
     private GameDataManager() {}
 
     public static void checkAndPrepare(Activity activity, ReadyCallback callback) {
-        com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_CONFIG_CHECK_START");
+        com.hopepride.samp.diagnostics.Diagnostics.event("DATA_CONFIG_CHECK_START");
         showLoading(activity, "Memeriksa Launcher", "Menghubungkan ke server konfigurasi...");
         IO.execute(() -> {
             try {
@@ -86,7 +86,7 @@ public final class GameDataManager {
                         && config.optBoolean("app_status", true)
                         && config.optBoolean("app_server_status", true);
                 if (!status) {
-                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_MAINTENANCE");
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_MAINTENANCE");
                     MAIN.post(() -> showMaintenance(activity));
                     return;
                 }
@@ -101,15 +101,15 @@ public final class GameDataManager {
                 String installed = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
                         .getString(KEY_DATA_VERSION, "");
                 if (info.version.equals(installed) && isInstalled(activity, info)) {
-                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_INSTALL_VERIFIED");
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_INSTALL_VERIFIED");
                     MAIN.post(() -> { dismissLoading(); if (!activity.isFinishing()) callback.onReady(); });
                     return;
                 }
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_INSTALL_REQUIRED");
+                com.hopepride.samp.diagnostics.Diagnostics.event("DATA_INSTALL_REQUIRED");
                 final DataInfo fi = info;
                 MAIN.post(() -> showDownloadOffer(activity, fi, callback));
             } catch (Exception e) {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.error("DATA_CONFIG_FAILED", e);
+                com.hopepride.samp.diagnostics.Diagnostics.error("DATA_CONFIG_FAILED", e);
                 android.util.Log.e("GameDataManager", "Config check failed", e);
                 MAIN.post(() -> showNetworkError(activity, e.getMessage(), callback));
             }
@@ -198,7 +198,7 @@ public final class GameDataManager {
                 .setNegativeButton("KELUAR", (d,w) -> a.finishAffinity());
         Button shareLogs = new Button(a);
         shareLogs.setText("BAGIKAN LOG DIAGNOSTIK");
-        shareLogs.setOnClickListener(v -> com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(a));
+        shareLogs.setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a));
         builder.setView(shareLogs);
         if (GameDataVerifier.verifyGameData(a).isValid) {
             builder.setNeutralButton("LANJUT OFFLINE", (d,w) -> {
@@ -230,7 +230,7 @@ public final class GameDataManager {
         addGap(a, root, 8);
         Button logs = button(a, "BAGIKAN LOG DIAGNOSTIK");
         root.addView(logs);
-        logs.setOnClickListener(v -> com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(a));
+        logs.setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a));
         AlertDialog d=new AlertDialog.Builder(a).setView(root).setCancelable(false).create(); d.show(); styleWindow(a,d);
         dl.setOnClickListener(v -> { d.dismiss(); startInstall(a, info, cb); });
         if (local != null) local.setOnClickListener(v -> {
@@ -322,7 +322,7 @@ public final class GameDataManager {
                                 .setNegativeButton("KELUAR", (x, w) -> a.finishAffinity())
                                 .create();
                         failure.setOnShowListener(ignored -> failure.getButton(AlertDialog.BUTTON_NEUTRAL)
-                                .setOnClickListener(v -> com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(a)));
+                                .setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a)));
                         failure.show();
                     }
                 }
@@ -355,7 +355,7 @@ public final class GameDataManager {
         try (ZipFile zip = new ZipFile(zipFile)) {
             int totalEntries = zip.size();
             if (totalEntries <= 0) {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_ZIP_EMPTY");
+                com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_EMPTY");
                 throw new Exception("File zip kosong / rusak.");
             }
             java.util.ArrayList<String> names = new java.util.ArrayList<>(totalEntries);
@@ -380,7 +380,7 @@ public final class GameDataManager {
                 File target = new File(root, name);
                 String canon = target.getCanonicalPath();
                 if (!canon.startsWith(rootCanon) && !canon.equals(root.getCanonicalPath())) {
-                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_ZIP_UNSAFE_ENTRY");
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_UNSAFE_ENTRY");
                     throw new Exception("Entri zip tidak valid: " + name);
                 }
                 if (e.isDirectory()) {
@@ -399,7 +399,7 @@ public final class GameDataManager {
 
         if (sentinel != null && !sentinel.isEmpty()
                 && !new File(c.getExternalFilesDir(null), sentinel).exists()) {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("DATA_SENTINEL_MISSING");
+            com.hopepride.samp.diagnostics.Diagnostics.event("DATA_SENTINEL_MISSING");
             throw new Exception("Data tidak lengkap setelah ekstrak (sentinel hilang).");
         }
 

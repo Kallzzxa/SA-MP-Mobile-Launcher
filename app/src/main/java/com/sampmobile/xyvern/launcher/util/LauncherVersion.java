@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 /** Maps saved launcher version indices to the currently supported options. */
 public final class LauncherVersion {

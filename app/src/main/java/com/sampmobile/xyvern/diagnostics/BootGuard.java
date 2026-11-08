@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.diagnostics;
+package com.hopepride.samp.diagnostics;
 
 import android.content.Context;
 import android.content.SharedPreferences;

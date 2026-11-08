@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui.dialog;
+package com.hopepride.samp.game.ui.dialog;
 
 import android.app.Activity;
 import android.view.LayoutInflater;
@@ -11,8 +11,8 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.util.Util;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.Util;
 
 import java.util.ArrayList;
 @Obfuscate

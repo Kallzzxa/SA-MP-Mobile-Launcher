@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -21,9 +21,9 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.MainActivity;
-import com.sampmobile.xyvern.launcher.config.Config;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.config.Config;
 
 import java.io.BufferedReader;
 import java.io.File;

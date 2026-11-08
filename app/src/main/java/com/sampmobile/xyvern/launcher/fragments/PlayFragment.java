@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.fragments;
+package com.hopepride.samp.launcher.fragments;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -33,20 +33,20 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.game.SAMP;
-import com.sampmobile.xyvern.game.StartupAssets;
-import com.sampmobile.xyvern.launcher.MainActivity;
-import com.sampmobile.xyvern.launcher.util.SAMPServerInfo;
-import com.sampmobile.xyvern.launcher.util.SampQueryAPI;
-import com.sampmobile.xyvern.launcher.util.ServerInput;
-import com.sampmobile.xyvern.launcher.util.ServerSearch;
-import com.sampmobile.xyvern.launcher.util.ServerSort;
-import com.sampmobile.xyvern.launcher.util.ServerPlayerQuery;
-import com.sampmobile.xyvern.launcher.util.PlayerListFilter;
-import com.sampmobile.xyvern.launcher.util.ServerRulesQuery;
-import com.sampmobile.xyvern.launcher.util.ServerPingQuery;
-import com.sampmobile.xyvern.launcher.util.LauncherEvents;
+import com.hopepride.samp.R;
+import com.hopepride.samp.game.SAMP;
+import com.hopepride.samp.game.StartupAssets;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.util.SAMPServerInfo;
+import com.hopepride.samp.launcher.util.SampQueryAPI;
+import com.hopepride.samp.launcher.util.ServerInput;
+import com.hopepride.samp.launcher.util.ServerSearch;
+import com.hopepride.samp.launcher.util.ServerSort;
+import com.hopepride.samp.launcher.util.ServerPlayerQuery;
+import com.hopepride.samp.launcher.util.PlayerListFilter;
+import com.hopepride.samp.launcher.util.ServerRulesQuery;
+import com.hopepride.samp.launcher.util.ServerPingQuery;
+import com.hopepride.samp.launcher.util.LauncherEvents;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -382,7 +382,7 @@ public class PlayFragment extends Fragment {
         tvMode.setText("Mode: " + (server.getServerMode() != null ? server.getServerMode() : "Memuat..."));
         tvLanguage.setText("Bahasa: " + (server.getLanguage() != null ? server.getLanguage() : "Memuat..."));
 
-        SharedPreferences sp = requireContext().getSharedPreferences("com.sampmobile.xyvern", Context.MODE_PRIVATE);
+        SharedPreferences sp = requireContext().getSharedPreferences("com.hopepride.samp", Context.MODE_PRIVATE);
         String currentNick = sp.getString("nickname", "");
         etUsername.setText(currentNick);
         etUsername.setHint("Username");
@@ -472,23 +472,23 @@ public class PlayFragment extends Fragment {
             LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
-            String textureVariant = com.sampmobile.xyvern.launcher.util.GameDataVerifier.textureVariantForDevice();
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event(
+            String textureVariant = com.hopepride.samp.launcher.util.GameDataVerifier.textureVariantForDevice();
+            com.hopepride.samp.diagnostics.Diagnostics.event(
                     "GAME_TEXTURE_VARIANT_" + (textureVariant == null ? "UNKNOWN" : textureVariant.toUpperCase(java.util.Locale.ROOT)));
-            com.sampmobile.xyvern.launcher.util.GameDataVerifier.VerificationResult verify =
-                    com.sampmobile.xyvern.launcher.util.GameDataVerifier.verifyGameData(requireContext());
+            com.hopepride.samp.launcher.util.GameDataVerifier.VerificationResult verify =
+                    com.hopepride.samp.launcher.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
-                for (int i = 0; i < com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
-                    if (verify.missingFiles.contains(com.sampmobile.xyvern.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
-                        com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
+                com.hopepride.samp.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
+                for (int i = 0; i < com.hopepride.samp.launcher.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
+                    if (verify.missingFiles.contains(com.hopepride.samp.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
+                        com.hopepride.samp.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
                 }
                 String textureVariantMissing = null;
                 for (String missing : verify.missingFiles) {
                     if (missing.startsWith("texdb/txd/txd.")) textureVariantMissing = missing;
                 }
                 if (textureVariantMissing != null) {
-                    com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_MISSING_TEXTURE_VARIANT");
+                    com.hopepride.samp.diagnostics.Diagnostics.event("GAME_MISSING_TEXTURE_VARIANT");
                 }
                 Toast.makeText(getContext(),
                         textureVariantMissing != null
@@ -508,12 +508,12 @@ public class PlayFragment extends Fragment {
             // The GTA engine reads these files before the game Activity can
             // initialize its asset manager. Preserve any existing user files.
             try {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_START");
+                com.hopepride.samp.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_START");
                 StartupAssets.prepare(requireContext().getExternalFilesDir(null),
                         name -> requireContext().getAssets().open(name));
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_DONE");
+                com.hopepride.samp.diagnostics.Diagnostics.event("GAME_FONT_PREPARATION_DONE");
             } catch (java.io.IOException | SecurityException e) {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.error("GAME_FONT_PREPARATION_FAILED", e);
+                com.hopepride.samp.diagnostics.Diagnostics.error("GAME_FONT_PREPARATION_FAILED", e);
                 android.util.Log.e("PlayFragment", "Gagal menyiapkan font game", e);
                 Toast.makeText(requireContext(), "Gagal menyiapkan font game: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 return;
@@ -521,7 +521,7 @@ public class PlayFragment extends Fragment {
 
             stopPingTask();
             detailDialog.dismiss();
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("GAME_ACTIVITY_LAUNCH_REQUESTED");
+            com.hopepride.samp.diagnostics.Diagnostics.event("GAME_ACTIVITY_LAUNCH_REQUESTED");
             Intent intent = new Intent(getActivity(), SAMP.class);
             intent.putExtra("ip", server.getAddress());
             intent.putExtra("port", server.getPort());

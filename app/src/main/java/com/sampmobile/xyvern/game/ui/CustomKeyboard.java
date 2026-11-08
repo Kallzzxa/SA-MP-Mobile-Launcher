@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui;
+package com.hopepride.samp.game.ui;
 
 import android.app.Activity;
 import android.widget.Button;
@@ -7,7 +7,7 @@ import android.widget.EditText;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 
 import android.app.Activity;
 import android.content.Context;
@@ -22,7 +22,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 
 import java.util.ArrayList;
 @Obfuscate

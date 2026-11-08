@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.mods;
+package com.hopepride.samp.launcher.mods;
 
 import android.content.Context;
 import android.net.Uri;

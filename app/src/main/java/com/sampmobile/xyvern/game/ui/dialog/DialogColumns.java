@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui.dialog;
+package com.hopepride.samp.game.ui.dialog;
 
 /** Preserve empty tablist cells, including the last column, as sent by the server. */
 public final class DialogColumns {

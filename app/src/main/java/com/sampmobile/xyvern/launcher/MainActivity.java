@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher;
+package com.hopepride.samp.launcher;
 
 import android.app.Activity;
 import android.content.Context;
@@ -26,15 +26,15 @@ import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentPagerAdapter;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.game.GameDataManager;
-import com.sampmobile.xyvern.launcher.config.Config;
-import com.sampmobile.xyvern.launcher.fragments.HomeFragment;
-import com.sampmobile.xyvern.launcher.fragments.PlayFragment;
-import com.sampmobile.xyvern.launcher.fragments.SettingsFragment;
-import com.sampmobile.xyvern.launcher.util.ConfigValidator;
-import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
-import com.sampmobile.xyvern.launcher.util.ViewPagerWithoutSwipe;
+import com.hopepride.samp.R;
+import com.hopepride.samp.game.GameDataManager;
+import com.hopepride.samp.launcher.config.Config;
+import com.hopepride.samp.launcher.fragments.HomeFragment;
+import com.hopepride.samp.launcher.fragments.PlayFragment;
+import com.hopepride.samp.launcher.fragments.SettingsFragment;
+import com.hopepride.samp.launcher.util.ConfigValidator;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.ViewPagerWithoutSwipe;
 
 import java.io.File;
 
@@ -57,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        com.sampmobile.xyvern.diagnostics.Diagnostics.event("LAUNCHER_ACTIVITY_START");
+        com.hopepride.samp.diagnostics.Diagnostics.event("LAUNCHER_ACTIVITY_START");
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
@@ -67,12 +67,12 @@ public class MainActivity extends AppCompatActivity {
 
         // If the process died mid-download, relaunch the foreground service from
         // persisted state so the download continues without a manual re-tap.
-        com.sampmobile.xyvern.game.GameDataDownloadService.autoResume(this);
+        com.hopepride.samp.game.GameDataDownloadService.autoResume(this);
 
         GameDataManager.checkAndPrepare(this, () -> {
             if (isFinishing() || isDestroyed() || launcherInitialized) return;
             launcherInitialized = true;
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("LAUNCHER_DATA_GATE_READY");
+            com.hopepride.samp.diagnostics.Diagnostics.event("LAUNCHER_DATA_GATE_READY");
             initializeLauncherUi();
         });
     }
@@ -86,20 +86,20 @@ public class MainActivity extends AppCompatActivity {
             welcomePlayer = MediaPlayer.create(this, R.raw.hopepride_welcome, attributes,
                     AudioManager.AUDIO_SESSION_ID_GENERATE);
             if (welcomePlayer == null) {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("WELCOME_PLAYER_UNAVAILABLE");
+                com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYER_UNAVAILABLE");
                 return;
             }
             welcomePlayer.setOnCompletionListener(player -> releaseWelcomeSound());
             welcomePlayer.setOnErrorListener((player, what, extra) -> {
-                com.sampmobile.xyvern.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_ERROR");
+                com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_ERROR");
                 Log.w("MainActivity", "Welcome sound failed: " + what + "/" + extra);
                 releaseWelcomeSound();
                 return true;
             });
             welcomePlayer.start();
-            com.sampmobile.xyvern.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_STARTED");
+            com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_STARTED");
         } catch (RuntimeException e) {
-            com.sampmobile.xyvern.diagnostics.Diagnostics.error("WELCOME_PLAYBACK_FAILED", e);
+            com.hopepride.samp.diagnostics.Diagnostics.error("WELCOME_PLAYBACK_FAILED", e);
             Log.w("MainActivity", "Welcome sound unavailable", e);
             releaseWelcomeSound();
         }
@@ -216,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkFirstRun() {
-        SharedPreferences prefs = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences("com.hopepride.samp", MODE_PRIVATE);
         if (prefs.getBoolean("firstrun", true)) {
             new SharedPreferenceCore().setInt(getApplicationContext(), "FPS_LIMIT", 60);
             new SharedPreferenceCore().setInt(getApplicationContext(), "MESSAGE_COUNT", 6);

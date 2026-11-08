@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -9,8 +9,8 @@ import android.widget.Toast;
 
 import com.bytedance.shadowhook.ShadowHook;
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
-import com.sampmobile.xyvern.launcher.util.SignatureChecker;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.SignatureChecker;
 import com.wardrumstudios.utils.WarMedia;
 
 import java.io.File;

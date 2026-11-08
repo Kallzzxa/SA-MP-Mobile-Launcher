@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui;
+package com.hopepride.samp.game.ui;
 
 import org.junit.Test;
 import static org.junit.Assert.*;

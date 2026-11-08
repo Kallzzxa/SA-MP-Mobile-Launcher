@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher;
+package com.hopepride.samp.launcher;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -27,8 +27,8 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.FileProvider;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.config.Config;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.config.Config;
 
 import java.io.File;
 

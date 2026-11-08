@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.diagnostics;
+package com.hopepride.samp.diagnostics;
 
 import android.app.Activity;
 import android.content.ClipData;
@@ -9,7 +9,7 @@ import android.os.Build;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
-import com.sampmobile.xyvern.BuildConfig;
+import com.hopepride.samp.BuildConfig;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;

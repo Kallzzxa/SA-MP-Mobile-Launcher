@@ -468,7 +468,7 @@ void DoInitStuff()
 }
 
 extern "C" {
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
 	{
 		const char *str = pEnv->GetStringUTFChars(path, NULL);
 		if (str != NULL) {
@@ -481,14 +481,14 @@ extern "C" {
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
         g_javaReady.store(true, std::memory_order_release);
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{
 		if(pUI)
 		{
 			pUI->keyboard()->sendForGB(pEnv, thiz, str);
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
 		if(pSettings)
 		{
@@ -496,7 +496,7 @@ extern "C" {
 				pJavaWrapper->HideKeyboard();
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
 		jboolean isCopy = true;
 
@@ -513,7 +513,7 @@ extern "C" {
 		pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
 	}
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeOnBrowserInit(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeOnBrowserInit(
 			JNIEnv* env,
 			jobject thiz,
 			jboolean isSuccess,
@@ -528,7 +528,7 @@ extern "C" {
 	}
 
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSendClientEvent(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeSendClientEvent(
 			JNIEnv* env,
 			jobject thiz,
 			jstring eventName,
@@ -552,7 +552,7 @@ extern "C" {
 			env->ReleaseStringUTFChars(eventDataJson, data);
 	}
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSetJavaManager(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeSetJavaManager(
 			JNIEnv* env,
 			jobject thiz,
 			jobject javaManager)
@@ -886,6 +886,6 @@ AAssetManager* g_pAssetManager = nullptr;
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
+Java_com_hopepride_samp_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
     g_pAssetManager = AAssetManager_fromJava(env, assetManager);
 }

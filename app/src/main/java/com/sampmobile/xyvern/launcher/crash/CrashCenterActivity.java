@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.crash;
+package com.hopepride.samp.launcher.crash;
 
 import android.app.Activity;
 import android.content.ClipData;
@@ -21,7 +21,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.sampmobile.xyvern.diagnostics.BootGuard;
+import com.hopepride.samp.diagnostics.BootGuard;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -284,7 +284,7 @@ public class CrashCenterActivity extends AppCompatActivity {
 
             TextView meta = new TextView(CrashCenterActivity.this);
             String when = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.GERMANY).format(new Date(file.lastModified()));
-            meta.setText(com.sampmobile.xyvern.launcher.mods.ModRepository.readableSize(file.length()) + " • " + when);
+            meta.setText(com.hopepride.samp.launcher.mods.ModRepository.readableSize(file.length()) + " • " + when);
             meta.setTextColor(MUTED);
             meta.setTextSize(12);
             meta.setPadding(0, dp(4), 0, 0);

@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.crash;
+package com.hopepride.samp.launcher.crash;
 
 import java.util.ArrayList;
 import java.util.Collections;

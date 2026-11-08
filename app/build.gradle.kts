@@ -33,7 +33,7 @@ val stageGlossHookJniLibs = tasks.register<Sync>("stageGlossHookJniLibs") {
 }
 
 android {
-    namespace = "com.sampmobile.xyvern"
+    namespace = "com.hopepride.samp"
     //noinspection GradleDependency
     compileSdk = 34
 
