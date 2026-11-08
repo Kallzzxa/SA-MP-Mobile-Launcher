@@ -28,7 +28,7 @@ import androidx.core.content.FileProvider;
 
 import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
-import com.hopepride.samp.config.Config;
+import com.hopepride.samp.launcher.config.Config;
 
 import java.io.File;
 

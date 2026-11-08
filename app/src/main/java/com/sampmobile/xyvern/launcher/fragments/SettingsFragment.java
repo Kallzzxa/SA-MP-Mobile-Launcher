@@ -1,4 +1,4 @@
-package com.hopepride.samp.fragments;
+package com.hopepride.samp.launcher.fragments;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -23,10 +23,10 @@ import androidx.fragment.app.Fragment;
 
 import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
-import com.hopepride.samp.MainActivity;
-import com.hopepride.samp.util.SharedPreferenceCore;
-import com.hopepride.samp.util.LauncherVersion;
-import com.hopepride.samp.util.LauncherEvents;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.LauncherVersion;
+import com.hopepride.samp.launcher.util.LauncherEvents;
 
 import org.ini4j.Wini;
 
@@ -113,7 +113,7 @@ public class SettingsFragment extends Fragment {
 
         File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
         try {
-            com.hopepride.samp.util.ConfigValidator.validateConfigFiles(getActivity());
+            com.hopepride.samp.launcher.util.ConfigValidator.validateConfigFiles(getActivity());
             mWini = new Wini(file);
 
             String nn = mWini.get("client", "name");
@@ -302,7 +302,7 @@ public class SettingsFragment extends Fragment {
             .getBoolean("aml_enabled", true));
         // CEF default ON; only OFF when the user explicitly disabled it before.
         android.content.SharedPreferences cefPrefs = requireContext().getApplicationContext()
-                .getSharedPreferences(com.hopepride.samp.util.SharedPreferenceCore.APP_PREFERENCES, 0);
+                .getSharedPreferences(com.hopepride.samp.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
         boolean cefOn = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
         mCefSwitch.setChecked(cefOn);
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));

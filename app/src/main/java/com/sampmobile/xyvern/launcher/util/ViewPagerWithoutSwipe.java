@@ -1,4 +1,4 @@
-package com.hopepride.samp.util;
+package com.hopepride.samp.launcher.util;
 
 import android.content.Context;
 import android.util.AttributeSet;
@@ -6,7 +6,7 @@ import android.view.MotionEvent;
 
 import androidx.viewpager.widget.ViewPager;
 
-import com.hopepride.samp.MainActivity;
+import com.hopepride.samp.launcher.MainActivity;
 
 public final class ViewPagerWithoutSwipe extends ViewPager {
     @Override

@@ -1,4 +1,4 @@
-package com.hopepride.samp.util;
+package com.hopepride.samp.launcher.util;
 
 import java.util.Locale;
 

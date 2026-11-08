@@ -9,8 +9,8 @@ import android.widget.Toast;
 
 import com.bytedance.shadowhook.ShadowHook;
 import com.joom.paranoid.Obfuscate;
-import com.hopepride.samp.util.SharedPreferenceCore;
-import com.hopepride.samp.util.SignatureChecker;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.SignatureChecker;
 import com.wardrumstudios.utils.WarMedia;
 
 import java.io.File;

@@ -28,13 +28,13 @@ import androidx.fragment.app.FragmentPagerAdapter;
 import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
 import com.hopepride.samp.game.GameDataManager;
-import com.hopepride.samp.config.Config;
-import com.hopepride.samp.fragments.HomeFragment;
-import com.hopepride.samp.fragments.PlayFragment;
-import com.hopepride.samp.fragments.SettingsFragment;
-import com.hopepride.samp.util.ConfigValidator;
-import com.hopepride.samp.util.SharedPreferenceCore;
-import com.hopepride.samp.util.ViewPagerWithoutSwipe;
+import com.hopepride.samp.launcher.config.Config;
+import com.hopepride.samp.launcher.fragments.HomeFragment;
+import com.hopepride.samp.launcher.fragments.PlayFragment;
+import com.hopepride.samp.launcher.fragments.SettingsFragment;
+import com.hopepride.samp.launcher.util.ConfigValidator;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.ViewPagerWithoutSwipe;
 
 import java.io.File;
 

@@ -7,7 +7,7 @@
     android:background="#080F1A"
     android:keepScreenOn="true">
 
-    <com.hopepride.samp.util.ViewPagerWithoutSwipe
+    <com.hopepride.samp.launcher.util.ViewPagerWithoutSwipe
         android:id="@+id/fragment_place"
         android:layout_width="0dp"
         android:layout_height="0dp"

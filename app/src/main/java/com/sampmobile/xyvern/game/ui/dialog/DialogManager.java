@@ -21,8 +21,8 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 import com.joom.paranoid.Obfuscate;
 import com.nvidia.devtech.NvEventQueueActivity;
 import com.hopepride.samp.R;
-import com.hopepride.samp.util.CustomRecyclerView;
-import com.hopepride.samp.util.Util;
+import com.hopepride.samp.launcher.util.CustomRecyclerView;
+import com.hopepride.samp.launcher.util.Util;
 
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;

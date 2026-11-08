@@ -1,4 +1,4 @@
-package com.hopepride.samp.util;
+package com.hopepride.samp.launcher.util;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -22,8 +22,8 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.hopepride.samp.R;
-import com.hopepride.samp.MainActivity;
-import com.hopepride.samp.config.Config;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.config.Config;
 
 import java.io.BufferedReader;
 import java.io.File;

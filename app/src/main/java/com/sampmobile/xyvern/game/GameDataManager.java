@@ -19,7 +19,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.hopepride.samp.R;
-import com.hopepride.samp.util.GameDataVerifier;
+import com.hopepride.samp.launcher.util.GameDataVerifier;
 
 import org.json.JSONObject;
 

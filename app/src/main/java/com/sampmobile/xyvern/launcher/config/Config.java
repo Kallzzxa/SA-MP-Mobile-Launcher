@@ -1,4 +1,4 @@
-package com.hopepride.samp.config;
+package com.hopepride.samp.launcher.config;
 
 import android.app.Activity;
 
