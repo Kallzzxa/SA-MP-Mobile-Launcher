@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.util;
+package com.hopepride.samp.util;
 
 /** SA-MP six-digit color tags are data, not arbitrary HTML. */
 public final class SampColorText {

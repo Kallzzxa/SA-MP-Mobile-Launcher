@@ -1,9 +1,9 @@
-package com.hopepride.samp.launcher.data;
+package com.hopepride.samp.data;
 
 import android.content.Context;
 import android.os.Environment;
 
-import com.hopepride.samp.launcher.util.Util;
+import com.hopepride.samp.util.Util;
 
 import java.io.BufferedWriter;
 import java.io.File;

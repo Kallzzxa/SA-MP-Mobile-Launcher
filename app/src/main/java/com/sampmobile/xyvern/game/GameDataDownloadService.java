@@ -273,7 +273,7 @@ public class GameDataDownloadService extends Service {
                     // Extract from our cache instead of staging over a user's files.zip.
                     unzipTo(c, finalZip, base);
                 }
-                boolean complete = com.hopepride.samp.launcher.util.GameDataVerifier
+                boolean complete = com.hopepride.samp.util.GameDataVerifier
                         .verifyGameData(c).isValid;
                 if (!complete) com.hopepride.samp.diagnostics.Diagnostics.event("DATA_FILES_INCOMPLETE");
                 try { if (finalZip.exists()) finalZip.delete(); } catch (Exception ignored) {}
@@ -513,7 +513,7 @@ public class GameDataDownloadService extends Service {
 
     private PendingIntent openMainIntent() {
         Intent i = new Intent();
-        i.setClassName(getPackageName(), "com.hopepride.samp.launcher.MainActivity");
+        i.setClassName(getPackageName(), "com.hopepride.samp.MainActivity");
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;

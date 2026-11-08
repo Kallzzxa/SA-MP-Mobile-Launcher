@@ -4544,7 +4544,7 @@
 10-09 21:00:50.449  1827  2699 D RGBNormalizeServer: OplusRGBNormalcom.hopepride.samp false
 10-09 21:00:50.453  1827  2699 I TaskOrganizerController: onTaskInfoChanged taskid 3com.hopepride.samp=Rect(0, 0 - 1080, 2400) mAppBoucom.hopepride.samp0, 2365) mMaxBounds=com.hopepride.samp0) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0}
 10-09 21:00:50.454  1827  2699 D OplusDexOptimizeManager: Do not in AppLaunchOptList!
-10-09 21:00:50.455  1827  2699 I OplusAppSwitchManagerService: appswitch hasProcess Activcom.hopepride.sampccom.hopepride.samp.launcher.MainActivity} t35543}
+10-09 21:00:50.455  1827  2699 I OplusAppSwitchManagerService: appswitch hasProcess Activcom.hopepride.sampccom.hopepride.samp.MainActivity} t35543}
 10-09 21:00:50.455  1827  2699 I OplusJoystickManager: handleApplicationSwitccom.hopepride.sampcom.hopepride.samp
 10-09 21:00:50.455  1827  2699 I OplusAppSwitchManagerService: appswitch hasProcess ActivityRecord{7dbe13b u0 com.sampmobile.xyvern/.launcher.MainActivity} t35543}
 10-09 21:00:50.456  1827  2699 D OplusUIFirst_FB: com.sampmobile.xyvern activity event: []

@@ -13,7 +13,7 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
-import com.hopepride.samp.launcher.util.Util;
+import com.hopepride.samp.util.Util;
 @Obfuscate
 public class AttachEdit {
     // Native button types (must match C++ AttachClick handler)

@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.util;
+package com.hopepride.samp.util;
 
 /** Comparisons for the optional server browser sort modes. */
 public final class ServerSort {

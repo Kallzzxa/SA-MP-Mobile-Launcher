@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.fragments;
+package com.hopepride.samp.fragments;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -25,9 +25,9 @@ import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
 import com.hopepride.samp.game.GameDataDownloadService;
-import com.hopepride.samp.launcher.MainActivity;
-import com.hopepride.samp.launcher.data.FilesData;
-import com.hopepride.samp.launcher.util.GameDataVerifier;
+import com.hopepride.samp.MainActivity;
+import com.hopepride.samp.data.FilesData;
+import com.hopepride.samp.util.GameDataVerifier;
 
 import org.json.JSONArray;
 import org.json.JSONObject;

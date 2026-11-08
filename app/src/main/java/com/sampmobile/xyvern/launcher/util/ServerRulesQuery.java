@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.util;
+package com.hopepride.samp.util;
 
 import java.io.IOException;
 import java.net.DatagramPacket;

@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.util;
+package com.hopepride.samp.util;
 
 import org.junit.Test;
 import java.util.Arrays;

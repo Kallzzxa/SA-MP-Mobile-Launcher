@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.data;
+package com.hopepride.samp.data;
 
 public class FilesData {
 

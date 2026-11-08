@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.util;
+package com.hopepride.samp.util;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -20,7 +20,7 @@ import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.concurrent.ExecutionException;
 
-import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.MainActivity;
 
 public class FirebaseMessageReceiver extends FirebaseMessagingService {
     @Override

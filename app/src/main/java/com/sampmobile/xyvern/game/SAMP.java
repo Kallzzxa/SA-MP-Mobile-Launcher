@@ -20,9 +20,9 @@ import com.hopepride.samp.game.ui.CustomKeyboard;
 import com.hopepride.samp.game.ui.LoadingScreen;
 import androidx.activity.OnBackPressedCallback;
 import com.hopepride.samp.game.ui.dialog.DialogManager;
-import com.hopepride.samp.launcher.util.SharedPreferenceCore;
-import com.hopepride.samp.launcher.util.SignatureChecker;
-import com.hopepride.samp.launcher.util.ServerInput;
+import com.hopepride.samp.util.SharedPreferenceCore;
+import com.hopepride.samp.util.SignatureChecker;
+import com.hopepride.samp.util.ServerInput;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -201,7 +201,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         // ============================================================
         try {
             android.content.SharedPreferences cefPrefs = getSharedPreferences(
-                    com.hopepride.samp.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
+                    com.hopepride.samp.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
             boolean cefEnabled = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
             com.hopepride.samp.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
             if (!cefEnabled) {

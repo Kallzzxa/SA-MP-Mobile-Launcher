@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher.fragments;
+package com.hopepride.samp.fragments;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -36,17 +36,17 @@ import com.joom.paranoid.Obfuscate;
 import com.hopepride.samp.R;
 import com.hopepride.samp.game.SAMP;
 import com.hopepride.samp.game.StartupAssets;
-import com.hopepride.samp.launcher.MainActivity;
-import com.hopepride.samp.launcher.util.SAMPServerInfo;
-import com.hopepride.samp.launcher.util.SampQueryAPI;
-import com.hopepride.samp.launcher.util.ServerInput;
-import com.hopepride.samp.launcher.util.ServerSearch;
-import com.hopepride.samp.launcher.util.ServerSort;
-import com.hopepride.samp.launcher.util.ServerPlayerQuery;
-import com.hopepride.samp.launcher.util.PlayerListFilter;
-import com.hopepride.samp.launcher.util.ServerRulesQuery;
-import com.hopepride.samp.launcher.util.ServerPingQuery;
-import com.hopepride.samp.launcher.util.LauncherEvents;
+import com.hopepride.samp.MainActivity;
+import com.hopepride.samp.util.SAMPServerInfo;
+import com.hopepride.samp.util.SampQueryAPI;
+import com.hopepride.samp.util.ServerInput;
+import com.hopepride.samp.util.ServerSearch;
+import com.hopepride.samp.util.ServerSort;
+import com.hopepride.samp.util.ServerPlayerQuery;
+import com.hopepride.samp.util.PlayerListFilter;
+import com.hopepride.samp.util.ServerRulesQuery;
+import com.hopepride.samp.util.ServerPingQuery;
+import com.hopepride.samp.util.LauncherEvents;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -472,12 +472,12 @@ public class PlayFragment extends Fragment {
             LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
-            com.hopepride.samp.launcher.util.GameDataVerifier.VerificationResult verify = 
-                    com.hopepride.samp.launcher.util.GameDataVerifier.verifyGameData(requireContext());
+            com.hopepride.samp.util.GameDataVerifier.VerificationResult verify = 
+                    com.hopepride.samp.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
                 com.hopepride.samp.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
-                for (int i = 0; i < com.hopepride.samp.launcher.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
-                    if (verify.missingFiles.contains(com.hopepride.samp.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
+                for (int i = 0; i < com.hopepride.samp.util.GameDataVerifier.ESSENTIAL_FILES.length; i++) {
+                    if (verify.missingFiles.contains(com.hopepride.samp.util.GameDataVerifier.ESSENTIAL_FILES[i]))
                         com.hopepride.samp.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
                 }
                 Toast.makeText(getContext(), 

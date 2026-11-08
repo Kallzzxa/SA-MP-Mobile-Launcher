@@ -23,8 +23,8 @@ import com.downloader.PRDownloader;
 import com.downloader.PRDownloaderConfig;
 import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
-import com.hopepride.samp.launcher.data.FilesData;
-import com.hopepride.samp.launcher.util.Util;
+import com.hopepride.samp.data.FilesData;
+import com.hopepride.samp.util.Util;
 
 import org.json.JSONArray;
 import org.json.JSONException;
