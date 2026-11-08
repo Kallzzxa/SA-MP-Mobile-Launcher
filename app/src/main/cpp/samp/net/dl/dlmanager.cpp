@@ -535,7 +535,6 @@ bool DLManager::RegisterCustomModels() {
 
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
         strcmp(CStreaming::ms_files[imgIndex].m_szName, expectedImgName) != 0) {
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
         PushChat("Verifikasi pendaftaran IMG khusus gagal.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
