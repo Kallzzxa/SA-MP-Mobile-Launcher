@@ -152,7 +152,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         super.onCreate(savedInstanceState);
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName())) {
-            Toast.makeText(this, "Use original launcher! No remake", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Gunakan launcher asli, jangan dimodifikasi ulang", Toast.LENGTH_LONG).show();
             return;
         }
 

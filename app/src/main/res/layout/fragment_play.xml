@@ -78,7 +78,7 @@
             android:layout_weight="1"
             android:fontFamily="@font/montserrat_bold"
             android:gravity="center"
-            android:text="Hosted"
+            android:text="Hosting"
             android:textColor="#FFFFFF"
             android:textSize="13sp" />
     </LinearLayout>

@@ -63,6 +63,13 @@ public class SettingsFragment extends Fragment {
             ((MainActivity) getActivity()).hideKeyboard(getActivity());
         }
 
+        view.findViewById(R.id.open_mod_manager).setOnClickListener(v ->
+                startActivity(new Intent(getContext(),
+                        com.hopepride.samp.launcher.mods.ModManagerActivity.class)));
+        view.findViewById(R.id.open_crash_center).setOnClickListener(v ->
+                startActivity(new Intent(getContext(),
+                        com.hopepride.samp.launcher.crash.CrashCenterActivity.class)));
+
         view.findViewById(R.id.share_diagnostic_logs).setOnClickListener(v ->
                 com.hopepride.samp.diagnostics.DiagnosticShare.confirm(requireActivity()));
 
@@ -175,7 +182,7 @@ public class SettingsFragment extends Fragment {
                 .edit()
                 .putBoolean("aml_enabled", enabled)
                 .apply();
-            Toast.makeText(requireContext(), "AML setting saved. Restart the game process to apply.", Toast.LENGTH_LONG).show();
+            Toast.makeText(requireContext(), "Pengaturan AML tersimpan. Mulai ulang proses game untuk menerapkannya.", Toast.LENGTH_LONG).show();
         });
 
         mCefSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {

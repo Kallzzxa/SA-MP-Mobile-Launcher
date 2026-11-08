@@ -34,7 +34,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:fontFamily="@font/montserrat_bold"
-        android:text="Updating game data..."
+        android:text="Memperbarui data game..."
         android:textColor="@color/white"
         android:textSize="@dimen/_11sdp"
         app:layout_constraintBottom_toBottomOf="parent"

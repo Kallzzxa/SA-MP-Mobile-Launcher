@@ -75,6 +75,18 @@
             android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         </activity>
 
+        <activity
+            android:name=".launcher.mods.ModManagerActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false" />
+
+        <activity
+            android:name=".launcher.crash.CrashCenterActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false" />
+
         <service android:name=".launcher.UpdateService" android:enabled="true" android:exported="false"/>
 
         <service
