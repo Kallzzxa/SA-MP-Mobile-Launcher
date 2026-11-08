@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher;
+package com.hopepride.samp;
 
 import android.content.ComponentName;
 import android.content.Context;

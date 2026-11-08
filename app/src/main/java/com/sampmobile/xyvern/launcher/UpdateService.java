@@ -1,4 +1,4 @@
-package com.hopepride.samp.launcher;
+package com.hopepride.samp;
 
 import android.app.Service;
 import android.content.Intent;
