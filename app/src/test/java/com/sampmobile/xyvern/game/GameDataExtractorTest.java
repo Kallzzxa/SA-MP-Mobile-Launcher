@@ -183,6 +183,17 @@ public class GameDataExtractorTest {
         mixed.add(new ZipEntry("files/a.txt"));
         mixed.add(new ZipEntry("README.txt"));
         assertEquals("", GameDataExtractor.detectStripPrefix(mixed));
+
+        // A single top level folder is only treated as a wrapper when the tree below it
+        // looks like game data; an ordinary folder must be preserved.
+        List<ZipEntry> unrelated = new ArrayList<>();
+        unrelated.add(new ZipEntry("deep/deeper/file.bin"));
+        assertEquals("", GameDataExtractor.detectStripPrefix(unrelated));
+
+        List<ZipEntry> wrappedData = new ArrayList<>();
+        wrappedData.add(new ZipEntry("archive/data/handling.cfg"));
+        wrappedData.add(new ZipEntry("archive/texdb/samp/samp.dxt.tmb"));
+        assertEquals("archive/", GameDataExtractor.detectStripPrefix(wrappedData));
     }
 
     @Test public void flagsUnsafeEntryNames() {

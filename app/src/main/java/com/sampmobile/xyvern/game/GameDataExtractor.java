@@ -257,6 +257,15 @@ public final class GameDataExtractor {
         return stripped.isEmpty() ? "" : stripped;
     }
 
+    /**
+     * First level names that identify a GTA San Andreas data tree. A wrapper folder is
+     * only stripped when what is inside it actually looks like game data, so an archive
+     * that legitimately ships a folder called "deep" keeps its structure.
+     */
+    private static final String[] GAME_MARKERS = {
+            "samp", "data", "models", "texdb", "anim", "audio", "text", "txd", "android", "assets"
+    };
+
     /** Archives are usually packed inside a single top level folder. */
     static String detectStripPrefix(List<ZipEntry> entries) {
         String common = null;
@@ -276,15 +285,36 @@ public final class GameDataExtractor {
         }
 
         if (common == null) return "";
-        // Only strip when everything lives inside that folder, directories included.
+
+        // A file with the same name as the folder means the archive is flat-ish.
         for (ZipEntry entry : entries) {
             String name = entry.getName();
             if (name != null && !name.isEmpty() && name.equals(common.substring(0, common.length() - 1))) {
-                // there is a file with the same name as the folder: keep names untouched
                 return "";
             }
         }
+
+        if (!containsGameDataBelow(entries, common)) return "";
         return common;
+    }
+
+    private static boolean containsGameDataBelow(List<ZipEntry> entries, String prefix) {
+        for (ZipEntry entry : entries) {
+            String name = entry.getName();
+            if (name == null || !name.startsWith(prefix)) continue;
+
+            String rest = name.substring(prefix.length());
+            if (rest.isEmpty()) continue;
+
+            int slash = rest.indexOf('/');
+            String first = (slash < 0 ? rest : rest.substring(0, slash)).toLowerCase(java.util.Locale.ROOT);
+            if (first.isEmpty()) continue;
+
+            for (String marker : GAME_MARKERS) {
+                if (marker.equals(first)) return true;
+            }
+        }
+        return false;
     }
 
     static long estimateNeededBytes(List<ZipEntry> entries) {
