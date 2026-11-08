@@ -368,7 +368,7 @@ void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* t
 			m_MaterialTexture[iMaterialIndex] = 0;
 		}
 
-		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTextureFromTxd(txdname, texturename);
+		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTexture(texturename);
 		m_dwMaterialColor[iMaterialIndex] = dwColor;
 		m_iMaterialType[iMaterialIndex] = MATERIAL_TYPE_MATERIAL;
 		m_bHasMaterial = true;

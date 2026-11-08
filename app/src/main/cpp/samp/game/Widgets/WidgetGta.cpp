@@ -8,6 +8,8 @@
 #include "net/netgame.h"
 #include "vendor/shadowhook/patch.h"
 #include "WidgetRegionLook.h"
+#include "game/RW/RenderWare.h"
+#include "game/Enums/OSDeviceForm.h"
 #include "TouchInterface.h"
 #include "WidgetButton.h"
 
@@ -58,37 +60,78 @@ void SetWidgetFromName(const char* name, CWidgetGta* pWidget)
     if(!strcmp("car_shoot", name) || strstr(name, "car_shoot")) SetWidgetFromId(WidgetIDs::WIDGET_CAR_SHOOT, pWidget);
 }
 
-static bool IsVehicleControlWidget(CWidgetGta* pWidget)
+// Widgets the engine created, in creation order, with the name it gave them.
+// The names are the only reliable identity we have: the engine's own widget
+// array (CTouchInterface::m_pWidgets) is indexed by position, not by widget, so
+// comparing our objects against it can point at the wrong button and hide the
+// controls the player actually needs.
+struct WidgetRecord
+{
+    const char* name;
+    CWidgetGta* widget;
+};
+
+constexpr int kMaxWidgetRecords = 64;
+WidgetRecord g_widgetRecords[kMaxWidgetRecords];
+int g_widgetRecordCount = 0;
+
+unsigned g_widgetUpdateCalls = 0;
+bool g_widgetStateLogged = false;
+
+// The engine already swaps the touch layout when the player enters and leaves a
+// vehicle. Overriding SetEnabled on top of that only risks hiding a control, so
+// it stays off unless it is switched on deliberately after a verified diagnosis.
+constexpr bool kEnforceWidgetState = false;
+
+void RememberWidget(const char* name, CWidgetGta* pWidget)
+{
+    if (!name || !pWidget) return;
+    if (g_widgetRecordCount >= kMaxWidgetRecords) return;
+
+    g_widgetRecords[g_widgetRecordCount].name = name;
+    g_widgetRecords[g_widgetRecordCount].widget = pWidget;
+    g_widgetRecordCount++;
+}
+
+bool IsVehicleControlWidget(CWidgetGta* pWidget)
 {
     if (!pWidget) return false;
-    if (m_pWidgets[WidgetIDs::WIDGET_ACCELERATE] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_BRAKE] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_HORN] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE] == pWidget ||
-        m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT] == pWidget)
-    {
-        return true;
-    }
+    return m_pWidgets[WidgetIDs::WIDGET_ACCELERATE] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_BRAKE] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_HORN] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_ATTACK] == pWidget ||
+           m_pWidgets[WidgetIDs::WIDGET_SPRINT] == pWidget;
+}
 
-    if (CTouchInterface::m_pWidgets)
+// One dump of every widget the engine built, its name and its enabled flag.
+// This is what tells us which control went missing and why.
+void LogWidgetState(const char* reason)
+{
+    if (g_widgetStateLogged) return;
+    g_widgetStateLogged = true;
+
+    int screenWidth = RsGlobal ? RsGlobal->maximumWidth : 0;
+    int screenHeight = RsGlobal ? RsGlobal->maximumHeight : 0;
+    int deviceForm = CHook::CallFunction<OSDeviceForm>(g_libGTASA + (VER_x32 ? 0x0026BAD4 + 1 : 0x32155C));
+
+    FLog("Widget state (%s): %d widgets, %u update calls, enforce=%d, screen=%dx%d deviceForm=%d",
+         reason, g_widgetRecordCount, g_widgetUpdateCalls, (int)kEnforceWidgetState,
+         screenWidth, screenHeight, (int)deviceForm);
+
+    for (int i = 0; i < g_widgetRecordCount; i++)
     {
-        if (pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_ACCELERATE] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_BRAKE] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_LEFT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_RIGHT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN_ALT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HANDBRAKE_AND_AIR_SHOOT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_CAR_SHOOT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_LEFT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_RIGHT])
-        {
-            return true;
-        }
+        CWidgetGta* widget = g_widgetRecords[i].widget;
+        FLog("  widget[%d] \"%s\" gtasa+0x%llx enabled=%d vehicle=%d",
+             i,
+             g_widgetRecords[i].name ? g_widgetRecords[i].name : "?",
+             (unsigned long long)((uintptr_t)widget - g_libGTASA),
+             widget ? (int)widget->m_bEnabled : -1,
+             widget ? (int)IsVehicleControlWidget(widget) : -1);
     }
-    return false;
 }
 
 eWidgetState ProcessFixedWidget(CWidgetGta* pWidget)
@@ -194,6 +237,7 @@ uintptr_t CWidget_hook(CWidgetButton* thiz, const char* name, uintptr_t*  a3, in
 {
     FLog("New Widget: \"%s\" 0x%X", name, thiz-g_libGTASA);
 
+    RememberWidget(name, thiz);
     SetWidgetFromName(name, thiz);
     return CWidget(thiz, name, a3, a4, a5);
 }
@@ -201,7 +245,7 @@ uintptr_t CWidget_hook(CWidgetButton* thiz, const char* name, uintptr_t*  a3, in
 void (*CWidget__SetEnabled)(CWidgetGta* pWidget, bool bEnabled);
 void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
 {
-    if(pNetGame)
+    if(kEnforceWidgetState && pNetGame)
     {
         switch(ProcessFixedWidget(pWidget))
         {
@@ -217,7 +261,7 @@ void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
 
 void (*CWidgetButton__Update)(CWidgetButton* thiz);
 void CWidgetButton__Update_hook(CWidgetButton* thiz) {
-    if(pNetGame)
+    if(kEnforceWidgetState && pNetGame)
     {
         switch(ProcessFixedWidget(thiz))
         {
@@ -227,6 +271,10 @@ void CWidgetButton__Update_hook(CWidgetButton* thiz) {
     }
 
     CWidgetButton__Update(thiz);
+
+    g_widgetUpdateCalls++;
+    if(g_widgetUpdateCalls == 240)
+        LogWidgetState("first frames after the HUD came up");
 }
 
 void CWidgetGta::InjectHooks() {

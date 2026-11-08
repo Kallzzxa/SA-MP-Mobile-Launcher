@@ -129,7 +129,7 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/montserrat_bold"
                     android:letterSpacing="0.08"
-                    android:text="STATUS GAME DATA"
+                    android:text="STATUS DATA GAME"
                     android:textColor="#38BDF8"
                     android:textSize="10sp" />
                 <LinearLayout

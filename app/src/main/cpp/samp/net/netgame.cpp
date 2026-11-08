@@ -495,7 +495,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	//MicroIcon::Hide();
 	//Network::OnRaknetDisconnect();
 
-	if (pUI) pUI->chat()->addInfoMessage("The server is restarting..");
+	if (pUI) pUI->chat()->addInfoMessage("Server sedang dimulai ulang..");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -537,7 +537,7 @@ void CNetGame::ProcessConnecting()
 	if (CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("Connecting to server...");
+		if (pUI) pUI->chat()->addDebugMessage("Menghubungkan ke server...");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
@@ -576,7 +576,7 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server didn't respond. Retrying...");
+	if (pUI) pUI->chat()->addDebugMessage("Server tidak merespons. Mencoba lagi...");
 	if (pAudioStream) { //add new
 		pAudioStream->Stop(true);
 	}
@@ -587,7 +587,7 @@ void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("Server full. Retrying...");
+	if(pUI) pUI->chat()->addDebugMessage("Server penuh. Mencoba lagi...");
 	SpeakerList::Hide(); //addnew
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
@@ -595,7 +595,7 @@ void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server closed connection.");
+	if (pUI) pUI->chat()->addDebugMessage("Server menutup koneksi.");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -627,7 +627,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	if (!bsSuccAuth.Read(MyPlayerID) || !bsSuccAuth.Read(uiChallenge)) return;
 	uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining...");
+	if (pUI) pUI->chat()->addDebugMessage("Terhubung. Bergabung...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
@@ -656,7 +656,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	if (iVersion != 4062 && pUI) {
 		pUI->chat()->addDebugMessage(
 			"Custom models disabled: this server streams 0.3.DL artwork, but we joined as version %d. "
-			"Set the client version to 0.3.DL to enable it.", iVersion);
+			"Setel versi klien ke 0.3.DL untuk mengaktifkannya.", iVersion);
 	}
 
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
@@ -674,17 +674,17 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Failed to initialize encryption.");
+	if (pUI) pUI->chat()->addDebugMessage("Gagal memulai enkripsi.");
 }
 
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("You are banned from this server.");
+	if (pUI) pUI->chat()->addDebugMessage("Kamu diblokir dari server ini.");
 }
 
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Wrong server password.");
+	if (pUI) pUI->chat()->addDebugMessage("Password server salah.");
 	m_pRakClient->Disconnect(0);
 }
 
@@ -694,7 +694,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 		m_pRakClient->Disconnect(0);
 	}
 
-	if (pUI) pUI->chat()->addDebugMessage("Lost connection to the server. Reconnecting..");
+	if (pUI) pUI->chat()->addDebugMessage("Koneksi ke server terputus. Menghubungkan ulang..");
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();
@@ -1083,7 +1083,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	if (strcasecmp(cmd.c_str(), "/fps") == 0) {
 		if (pSettings) {
 			pSettings->Get().iFPSCounter = !pSettings->Get().iFPSCounter;
-			if (pUI) pUI->chat()->addInfoMessage("FPS Counter: %s", pSettings->Get().iFPSCounter ? "Enabled" : "Disabled");
+			if (pUI) pUI->chat()->addInfoMessage("Penghitung FPS: %s", pSettings->Get().iFPSCounter ? "Aktif" : "Nonaktif");
 		}
 		return;
 	}
@@ -1092,13 +1092,13 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	// "/dl retry" re-arms failed downloads instead of toggling the indicator.
 	if (strcasecmp(cmd.c_str(), "/dl retry") == 0 || strcasecmp(cmd.c_str(), "/dlr") == 0) {
 		DLManager::Instance().RequestRetryFailed();
-		if (pUI) pUI->chat()->addInfoMessage("Retrying failed model downloads.");
+		if (pUI) pUI->chat()->addInfoMessage("Mencoba ulang unduhan model yang gagal.");
 		return;
 	}
 	if (strcasecmp(cmd.c_str(), "/dl") == 0 || strcasecmp(cmd.c_str(), "/models") == 0) {
 		DLManager::Instance().ToggleOverlay();
 		if (pUI) pUI->chat()->addInfoMessage(DLManager::Instance().IsOverlayForced()
-			? "Model download indicator pinned." : "Model download indicator will auto-hide.");
+			? "Indikator unduhan model disematkan." : "Indikator unduhan model akan tersembunyi otomatis.");
 		return;
 	}
 
@@ -1150,7 +1150,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 
 	// Client-side command: Reconnect
 	if (strcasecmp(cmd.c_str(), "/reconnect") == 0 || strcasecmp(cmd.c_str(), "/rec") == 0) {
-		if (pUI) pUI->chat()->addInfoMessage("Reconnecting to server...");
+		if (pUI) pUI->chat()->addInfoMessage("Menghubungkan ulang ke server...");
 		ShutdownForGameModeRestart();
 		return;
 	}
@@ -1159,7 +1159,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	if (strcasecmp(cmd.c_str(), "/clearchat") == 0 || strcasecmp(cmd.c_str(), "/cc") == 0) {
 		if (pUI) {
 			for (int i = 0; i < 20; i++) pUI->chat()->addDebugMessage(" ");
-			pUI->chat()->addInfoMessage("Chat cleared.");
+			pUI->chat()->addInfoMessage("Obrolan dibersihkan.");
 		}
 		return;
 	}

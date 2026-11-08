@@ -1,4 +1,7 @@
 #include <GLES2/gl2.h>
+#include <sys/syscall.h>
+#include <dirent.h>
+#include <unistd.h>
 #include "../main.h"
 #include "../vendor/shadowhook/patch.h"
 #include "game.h"
@@ -7,6 +10,9 @@
 #include "Textures/TextureDatabase.h"
 #include "Textures/TextureDatabaseEntry.h"
 #include "Textures/TextureDatabaseRuntime.h"
+#include "Textures/TextureVariantFallback.h"
+#include "Localization.h"
+#include "SafeMode.h"
 #include "Scene.h"
 #include "sprite2d.h"
 #include "Entity/PlayerPedGta.h"
@@ -132,6 +138,8 @@ void Render2dStuff_hook()
     if (pUI) pUI->render();
     return;
 }*/
+static bool g_bTouchControlsLogged = false;
+
 void Render2dStuff()
 {
     if( CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x001BB7F4 + 1 : 0x24EA90)) ) // emu_IsAltRenderTarget()
@@ -150,7 +158,18 @@ void Render2dStuff()
     CHook::CallFunction<void>("_ZN4CHud4DrawEv");
     //	GPS::Draw();
     //
-    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(false); // CTouchInterface::DrawAll
+    // This is where the engine paints the Android touch controls. The previous
+    // build passed false here, which hid every on-screen button while the
+    // widgets themselves kept being created and their input kept running, so
+    // the player was left with no run, jump, crouch, attack or vehicle
+    // controls at all. Drawing them is the whole fix: the widgets, their
+    // layout files and their input handling were never removed.
+    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(true); // CTouchInterface::DrawAll
+    if (!g_bTouchControlsLogged)
+    {
+        g_bTouchControlsLogged = true;
+        FLog("Touch controls: CTouchInterface::DrawAll(true) called from Render2dStuff");
+    }
 
     CHook::CallFunction<void>("_Z12emu_GammaSeth", 1);
 
@@ -1151,6 +1170,58 @@ void CRadar_ClearBlip_hook(uint32_t a2)
 
 /* =============================================================================== */
 
+// True when the folder really contains this game's data (texdb, data, models
+// or the SAMP folder). Used to reject the engine's legacy default path
+// (/Android/data/com.samp.mobile/samp.data) which belongs to another package.
+// Bounded directory listing used once at start up: which text tables are
+// installed decides whether the interface can be shown in another language at
+// all, and which texdb folders exist decides what the renderer can load.
+static void LogDirectoryInventory(const char* relative, int maxEntries)
+{
+    if (!g_pszStorage || !relative) return;
+
+    char path[512];
+    const int written = snprintf(path, sizeof(path), "%s/%s", g_pszStorage, relative);
+    if (written <= 0 || static_cast<size_t>(written) >= sizeof(path)) return;
+
+    DIR* directory = opendir(path);
+    if (!directory)
+    {
+        FLog("inventory: %s not found", relative);
+        return;
+    }
+
+    int shown = 0;
+    struct dirent* entry;
+    while ((entry = readdir(directory)) != nullptr && shown < maxEntries)
+    {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        FLog("inventory: %s/%s", relative, entry->d_name);
+        shown++;
+    }
+    closedir(directory);
+}
+
+static bool StorageHasGameData(const char* path)
+{
+    if (!path || !*path) return false;
+
+    const size_t length = strlen(path);
+    const bool needsSlash = (path[length - 1] != '/');
+
+    const char* markers[] = { "texdb", "data", "models", "SAMP" };
+    for (const char* marker : markers)
+    {
+        char probe[600];
+        const int written = snprintf(probe, sizeof(probe), "%s%s%s", path,
+                                     needsSlash ? "/" : "", marker);
+        if (written <= 0 || static_cast<size_t>(written) >= sizeof(probe)) continue;
+        if (access(probe, F_OK) == 0) return true;
+    }
+
+    return false;
+}
+
 void ReadSettingFile();
 void ApplyFPSPatch();
 void (*NvUtilInit)();
@@ -1160,7 +1231,30 @@ void NvUtilInit_hook()
 
     NvUtilInit();
 
-    g_pszStorage = (char*)(g_libGTASA + (VER_x32 ? 0x6D687C : 0x8B46A8)); // StorageRootBuffer
+    // The engine exposes its own storage root buffer, but its default value is
+    // built for the original SA-MP package (/Android/data/com.samp.mobile),
+    // while this build stores its data under com.hopepride.samp. Only take the
+    // engine's path when it actually points at a game data folder, otherwise
+    // keep the path the launcher handed us.
+    char* engineStorage = (char*)(g_libGTASA + (VER_x32 ? 0x6D687C : 0x8B46A8)); // StorageRootBuffer
+    char* launcherStorage = g_pszStorage;
+
+    FLog("Storage: engine='%s' launcher='%s'",
+         engineStorage ? engineStorage : "(null)",
+         launcherStorage ? launcherStorage : "(null)");
+
+    if (StorageHasGameData(engineStorage))
+        g_pszStorage = engineStorage;
+    else if (StorageHasGameData(launcherStorage))
+        g_pszStorage = launcherStorage;
+
+    FLog("Storage: using '%s'", g_pszStorage ? g_pszStorage : "(null)");
+
+    FLog("SafeMode: %s%s", SafeMode::IsEnabled() ? "active" : "inactive",
+         SafeMode::IsEnabled() ? SafeMode::ActiveMarker() : "");
+
+    LogDirectoryInventory("Text", 24);
+    LogDirectoryInventory("texdb", 24);
 
     ReadSettingFile();
 
@@ -1476,6 +1570,96 @@ int OS_FileRead_hook(void* a1, void* a2, int a3)
 }
 
 // Original RLE function pointer
+// ---------------------------------------------------------------------------
+// RLEDecompress guard.
+//
+// crash_native.txt (post-guard build, rle-guard hook=1 calls=4 padded=4) shows
+// the engine still faulting inside RLEDecompress on a 16 byte load whose source
+// sits 14 bytes before an unmapped page boundary. Four calls were hooked and
+// four were padded, so the fault happened inside a call that already received a
+// 64 byte padded copy: the decompressor keeps consuming input past the declared
+// block end until the output is full, i.e. the caller supplies a compressed
+// block that is shorter than the data it decodes (truncated or mismatched
+// texture data), and the engine has no input bound check.
+//
+// Therefore the padding now covers the worst case the loop can reach, which is
+// bounded by the output length, and the guard records the caller and sizes of
+// every call so the next report identifies the asset and the call site.
+// ---------------------------------------------------------------------------
+#ifndef SYS_gettid
+#define SYS_gettid __NR_gettid
+#endif
+
+typedef void* (*RLEDecompressPaddedFn)(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape);
+
+static RLEDecompressPaddedFn orig_RLEDecompressPadded = nullptr;
+
+// Reported by the native crash handler so every report proves which build ran
+// and what the last decompression looked like.
+volatile int g_rleGuardHookResult = -1;  // -1 = not attempted yet
+volatile unsigned long long g_rleGuardCalls = 0;
+volatile unsigned long long g_rleGuardPads = 0;
+volatile unsigned long long g_rleGuardLastCaller = 0;
+volatile unsigned long long g_rleGuardLastSrcSize = 0;
+volatile unsigned long long g_rleGuardLastDestSize = 0;
+volatile unsigned long long g_rleGuardLastPad = 0;
+
+static const uint32_t RLE_GUARD_MAX_PAD = 4u * 1024u * 1024u;   // worst case copy
+static const uintptr_t RLE_GUARD_PAGE = 0x1000u;
+
+static void* RLEDecompressGuarded(void* dest, uint32_t destSize, const void* src, uint32_t srcSize, uint32_t escape)
+{
+    if (!orig_RLEDecompressPadded) return nullptr;
+
+    const unsigned long long uiCaller = (unsigned long long)(uintptr_t)__builtin_return_address(0);
+    const unsigned long long uiCall = ++g_rleGuardCalls;
+    g_rleGuardLastCaller = uiCaller;
+    g_rleGuardLastSrcSize = srcSize;
+    g_rleGuardLastDestSize = destSize;
+
+    if (!src || srcSize == 0 || !dest || destSize == 0)
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    // The engine can consume up to one input byte per output byte while it
+    // fills the destination, so the output length bounds how far past the block
+    // it may walk. Add one token of slack for the word wide tail read.
+    const unsigned long long uiPadWanted = (unsigned long long)destSize + 64ull;
+    uint32_t uiPad = (uiPadWanted < (unsigned long long)RLE_GUARD_MAX_PAD) ? (uint32_t)uiPadWanted : RLE_GUARD_MAX_PAD;
+    g_rleGuardLastPad = uiPad;
+
+    if (uiCall <= 24)
+    {
+        const uint8_t* pHead = static_cast<const uint8_t*>(src);
+        FLog("RLE#%llu tid=%d caller=%p caller-gtasa=%llx src=%p srcSize=%x dst=%p dstSize=%x pad=%x head=%02x%02x%02x%02x%02x%02x%02x%02x",
+             uiCall,
+             (int)syscall(SYS_gettid),
+             (void*)(uintptr_t)uiCaller,
+             (unsigned long long)(uiCaller - (unsigned long long)g_libGTASA),
+             src, srcSize, dest, destSize, uiPad,
+             pHead[0], pHead[1], pHead[2], pHead[3],
+             pHead[4], pHead[5], pHead[6], pHead[7]);
+    }
+
+    // Fast path: the block plus the worst case over-read stays inside the page
+    // that holds the source, so no read can reach an unmapped page.
+    const uintptr_t uiSrc = (uintptr_t)src;
+    const uintptr_t uiReachEnd = uiSrc + (uintptr_t)srcSize + (uintptr_t)uiPad - 1;
+    if ((uiSrc & ~(RLE_GUARD_PAGE - 1)) == (uiReachEnd & ~(RLE_GUARD_PAGE - 1)))
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    uint8_t* pCopy = static_cast<uint8_t*>(malloc((size_t)srcSize + (size_t)uiPad));
+    if (!pCopy)
+        return orig_RLEDecompressPadded(dest, destSize, src, srcSize, escape);
+
+    memcpy(pCopy, src, srcSize);
+    memset(pCopy + srcSize, 0, uiPad);
+    g_rleGuardPads++;
+
+    void* pResult = orig_RLEDecompressPadded(dest, destSize, pCopy, srcSize, escape);
+    free(pCopy);
+    return pResult;
+}
+
 void (*orig_RLEDecompress)(uint8_t* dest, size_t destSize, const uint8_t* src, size_t segSize, uint32_t escape) = nullptr;
 void RLEDecompress_hook(uint8_t* dest, size_t destSize, const uint8_t* src, size_t segSize, uint32_t escape)
 {
@@ -1725,6 +1909,26 @@ void InstallSpecialHooks()
     CHook::RET("_ZN4CPed31RemoveWeaponWhenEnteringVehicleEi"); // CPed::RemoveWeaponWhenEnteringVehicle
 
     //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x6701D4 : 0x840708), &RLEDecompress_hook, &orig_RLEDecompress);
+
+    // Keep the engine decompressor from reading one word past the end of its
+    // source block (see crash_native.txt: RLEDecompress, four byte load at
+    // end-2 of a page aligned block). Every call gets a padded copy.
+    // The vendored shadowhook returns an opaque pointer here, so success is
+    // judged by whether the original function was resolved.
+    shadowhook_hook_sym_name(
+            "libGTASA.so",
+            "_Z13RLEDecompressPhjPKhjj",
+            (void*)RLEDecompressGuarded,
+            (void**)&orig_RLEDecompressPadded);
+    g_rleGuardHookResult = (orig_RLEDecompressPadded != nullptr) ? 1 : 0;
+    FLog("RLEDecompress guard: installed %d, original %p", (int)g_rleGuardHookResult, (void*)orig_RLEDecompressPadded);
+
+    // Interface language: one table, applied where the engine draws text.
+    Localization::Initialise();
+
+    // Texture data sets often ship several GPU variants; make sure the engine
+    // asks for one that exists instead of failing the whole database.
+    TextureVariantFallback::Initialise();
 
     //CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
 

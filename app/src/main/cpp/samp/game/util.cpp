@@ -2026,8 +2026,8 @@ uintptr_t LoadTexture(const char* texname)
 
 RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename)
 {
-    RwTexture* tex = nullptr;
-    if (txdname && texturename && strncmp(txdname, "none", 5u))
+    RwTexture* tex;
+    if (strncmp(txdname, "none", 5u))
     {
         uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x5D3E60+1))(txdname);
         CHook::CallFunction<void>(g_libGTASA + 0x5D4184 + 1);
@@ -2036,9 +2036,8 @@ RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename)
         CHook::CallFunction<void>(g_libGTASA + 0x5D41C4 + 1);
     }
 
-    if (!texturename) return nullptr;
-    if(!tex && txdname) tex = (RwTexture*)LoadTexture(std::string(std::string(texturename) + "_" + txdname).c_str());
-    if(!tex && txdname) tex = (RwTexture*)LoadTexture(std::string(std::string(txdname) + "_" + texturename).c_str());
+    if(!tex) tex = (RwTexture*)LoadTexture(std::string(std::string(texturename) + "_" + txdname).c_str());
+    if(!tex) tex = (RwTexture*)LoadTexture(std::string(std::string(txdname) + "_" + texturename).c_str());
     if(!tex) tex = (RwTexture*)LoadTexture(texturename);
     if(!tex)
     {
@@ -2050,10 +2049,10 @@ RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename)
     {
         std::string str = texturename;
         std::transform(str.begin(), str.end(), str.begin(), ::toupper);
-        if (txdname) tex = (RwTexture*)LoadTexture(std::string(str + "_" + txdname).c_str());
+        tex = (RwTexture*)LoadTexture(std::string(str + "_" + txdname).c_str());
     }
 
-    if (!tex && txdname && strncmp(txdname, "none", 5u) != 0)
+    if(!tex)
     {
         tex = (RwTexture*)CUtil::LoadTextureFromDB(txdname, texturename);
     }

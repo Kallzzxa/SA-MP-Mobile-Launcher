@@ -10,7 +10,7 @@
         android:layout_height="wrap_content"
         android:background="@drawable/ic_buttoncolor"
         android:fontFamily="@font/montserrat_bold"
-        android:text="ADD SERVER"
+        android:text="TAMBAH SERVER"
         android:textColor="@color/white"
         android:textSize="@dimen/_12sdp"
         app:layout_constraintBottom_toBottomOf="parent"

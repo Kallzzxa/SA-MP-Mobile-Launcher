@@ -472,7 +472,10 @@ public class PlayFragment extends Fragment {
             LauncherEvents.sendJoinAttempt(requireContext(), server.getAddress(), server.getPort());
 
             // Verifikasi data game sebelum meluncurkan client
-            com.hopepride.samp.launcher.util.GameDataVerifier.VerificationResult verify = 
+            String textureVariant = com.hopepride.samp.launcher.util.GameDataVerifier.textureVariantForDevice();
+            com.hopepride.samp.diagnostics.Diagnostics.event(
+                    "GAME_TEXTURE_VARIANT_" + (textureVariant == null ? "UNKNOWN" : textureVariant.toUpperCase(java.util.Locale.ROOT)));
+            com.hopepride.samp.launcher.util.GameDataVerifier.VerificationResult verify =
                     com.hopepride.samp.launcher.util.GameDataVerifier.verifyGameData(requireContext());
             if (!verify.isValid) {
                 com.hopepride.samp.diagnostics.Diagnostics.event("GAME_DATA_INCOMPLETE");
@@ -480,8 +483,19 @@ public class PlayFragment extends Fragment {
                     if (verify.missingFiles.contains(com.hopepride.samp.launcher.util.GameDataVerifier.ESSENTIAL_FILES[i]))
                         com.hopepride.samp.diagnostics.Diagnostics.event("GAME_MISSING_ESSENTIAL_" + i);
                 }
-                Toast.makeText(getContext(), 
-                        "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.", 
+                String textureVariantMissing = null;
+                for (String missing : verify.missingFiles) {
+                    if (missing.startsWith("texdb/txd/txd.")) textureVariantMissing = missing;
+                }
+                if (textureVariantMissing != null) {
+                    com.hopepride.samp.diagnostics.Diagnostics.event("GAME_MISSING_TEXTURE_VARIANT");
+                }
+                Toast.makeText(getContext(),
+                        textureVariantMissing != null
+                                ? "Data game ini tidak cocok dengan GPU perangkat. File yang tidak ada: "
+                                  + textureVariantMissing
+                                  + ". Pakai paket data yang lengkap (berisi semua varian texdb/txd)."
+                                : "Data game belum lengkap! Silakan download data dari tab Home atau tambahkan file GTA SA manual.",
                         Toast.LENGTH_LONG).show();
                 stopPingTask();
                 detailDialog.dismiss();
@@ -911,7 +925,7 @@ public class PlayFragment extends Fragment {
 
             // Default display
             holder.tvName.setText(server.getServerName());
-            holder.tvAddress.setText("Address: " + serverKey);
+            holder.tvAddress.setText("Alamat: " + serverKey);
             holder.tvPlayers.setText("Players: " + server.getCurrentPlayerCount() + " / " + server.getMaxPlayerCount());
             holder.tvMode.setText("Gamemode: " + (server.getServerMode() != null ? server.getServerMode() : "Loading..."));
             holder.ivLock.setVisibility(server.getHasPassword() ? View.VISIBLE : View.GONE);

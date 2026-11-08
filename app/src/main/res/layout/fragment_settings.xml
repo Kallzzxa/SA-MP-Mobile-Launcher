@@ -26,7 +26,7 @@
                 android:text="Identitas dan versi yang digunakan saat bermain." android:textColor="#90A6BC" android:textSize="11sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="18dp" android:fontFamily="@font/montserrat_bold"
-                android:text="Nickname" android:textColor="#E7F1FA" android:textSize="12sp" />
+                android:text="Nama Pemain" android:textColor="#E7F1FA" android:textSize="12sp" />
             <EditText android:id="@+id/settings_nickname" android:layout_width="match_parent" android:layout_height="52dp"
                 android:layout_marginTop="8dp" android:background="@drawable/bg_hope_field" android:fontFamily="@font/montserrat_medium"
                 android:paddingStart="14dp" android:paddingEnd="14dp" android:singleLine="true" android:maxLength="24"
@@ -75,7 +75,7 @@
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:layout_marginEnd="12dp" android:orientation="vertical">
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:fontFamily="@font/montserrat_bold" android:text="Voice chat"
+                        android:fontFamily="@font/montserrat_bold" android:text="Obrolan suara"
                         android:textColor="#EFF7FF" android:textSize="13sp" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:layout_marginTop="4dp" android:fontFamily="@font/montserrat_regular"
@@ -111,7 +111,7 @@
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:layout_marginEnd="12dp" android:orientation="vertical">
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:fontFamily="@font/montserrat_bold" android:text="Modified data"
+                        android:fontFamily="@font/montserrat_bold" android:text="Data modifikasi"
                         android:textColor="#EFF7FF" android:textSize="13sp" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:layout_marginTop="4dp" android:fontFamily="@font/montserrat_regular"
@@ -230,6 +230,10 @@
                     app:trackTint="@color/hope_switch_track" />
             </LinearLayout>
         </LinearLayout>
+        <Button android:id="@+id/open_mod_manager" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="PENGELOLA MOD" />
+        <Button android:id="@+id/open_crash_center" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="PUSAT CRASH" />
         <Button android:id="@+id/share_diagnostic_logs" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="20dp" android:text="BAGIKAN LOG DIAGNOSTIK" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"
