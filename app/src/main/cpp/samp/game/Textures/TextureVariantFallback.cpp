@@ -265,6 +265,19 @@ void LogDatabaseInventory()
     }
 }
 
+bool DatabaseFilesPresent(const char* database)
+{
+    if (!database) return false;
+
+    for (int format : kVariantOrder)
+    {
+        VariantFiles files;
+        if (ProbeVariant(database, format, files) && files.Any()) return true;
+    }
+
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // TextureDatabaseRuntime::SortEntries(bool)
 //
@@ -280,29 +293,31 @@ typedef bool (*SortEntriesFn)(void* thiz, bool arg);
 
 SortEntriesFn orig_SortEntries = nullptr;
 
-// TextureDatabase layout: vtable, name, categories, entries, thumbs[6].
-constexpr uintptr_t kEntryCountOffset64 = 36;
-constexpr uintptr_t kEntryPtrOffset64 = 40;
-constexpr uintptr_t kEntryCountOffset32 = 28;
-constexpr uintptr_t kEntryPtrOffset32 = 32;
-
+// The container layout is not guessed: TextureDatabase.h describes it and
+// VALIDATE_SIZE pins the size (0xA8 on arm64, 0x78 on armv7), so the guard reads
+// the real fields through the real types instead of raw offsets.
 bool SortEntriesHook(void* thiz, bool arg)
 {
     if (!orig_SortEntries) return false;
+
     if (!thiz)
     {
         FLog("SortEntries: null database, skipped");
         return false;
     }
 
-    const uintptr_t base = reinterpret_cast<uintptr_t>(thiz);
-    const char* name = DatabaseName(thiz);   // validated: never a wild read
-    const uint32_t entryCount = *reinterpret_cast<uint32_t*>(base + (VER_x32 ? kEntryCountOffset32 : kEntryCountOffset64));
-    void** entries = *reinterpret_cast<void***>(base + (VER_x32 ? kEntryPtrOffset32 : kEntryPtrOffset64));
+    TextureDatabase* database = static_cast<TextureDatabase*>(thiz);
+
+    const char* name = database->name;
+    if (name && name[0] == 0) name = nullptr;
+
+    const uint32_t entryCount = database->entries.numEntries;
+    TextureDatabaseEntry* entries = database->entries.dataPtr;
 
     if (!entries)
     {
-        FLog("SortEntries: '%s' has no entry array (count %u), skipped", name ? name : "?", entryCount);
+        FLog("SortEntries: '%s' has no entry array (count %u), skipped",
+             name ? name : "?", entryCount);
         return false;
     }
 
@@ -310,18 +325,29 @@ bool SortEntriesHook(void* thiz, bool arg)
     // the container was built from mismatched metadata.
     if (entryCount > 500000u)
     {
-        FLog("SortEntries: '%s' entry count %u looks corrupt, skipped", name ? name : "?", entryCount);
+        FLog("SortEntries: '%s' entry count %u looks corrupt, skipped",
+             name ? name : "?", entryCount);
         return false;
     }
 
-    uint32_t nullEntries = 0;
+    // TextureDatabaseEntry is packed and stored by value, so walk it with the
+    // real stride. A null name is the condition the crash report points at:
+    // the sort compares entry names, and a null name sends it into address 0.
+    uint32_t nullNames = 0;
+    uint32_t firstBadIndex = 0;
     for (uint32_t i = 0; i < entryCount; i++)
-        if (!entries[i]) nullEntries++;
-
-    if (nullEntries != 0)
     {
-        FLog("SortEntries: '%s' has %u null entries of %u, sort skipped to avoid the crash",
-             name ? name : "?", nullEntries, entryCount);
+        if (!entries[i].name)
+        {
+            if (nullNames == 0) firstBadIndex = i;
+            nullNames++;
+        }
+    }
+
+    if (nullNames != 0)
+    {
+        FLog("SortEntries: '%s' has %u entries without a name of %u (first at %u), sort skipped",
+             name ? name : "?", nullNames, entryCount, firstBadIndex);
         return false;
     }
 

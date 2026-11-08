@@ -5,6 +5,7 @@
 #include "MemoryMgr.h"
 #include "CFileMgr.h"
 #include "game/Textures/TextureDatabaseRuntime.h"
+#include "game/Textures/TextureVariantFallback.h"
 #include "Scene.h"
 #include "TxdStore.h"
 #include "VisibilityPlugins.h"
@@ -738,6 +739,15 @@ static bool g_bTextureDatabasesLoaded = false;
 // empty (black world, black skins, black radar).
 static void LoadTextureDatabase(const char* name)
 {
+    // Loading a database whose files are not installed only produces an empty
+    // container, and an empty container is what the sort later walks into a null
+    // entry. Skip it and say so instead.
+    if (!TextureVariantFallback::DatabaseFilesPresent(name))
+    {
+        FLog("texdb '%s': no files in storage, not loaded", name);
+        return;
+    }
+
     TextureDatabaseRuntime* db = TextureDatabaseRuntime::Load(name, false, TextureDatabaseFormat::DF_Default);
     FLog("texdb '%s': %s", name, db ? "loaded" : "not loaded");
 }

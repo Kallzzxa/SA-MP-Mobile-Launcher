@@ -19,4 +19,8 @@ class TextureVariantFallback
 public:
     // Installs the TextureDatabase::LoadThumbs hook. Safe to call once.
     static void Initialise();
+
+    // True when at least one texture variant of that database exists in the
+    // storage root. Used to avoid creating an empty database object.
+    static bool DatabaseFilesPresent(const char* database);
 };
