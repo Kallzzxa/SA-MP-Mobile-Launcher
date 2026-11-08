@@ -605,53 +605,166 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
 
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    if (bitLength < static_cast<int>(DL_RPC183_MIN_BYTES * 8)) return;
+    if (bitLength < 7 * 8) return;
+
     int byteLength = bitLength / 8;
-
     RakNet::BitStream bs(data, byteLength, false);
-    uint8_t  arg = 0;        // 6 = HTTP transport
-    uint8_t  fileType = 0;   // 1 = DFF, 2 = TXD
+
+    uint8_t arg = 0;
+    uint8_t fileType = 0;
     uint32_t fileChecksum = 0;
-    uint8_t  urlLen = 0;
 
-    bs.Read(arg);
-    bs.Read(fileType);
-    bs.Read(fileChecksum);
-    bs.Read(urlLen);
+    if (!bs.Read(arg)) return;
+    if (!bs.Read(fileType)) return;
+    if (!bs.Read(fileChecksum)) return;
 
-    // Only the HTTP-URL prefix is handled here; in-band RakNet chunking (arg=1)
-    // is a different transport and is out of scope.
-    if (arg != 6) return;
-    if (fileChecksum == 0) return;
+    if (fileChecksum == 0 || (fileType != 1 && fileType != 2))
+        return;
 
     const bool isDff = (fileType == 1);
 
-    std::string url;
-    if (urlLen > 0) {
-        // Bound the read by what actually arrived (audit A4): 4 (arg/type/crc) +
-        // 1 (urlLen) bytes of prefix precede the URL body.
-        const size_t available = (byteLength > 5) ? static_cast<size_t>(byteLength - 5) : 0u;
-        size_t toRead = std::min<size_t>({ urlLen, available, DL_MAX_URL_BYTES });
-        if (toRead > 0) {
-            char urlBuffer[512] = {0};
-            bs.Read(urlBuffer, toRead);
-            urlBuffer[toRead] = '\0';
-            url = urlBuffer;
+    // arg = 1: file dikirim langsung melalui RakNet.
+    if (arg == 1) {
+        uint32_t fileLength = 0;
+
+        if (byteLength < 10 || !bs.Read(fileLength))
+            return;
+
+        // Batasi ukuran file agar paket tidak menyebabkan alokasi berlebihan.
+        static const uint32_t MAX_MODEL_SIZE = 64u * 1024u * 1024u;
+
+        if (fileLength == 0 || fileLength > MAX_MODEL_SIZE)
+            return;
+
+        const size_t payloadOffset = 10;
+        const size_t available = static_cast<size_t>(byteLength) - payloadOffset;
+
+        if (fileLength > available)
+            return;
+
+        const uint8_t* payload = data + payloadOffset;
+
+        // Pastikan CRC sesuai dengan checksum dari server.
+        if (CalculateCRC32(payload, fileLength) != fileChecksum)
+            return;
+
+        uint32_t expectedSize = 0;
+        bool foundTask = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (const auto& t : m_tasks) {
+                if (t.crc == fileChecksum && t.isDff == isDff) {
+                    expectedSize = t.size;
+                    foundTask = true;
+                    break;
+                }
+            }
         }
-    }
 
-    if (url.empty()) return;
+        if (!foundTask)
+            return;
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        for (auto& t : m_tasks) {
-            if (t.crc == fileChecksum && t.isDff == isDff) {
-                t.url = url;
+        if (expectedSize > 0 && fileLength != expectedSize)
+            return;
+
+        const std::string finalPath = GetModelPath(fileChecksum, isDff);
+
+        char tempPath[600];
+        snprintf(tempPath, sizeof(tempPath),
+                 "%s%08X.%d.inband.tmp",
+                 GetCachePath().c_str(),
+                 fileChecksum,
+                 static_cast<int>(getpid()));
+
+        FILE* fp = fopen(tempPath, "wb");
+        if (!fp)
+            return;
+
+        bool writeOk = fwrite(payload, 1, fileLength, fp) == fileLength;
+
+        if (writeOk) {
+            fflush(fp);
+            int fd = fileno(fp);
+            if (fd >= 0)
+                fsync(fd);
+        }
+
+        fclose(fp);
+
+        if (!writeOk) {
+            unlink(tempPath);
+            return;
+        }
+
+        if (rename(tempPath, finalPath.c_str()) != 0) {
+            unlink(tempPath);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (auto& t : m_tasks) {
+                if (t.crc != fileChecksum || t.isDff != isDff)
+                    continue;
+
+                t.done = true;
+                t.failed = false;
+                t.started = false;
+                t.url.clear();
+                t.lastError.clear();
                 break;
             }
         }
+
+        m_totalBytesRx += fileLength;
+
+        RecomputeProgress();
+        m_workCv.notify_all();
+
+        return;
     }
-    m_workCv.notify_all();
+
+    // arg = 6: file dikirim melalui HTTP.
+    if (arg == 6) {
+        uint8_t urlLen = 0;
+        if (!bs.Read(urlLen))
+            return;
+
+        if (urlLen == 0 || urlLen > DL_MAX_URL_BYTES)
+            return;
+
+        const size_t available =
+            (byteLength > 7) ? static_cast<size_t>(byteLength - 7) : 0u;
+
+        if (urlLen > available)
+            return;
+
+        char urlBuffer[512] = {0};
+
+        if (!bs.Read(urlBuffer, urlLen))
+            return;
+
+        urlBuffer[urlLen] = '\0';
+
+        std::string url(urlBuffer);
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (auto& t : m_tasks) {
+                if (t.crc == fileChecksum && t.isDff == isDff) {
+                    if (!t.done && !t.failed)
+                        t.url = url;
+                    break;
+                }
+            }
+        }
+
+        m_workCv.notify_all();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -737,30 +850,51 @@ void DLManager::WorkerLoop() {
                 RequestFileFromServer(pickedCrc, pickedIsDff);
             }
 
-            // 3. Wait (bounded) for RPC 183 to deliver the URL.
+            // 3. Wait for RPC 183: URL transport or direct RakNet file transfer.
             std::string url;
             uint32_t expectedSize = 0;
             bool isDff = pickedIsDff;
-            for (uint32_t waited = 0; waited < DL_URL_WAIT_MS && !m_bShutdown.load(); waited += 25) {
+            bool receivedInBand = false;
+
+            for (uint32_t waited = 0;
+                waited < DL_URL_WAIT_MS && !m_bShutdown.load();
+                waited += 25) {
+
                 bool gotUrl = false;
+
                 {
                     std::lock_guard<std::mutex> lock(m_mutex);
+
                     for (auto& t : m_tasks) {
-                        if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                        if (t.crc != pickedCrc || t.isDff != pickedIsDff)
+                            continue;
+
+                        // RPC 183 arg=1 may have completed this task directly.
+                        if (t.done) {
+                            receivedInBand = true;
+                            break;
+                        }
+
                         if (!t.url.empty()) {
                             url = t.url;
                             expectedSize = t.size;
                             isDff = t.isDff;
                             gotUrl = true;
                         }
+
                         break;
                     }
                 }
-                if (gotUrl) break;
+
+                if (receivedInBand || gotUrl)
+                    break;
+
                 std::this_thread::sleep_for(std::chrono::milliseconds(25));
             }
 
-            if (url.empty()) {
+            if (receivedInBand) {
+                fetchOk = true;
+            } else if (url.empty()) {
                 fetchError = "no url (RPC 183 timeout)";
             } else {
                 // 4. Fetch over HTTP(S). The guard keeps m_activeWorkers paired
@@ -791,7 +925,9 @@ void DLManager::WorkerLoop() {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
                 if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                if (fetchOk) {
+                if (t.done) {
+                    // Already completed by direct RakNet transfer (arg=1).
+                } else if (fetchOk) {
                     t.done = true;
                     t.url.clear();
                 } else if (++t.attempts >= DL_MAX_ATTEMPTS) {
