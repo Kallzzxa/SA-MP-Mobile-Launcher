@@ -4,8 +4,7 @@ name: HopePride Launcher
 on:
   push:
     branches:
-      - main
-      - master
+      - ini-bagian-fann
   workflow_dispatch:
 
 jobs:
