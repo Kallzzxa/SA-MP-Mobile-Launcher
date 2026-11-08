@@ -63,6 +63,13 @@ public class SettingsFragment extends Fragment {
             ((MainActivity) getActivity()).hideKeyboard(getActivity());
         }
 
+        view.findViewById(R.id.open_mod_manager).setOnClickListener(v ->
+                startActivity(new Intent(getContext(),
+                        com.sampmobile.xyvern.launcher.mods.ModManagerActivity.class)));
+        view.findViewById(R.id.open_crash_center).setOnClickListener(v ->
+                startActivity(new Intent(getContext(),
+                        com.sampmobile.xyvern.launcher.crash.CrashCenterActivity.class)));
+
         view.findViewById(R.id.share_diagnostic_logs).setOnClickListener(v ->
                 com.sampmobile.xyvern.diagnostics.DiagnosticShare.confirm(requireActivity()));
 
