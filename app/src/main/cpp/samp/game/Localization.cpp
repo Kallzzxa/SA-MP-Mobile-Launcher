@@ -263,13 +263,16 @@ void AppendUtf8(char* out, size_t capacity, size_t& used, uint32_t code)
     }
 }
 
+// Counts distinct strings, not draw calls: the same untranslated label is drawn
+// every frame, and a counter that grows with the frame rate says nothing about
+// how much interface text is still missing.
 void ReportUnmatched(const uint16_t* text, uint32_t length, uint32_t hash)
 {
-    g_unmatchedCyrillicCount++;
-    if (length == 0 || length > kMaxTextLength) return;
-
     for (uint32_t i = 0; i < g_reportedCount; i++)
         if (g_reportedHash[i] == hash) return;
+
+    g_unmatchedCyrillicCount++;
+    if (length == 0 || length > kMaxTextLength) return;
 
     if (g_reportedCount >= kReportedMax) return;
     g_reportedHash[g_reportedCount++] = hash;

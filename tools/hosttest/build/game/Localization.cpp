@@ -1,0 +1,430 @@
+//
+// Central localisation for the built in game interface.
+//
+// Everything the engine draws in its own menus goes through
+// CFont::PrintString(float, float, GxtChar*), where GxtChar is UTF-16. That
+// makes one hook the single place where interface text can be replaced, no
+// matter which menu builds the string. Dynamic content (player names, chat,
+// server messages, textdraws) is left untouched: it is never in the table.
+//
+// Unknown Cyrillic strings are logged once each so the table can be extended
+// from a real log instead of guesswork.
+//
+
+#include "../main.h"
+#include "Localization.h"
+#include "../vendor/shadowhook/patch.h"
+
+#include <dlfcn.h>
+
+namespace
+{
+
+struct Entry
+{
+    const char16_t* from;   // engine text (Russian or English)
+    const char16_t* to;     // Indonesian
+};
+
+// ---------------------------------------------------------------------------
+// Interface dictionary.
+// ---------------------------------------------------------------------------
+const Entry kDictionary[] =
+{
+    // Pause menu / main menu, Russian build.
+    { u"Возобновить",                      u"Lanjutkan" },
+    { u"Назад",                            u"Kembali" },
+    { u"Нажмите для просмотра карты",      u"Tekan untuk melihat peta" },
+    { u"Новая игра",                       u"Permainan Baru" },
+    { u"Начать новую игру",                u"Mulai Permainan Baru" },
+    { u"Загрузить игру",                   u"Muat Permainan" },
+    { u"Сохранить игру",                   u"Simpan Permainan" },
+    { u"Удалить игру",                     u"Hapus Permainan" },
+    { u"Настройки",                        u"Pengaturan" },
+    { u"Возможности",                      u"Pengaturan" },
+    { u"Экран",                            u"Tampilan" },
+    { u"Настр. экрана",                    u"Atur Tampilan" },
+    { u"Звук",                             u"Suara" },
+    { u"Настр. звука",                     u"Atur Suara" },
+    { u"Управление",                       u"Kontrol" },
+    { u"Настр. управления",                u"Atur Kontrol" },
+    { u"Игрок",                            u"Pemain" },
+    { u"Язык",                             u"Bahasa" },
+    { u"Статистика",                       u"Statistik" },
+    { u"Карта",                            u"Peta" },
+    { u"Краткое содержание",               u"Ringkasan" },
+    { u"Выход",                            u"Keluar" },
+    { u"Выход из игры",                    u"Keluar dari Permainan" },
+    { u"Пауза",                            u"Jeda" },
+    { u"Продолжить",                       u"Lanjutkan" },
+    { u"Да",                               u"Ya" },
+    { u"Нет",                              u"Tidak" },
+    { u"Принять",                          u"Terima" },
+    { u"Отмена",                           u"Batal" },
+    { u"Готово",                           u"Selesai" },
+    { u"Закрыть",                          u"Tutup" },
+    { u"Нажмите, чтобы продолжить",        u"Tekan untuk melanjutkan" },
+    { u"Нажмите для выбора",               u"Tekan untuk memilih" },
+    { u"Нажмите, чтобы вернуться",         u"Tekan untuk kembali" },
+    { u"Загрузка...",                      u"Memuat..." },
+
+    // Multiplayer wording used by the interface.
+    { u"Мультиплеер",                      u"Multipemain" },
+    { u"Подключиться",                     u"Hubungkan" },
+    { u"Отключиться",                      u"Putuskan Koneksi" },
+    { u"Серверы",                          u"Server" },
+    { u"Время игры",                       u"Waktu Bermain" },
+
+    // Same screens on an English data set.
+    { u"Resume",                           u"Lanjutkan" },
+    { u"Back",                             u"Kembali" },
+    { u"Press to view map",                u"Tekan untuk melihat peta" },
+    { u"Press to view the map",            u"Tekan untuk melihat peta" },
+    { u"New Game",                         u"Permainan Baru" },
+    { u"Start New Game",                   u"Mulai Permainan Baru" },
+    { u"Start Game",                       u"Mulai Permainan" },
+    { u"Load Game",                        u"Muat Permainan" },
+    { u"Save Game",                        u"Simpan Permainan" },
+    { u"Delete Game",                      u"Hapus Permainan" },
+    { u"Options",                          u"Pengaturan" },
+    { u"Settings",                         u"Pengaturan" },
+    { u"Display Settings",                 u"Pengaturan Tampilan" },
+    { u"Audio Settings",                   u"Pengaturan Suara" },
+    { u"Controller Setup",                 u"Pengaturan Kontrol" },
+    { u"Player Setup",                     u"Pengaturan Pemain" },
+    { u"Language",                         u"Bahasa" },
+    { u"Statistics",                       u"Statistik" },
+    { u"Map",                              u"Peta" },
+    { u"Brief",                            u"Ringkasan" },
+    { u"Quit Game",                        u"Keluar dari Permainan" },
+    { u"Exit Game",                        u"Keluar dari Permainan" },
+    { u"Quit",                             u"Keluar" },
+    { u"Pause",                            u"Jeda" },
+    { u"Paused",                           u"Jeda" },
+    { u"Yes",                              u"Ya" },
+    { u"No",                               u"Tidak" },
+    { u"Accept",                           u"Terima" },
+    { u"Cancel",                           u"Batal" },
+    { u"Done",                             u"Selesai" },
+    { u"Close",                            u"Tutup" },
+    { u"Loading...",                       u"Memuat..." },
+    { u"Press to continue",                u"Tekan untuk melanjutkan" },
+    { u"Press to select",                  u"Tekan untuk memilih" },
+    { u"Multiplayer",                      u"Multipemain" },
+    { u"Connect",                          u"Hubungkan" },
+    { u"Disconnect",                       u"Putuskan Koneksi" },
+    { u"Play Time",                        u"Waktu Bermain" },
+    { u"Waiting",                          u"Menunggu" },
+    { u"Spawn",                            u"Muncul" },
+    { u"Press to change game mode",        u"Tekan untuk mengganti mode permainan" },
+
+    // Gameplay wording and status text.
+    { u"Jump",                             u"Lompat" },
+    { u"Crouch",                           u"Jongkok" },
+    { u"Sprint",                           u"Lari Cepat" },
+    { u"Run",                              u"Berlari" },
+    { u"Running",                          u"Berlari" },
+    { u"Attack",                           u"Serang" },
+    { u"Enter Vehicle",                    u"Masuk Kendaraan" },
+    { u"Exit Vehicle",                     u"Keluar Kendaraan" },
+    { u"Loading",                          u"Memuat" },
+    { u"Connecting",                       u"Menghubungkan" },
+    { u"Connected",                        u"Terhubung" },
+    { u"Downloading",                      u"Mengunduh" },
+    { u"Player",                           u"Pemain" },
+    { u"Players",                          u"Para Pemain" },
+    { u"Spawn",                            u"Muncul" },
+    { u"Waiting",                          u"Menunggu" },
+    { u"Race",                             u"Balapan" },
+    { u"Derby",                            u"Derby" },
+    { u"Duel",                             u"Duel" },
+    { u"Fall",                             u"Jatuh" },
+    { u"Scoreboard",                       u"Papan Skor" },
+
+    // Same wording on a Russian data set.
+    { u"\u041f\u0440\u044b\u0436\u043e\u043a",                         u"Lompat" },
+    { u"\u041f\u0440\u0438\u0441\u0435\u0441\u0442\u044c",            u"Jongkok" },
+    { u"\u0410\u0442\u0430\u043a\u0430",                                 u"Serang" },
+    { u"\u0411\u0435\u0433",                                               u"Berlari" },
+    { u"\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430",             u"Memuat" },
+    { u"\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435", u"Menghubungkan" },
+    { u"\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u043e",       u"Terhubung" },
+    { u"\u0418\u0433\u0440\u043e\u043a",                                 u"Pemain" },
+    { u"\u0418\u0433\u0440\u043e\u043a\u0438",                           u"Para Pemain" },
+    { u"\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435",            u"Menunggu" },
+
+    // Remaining standard menus, settings pages and status words.
+    { u"Continue",                         u"Lanjutkan" },
+    { u"Controls",                         u"Kontrol" },
+    { u"Control Setup",                    u"Pengaturan Kontrol" },
+    { u"Touch Controls",                   u"Kontrol Sentuh" },
+    { u"Touch Layout",                     u"Tata Letak Sentuh" },
+    { u"Sensitivity",                      u"Sensitivitas" },
+    { u"Apply",                            u"Terapkan" },
+    { u"Reset",                            u"Atur Ulang" },
+    { u"Restore Defaults",                 u"Kembalikan Pengaturan Awal" },
+    { u"Are you sure?",                    u"Apakah kamu yakin?" },
+    { u"Volume",                           u"Volume" },
+    { u"Brightness",                       u"Kecerahan" },
+    { u"Select",                           u"Pilih" },
+    { u"Delete",                           u"Hapus" },
+    { u"Load",                             u"Muat" },
+    { u"Save",                             u"Simpan" },
+    { u"Start",                            u"Mulai" },
+    { u"Audio",                            u"Suara" },
+    { u"Display",                          u"Tampilan" },
+    { u"Video",                            u"Tampilan" },
+    { u"Sound",                            u"Suara" },
+    { u"Subtitles",                        u"Teks Bawah" },
+    { u"Radio",                            u"Radio" },
+    { u"Game",                             u"Permainan" },
+    { u"Exit",                             u"Keluar" },
+    { u"Joystick",                         u"Joystick" },
+};
+
+constexpr size_t kDictionarySize = sizeof(kDictionary) / sizeof(kDictionary[0]);
+constexpr uint32_t kMaxTextLength = 64;
+
+uint32_t g_dictionaryHash[kDictionarySize] = {};
+uint16_t g_dictionaryLength[kDictionarySize] = {};
+
+typedef void (*PrintStringFn)(float posX, float posY, const uint16_t* text);
+
+PrintStringFn orig_PrintString = nullptr;
+PrintStringFn orig_PrintStringFromBottom = nullptr;
+
+volatile unsigned long long g_translatedCount = 0;
+volatile unsigned long long g_unmatchedCyrillicCount = 0;
+
+// Distinct unmatched strings already reported, so samp_log stays readable.
+constexpr uint32_t kReportedMax = 96;
+uint32_t g_reportedHash[kReportedMax] = {};
+uint32_t g_reportedCount = 0;
+
+// Menu text arrives in whatever case the data set uses ("RESUME", "Resume",
+// "ВОЗОБНОВИТЬ"), so both Latin and Cyrillic are folded to lower case before
+// hashing and comparing.
+uint16_t FoldChar(uint16_t c)
+{
+    if (c >= u'A' && c <= u'Z') return static_cast<uint16_t>(c + 32);
+    if (c >= 0x0410 && c <= 0x042F) return static_cast<uint16_t>(c + 32);
+    if (c >= 0x0400 && c <= 0x040F) return static_cast<uint16_t>(c + 80);
+    return c;
+}
+
+uint32_t HashText(const uint16_t* text, uint32_t length)
+{
+    uint32_t hash = 2166136261u;
+    for (uint32_t i = 0; i < length; i++)
+    {
+        hash ^= FoldChar(text[i]);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+uint32_t TextLength(const uint16_t* text, uint32_t limit)
+{
+    uint32_t length = 0;
+    while (length < limit && text[length] != 0) length++;
+    return length;
+}
+
+bool HasCyrillic(const uint16_t* text, uint32_t length)
+{
+    for (uint32_t i = 0; i < length; i++)
+        if (text[i] >= 0x0400 && text[i] <= 0x04FF) return true;
+    return false;
+}
+
+// Only used for diagnostics: BMP to UTF-8 (Latin, Cyrillic, punctuation).
+void AppendUtf8(char* out, size_t capacity, size_t& used, uint32_t code)
+{
+    if (code < 0x80)
+    {
+        if (used + 1 < capacity) out[used++] = static_cast<char>(code);
+    }
+    else if (code < 0x800)
+    {
+        if (used + 2 < capacity)
+        {
+            out[used++] = static_cast<char>(0xC0 | (code >> 6));
+            out[used++] = static_cast<char>(0x80 | (code & 0x3F));
+        }
+    }
+    else
+    {
+        if (used + 3 < capacity)
+        {
+            out[used++] = static_cast<char>(0xE0 | (code >> 12));
+            out[used++] = static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+            out[used++] = static_cast<char>(0x80 | (code & 0x3F));
+        }
+    }
+}
+
+// Counts distinct strings, not draw calls: the same untranslated label is drawn
+// every frame, and a counter that grows with the frame rate says nothing about
+// how much interface text is still missing.
+void ReportUnmatched(const uint16_t* text, uint32_t length, uint32_t hash)
+{
+    for (uint32_t i = 0; i < g_reportedCount; i++)
+        if (g_reportedHash[i] == hash) return;
+
+    g_unmatchedCyrillicCount++;
+    if (length == 0 || length > kMaxTextLength) return;
+
+    if (g_reportedCount >= kReportedMax) return;
+    g_reportedHash[g_reportedCount++] = hash;
+
+    char utf8[kMaxTextLength * 3 + 1] = {};
+    size_t used = 0;
+    for (uint32_t i = 0; i < length; i++) AppendUtf8(utf8, sizeof(utf8), used, text[i]);
+    utf8[used] = 0;
+
+    FLog("UI-UNTRANSLATED: %s", utf8);
+}
+
+const char16_t* Lookup(const uint16_t* text, uint32_t length, uint32_t hash)
+{
+    for (size_t i = 0; i < kDictionarySize; i++)
+    {
+        if (g_dictionaryLength[i] != length || g_dictionaryHash[i] != hash) continue;
+
+        const char16_t* candidate = kDictionary[i].from;
+        uint32_t j = 0;
+        while (j < length && FoldChar(static_cast<uint16_t>(candidate[j])) == FoldChar(text[j])) j++;
+        if (j == length) return kDictionary[i].to;
+    }
+    return nullptr;
+}
+
+void PrintThrough(PrintStringFn target, float posX, float posY, const uint16_t* text)
+{
+    if (!target) return;
+
+    if (const uint16_t* translated = Localization::Translate(text))
+    {
+        target(posX, posY, translated);
+        return;
+    }
+
+    target(posX, posY, text);
+}
+
+// Top-left anchored text.
+void PrintStringHook(float posX, float posY, const uint16_t* text)
+{
+    PrintThrough(orig_PrintString, posX, posY, text);
+}
+
+// Bottom anchored text, which is what the pause menu, its items and the map
+// hint use. Hooking only PrintString left those in Russian.
+void PrintStringFromBottomHook(float posX, float posY, const uint16_t* text)
+{
+    PrintThrough(orig_PrintStringFromBottom, posX, posY, text);
+}
+
+void* GtasaHandle()
+{
+    static void* handle = dlopen("libGTASA.so", RTLD_NOW | RTLD_NOLOAD);
+    return handle;
+}
+
+bool HookFontSymbol(const char* symbol, PrintStringFn hookFn, PrintStringFn* slot)
+{
+    if (!symbol || !slot) return false;
+
+    void* lib = GtasaHandle();
+    if (!lib) return false;
+
+    void* address = dlsym(lib, symbol);
+    if (!address) return false;
+
+    // The address based hook in Initialise may already have covered it.
+    if (*slot) return true;
+
+    shadowhook_hook_sym_name("libGTASA.so", symbol, (void*)hookFn, (void**)slot);
+    return *slot != nullptr;
+}
+
+} // namespace
+
+void Localization::Initialise()
+{
+    for (size_t i = 0; i < kDictionarySize; i++)
+    {
+        const char16_t* from = kDictionary[i].from;
+        uint32_t length = 0;
+        while (length <= kMaxTextLength && from[length] != 0) length++;
+        g_dictionaryLength[i] = static_cast<uint16_t>(length);
+        g_dictionaryHash[i] = HashText(reinterpret_cast<const uint16_t*>(from), length);
+    }
+
+    const uintptr_t printString = g_libGTASA + (VER_x32 ? 0x005AA200 + 1 : 0x6CDEB0);
+    CHook::InlineHook(printString, PrintStringHook, &orig_PrintString);
+
+    // The pause menu and the map hint draw bottom anchored text through a
+    // different entry point, so that one has to be covered as well.
+    const char* fromBottomSymbols[] =
+    {
+        "_ZN5CFont21PrintStringFromBottomEffPt",
+        "_ZN5CFont21PrintStringFromBottomEffPKt",
+    };
+    for (const char* symbol : fromBottomSymbols)
+    {
+        if (HookFontSymbol(symbol, PrintStringFromBottomHook, &orig_PrintStringFromBottom)) break;
+    }
+
+    // Same idea for the top anchored entry point, in case the address above is
+    // not the one this build exports.
+    if (!orig_PrintString)
+    {
+        const char* printStringSymbols[] =
+        {
+            "_ZN5CFont11PrintStringEffPt",
+            "_ZN5CFont11PrintStringEffPKt",
+        };
+        for (const char* symbol : printStringSymbols)
+        {
+            if (HookFontSymbol(symbol, PrintStringHook, &orig_PrintString)) break;
+        }
+    }
+
+    FLog("Localization: Indonesian table with %u entries, hooks printString=%d printStringFromBottom=%d",
+         (unsigned)kDictionarySize,
+         orig_PrintString ? 1 : 0,
+         orig_PrintStringFromBottom ? 1 : 0);
+}
+
+const uint16_t* Localization::Translate(const uint16_t* gxt)
+{
+    if (!gxt) return nullptr;
+
+    const uint32_t length = TextLength(gxt, kMaxTextLength + 1);
+    if (length == 0 || length > kMaxTextLength) return nullptr;
+
+    const uint32_t hash = HashText(gxt, length);
+    if (const char16_t* translated = Lookup(gxt, length, hash))
+    {
+        g_translatedCount++;
+        return reinterpret_cast<const uint16_t*>(translated);
+    }
+
+    // Nothing in the table: it is dynamic content (names, chat, textdraws) and
+    // stays as it is, but a Cyrillic interface string is worth reporting so the
+    // table can be completed from a real log.
+    if (HasCyrillic(gxt, length)) ReportUnmatched(gxt, length, hash);
+
+    return nullptr;
+}
+
+unsigned long long Localization::TranslatedCount()
+{
+    return g_translatedCount;
+}
+
+unsigned long long Localization::UnmatchedCyrillicCount()
+{
+    return g_unmatchedCyrillicCount;
+}

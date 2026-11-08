@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unistd.h>
+#include <cstdlib>
 
 // Recovery state shared between the Java bootstrap and the native layer.
 //
@@ -29,6 +30,15 @@ inline const char* ActiveMarker()
     if (!s_checked)
     {
         s_checked = true;
+
+        // Lets the host test (and a debugger) point the probe at any file.
+        const char* override = getenv("HOPEPRIDE_SAFE_MODE_MARKER");
+        if (override && override[0] && access(override, F_OK) == 0)
+        {
+            s_marker = override;
+            return s_marker;
+        }
+
         const char* const* markers = CandidateMarkers();
         for (int i = 0; markers[i] != nullptr; ++i)
         {
