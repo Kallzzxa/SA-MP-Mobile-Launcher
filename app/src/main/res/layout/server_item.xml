@@ -36,7 +36,7 @@
         android:layout_height="wrap_content"
         android:fontFamily="@font/montserrat_bold"
         android:gravity="top|left"
-        android:text="Adress: 127.0.0.1"
+        android:text="Alamat: 127.0.0.1"
         android:textColor="@color/gray"
         android:textSize="@dimen/_6sdp"
         app:layout_constraintBottom_toBottomOf="parent"

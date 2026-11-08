@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.cef.omp;
+package com.hopepride.samp.cef.omp;
 
 import java.math.BigInteger;
 import java.security.MessageDigest;

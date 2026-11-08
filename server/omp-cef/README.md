@@ -5,7 +5,7 @@ jalan di PC **dan** Android.
 
 - PC: pemain pakai client plugin omp-cef asli (Chromium, DX9).
 - Android: pemain pakai launcher ini. Client omp-cef-nya sudah di-port
-  ke Android di `app/src/main/java/com/sampmobile/xyvern/cef/omp/` +
+  ke Android di `app/src/main/java/com/hopepride/samp/cef/omp/` +
   `OmpCefClient.java` + WebView di `CefJavaManager.java`. Rendering-nya
   WebView, bukan Chromium CEF, tapi protokolnya sama persis dengan PC:
   UDP ke port game + 2, handshake libsodium (X25519 + BLAKE2b), KCP,

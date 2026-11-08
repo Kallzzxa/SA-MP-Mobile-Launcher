@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher;
+package com.hopepride.samp.launcher;
 
 import java.util.ArrayList;
 

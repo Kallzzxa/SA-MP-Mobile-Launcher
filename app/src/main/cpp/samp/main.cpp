@@ -1,10 +1,12 @@
 ﻿#include <jni.h>
 #include <pthread.h>
+#include <atomic>
 #include <syscall.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 
 #include "main.h"
+#include "game/Localization.h"
 #include "game/game.h"
 #include "net/netgame.h"
 #include "gui/gui.h"
@@ -13,6 +15,9 @@
 #include "java/jniutil.h"
 #include "net/dl/dlmanager.h"
 #include <dlfcn.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 #include "StackTrace.h"
 
 // voice
@@ -58,6 +63,7 @@ CPlayerTags* pPlayerTags = nullptr;
 CSnapShotHelper* pSnapShotHelper = nullptr;
 CAudioStream* pAudioStream = nullptr;
 CJavaWrapper* pJavaWrapper = nullptr;
+static std::atomic<bool> g_javaReady{false};
 CSettings* pSettings = nullptr;
 //CVoice* pVoice = nullptr;
 
@@ -117,6 +123,241 @@ void DoDebugStuff()
 		//ped->SetGravityProcessing(false);
 	}
 }
+// ---------------------------------------------------------------------------
+// Fatal signal reporting.
+//
+// FLog()/fprintf() are not async-signal-safe: if SIGSEGV lands on a thread that
+// already holds the stdio or heap lock, the handler deadlocks and the crash is
+// never recorded. The report below uses open()/write() only.
+// ---------------------------------------------------------------------------
+static int g_iCrashLogFd = -1;
+
+static void CrashLogPut(const char* szText)
+{
+    if (g_iCrashLogFd < 0 || !szText) return;
+    size_t uiLen = 0;
+    while (szText[uiLen]) uiLen++;
+    if (uiLen) (void)!write(g_iCrashLogFd, szText, uiLen);
+}
+
+static void CrashLogHex(uintptr_t uiValue)
+{
+    static const char szDigits[] = "0123456789abcdef";
+    char szBuf[2 + sizeof(uintptr_t) * 2];
+    int iLen = (int)(2 + sizeof(uintptr_t) * 2);
+    szBuf[0] = '0';
+    szBuf[1] = 'x';
+    for (int i = iLen - 1; i >= 2; i--)
+    {
+        szBuf[i] = szDigits[uiValue & 0xF];
+        uiValue >>= 4;
+    }
+    (void)!write(g_iCrashLogFd, szBuf, (size_t)iLen);
+}
+
+// Best effort: resolve an address to an exported symbol so the report names the
+// engine function instead of only an offset. The raw offsets are already on
+// disk before this runs, so a stalled dladdr() cannot lose the report.
+static void CrashLogSymbol(uintptr_t uiAddress)
+{
+    if (!uiAddress) { CrashLogPut("(null)\n"); return; }
+
+    Dl_info info;
+    memset(&info, 0, sizeof(info));
+    if (dladdr((void*)uiAddress, &info) && info.dli_sname)
+        CrashLogPut(info.dli_sname);
+    else
+        CrashLogPut("(unknown)");
+    CrashLogPut("\n");
+}
+
+static void CrashLogOpen()
+{
+    if (g_iCrashLogFd >= 0) return;
+
+    const char* szRoot = g_pszStorage;
+    if (!szRoot) return;
+
+    const char szName[] = "crash_native.txt";
+    char szPath[512];
+    size_t i = 0;
+    while (szRoot[i] && i + sizeof(szName) < sizeof(szPath))
+    {
+        szPath[i] = szRoot[i];
+        i++;
+    }
+    for (size_t k = 0; k < sizeof(szName); k++)
+    {
+        szPath[i++] = szName[k];
+    }
+
+    g_iCrashLogFd = open(szPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+}
+
+// Live state of the RLEDecompress over-read guard (game/hooks.cpp), so each
+// report shows which build produced it and whether the guard was active.
+extern volatile int g_rleGuardHookResult;
+extern volatile unsigned long long g_rleGuardCalls;
+extern volatile unsigned long long g_rleGuardPads;
+extern volatile unsigned long long g_rleGuardLastCaller;
+extern volatile unsigned long long g_rleGuardLastSrcSize;
+extern volatile unsigned long long g_rleGuardLastDestSize;
+extern volatile unsigned long long g_rleGuardLastPad;
+extern volatile unsigned long long g_texVariantFallbacks;
+extern volatile unsigned long long g_texVariantLoadFailures;
+
+static void CrashLogReport(int iSignum, siginfo_t* pInfo, ucontext_t* pContext)
+{
+    CrashLogOpen();
+    if (g_iCrashLogFd < 0) return;
+
+    CrashLogPut("\n===== native crash =====\n");
+    CrashLogPut("signal: ");
+    CrashLogHex((uintptr_t)iSignum);
+    CrashLogPut("\nfault:  ");
+    CrashLogHex((uintptr_t)(pInfo ? pInfo->si_addr : nullptr));
+    CrashLogPut("\n");
+
+    if (pContext)
+    {
+#if defined(__aarch64__)
+        uintptr_t uiPc = (uintptr_t)pContext->uc_mcontext.pc;
+        uintptr_t uiLr = (uintptr_t)pContext->uc_mcontext.regs[30];
+        uintptr_t uiFp = (uintptr_t)pContext->uc_mcontext.regs[29];
+        uintptr_t uiSp = (uintptr_t)pContext->uc_mcontext.sp;
+#elif defined(__arm__)
+        uintptr_t uiPc = (uintptr_t)pContext->uc_mcontext.arm_pc;
+        uintptr_t uiLr = (uintptr_t)pContext->uc_mcontext.arm_lr;
+        uintptr_t uiFp = (uintptr_t)pContext->uc_mcontext.arm_fp;
+        uintptr_t uiSp = (uintptr_t)pContext->uc_mcontext.arm_sp;
+#else
+        uintptr_t uiPc = 0, uiLr = 0, uiFp = 0, uiSp = 0;
+#endif
+        CrashLogPut("pc:     ");
+        CrashLogHex(uiPc);
+        CrashLogPut("\nlr:     ");
+        CrashLogHex(uiLr);
+        CrashLogPut("\nfp:     ");
+        CrashLogHex(uiFp);
+        CrashLogPut("\nsp:     ");
+        CrashLogHex(uiSp);
+        CrashLogPut("\n");
+
+        // First argument registers: a null pointer here (file handle, entity)
+        // is the usual cause of engine crashes after a failed file open.
+#if defined(__aarch64__)
+        CrashLogPut("x0:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[0]);
+        CrashLogPut("\nx1:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[1]);
+        CrashLogPut("\nx2:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.regs[2]);
+        CrashLogPut("\n");
+#elif defined(__arm__)
+        CrashLogPut("r0:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r0);
+        CrashLogPut("\nr1:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r1);
+        CrashLogPut("\nr2:     ");
+        CrashLogHex((uintptr_t)pContext->uc_mcontext.arm_r2);
+        CrashLogPut("\n");
+#endif
+
+        CrashLogPut("base libGTASA: ");
+        CrashLogHex(g_libGTASA);
+        CrashLogPut("\nbase libsamp:  ");
+        CrashLogHex(g_libSAMP);
+        CrashLogPut("\n");
+
+        if (g_libGTASA) { CrashLogPut("pc-libGTASA: "); CrashLogHex(uiPc - g_libGTASA); CrashLogPut("\n"); }
+        if (g_libSAMP)  { CrashLogPut("pc-libsamp:  "); CrashLogHex(uiPc - g_libSAMP);  CrashLogPut("\n"); }
+        if (g_libGTASA) { CrashLogPut("lr-libGTASA: "); CrashLogHex(uiLr - g_libGTASA); CrashLogPut("\n"); }
+        if (g_libSAMP)  { CrashLogPut("lr-libsamp:  "); CrashLogHex(uiLr - g_libSAMP);  CrashLogPut("\n"); }
+
+        // The caller symbol names the engine function that made the bad access.
+        CrashLogPut("pc-symbol:  ");
+        CrashLogSymbol(uiPc);
+        CrashLogPut("lr-symbol:  ");
+        CrashLogSymbol(uiLr);
+    }
+
+    CrashLogPut("build:      ");
+    CrashLogPut(__DATE__);
+    CrashLogPut(" ");
+    CrashLogPut(__TIME__);
+    CrashLogPut("\n");
+
+    CrashLogPut("rle-guard:  hook=");
+    CrashLogHex((uintptr_t)(long)g_rleGuardHookResult);
+    CrashLogPut(" calls=");
+    CrashLogHex((uintptr_t)g_rleGuardCalls);
+    CrashLogPut(" padded=");
+    CrashLogHex((uintptr_t)g_rleGuardPads);
+    CrashLogPut("\n");
+
+    // Last decompression the guard saw: locates the asset and the caller.
+    CrashLogPut("rle-last:   caller=");
+    CrashLogHex((uintptr_t)g_rleGuardLastCaller);
+    CrashLogPut(" caller-gtasa=");
+    CrashLogHex((uintptr_t)(g_rleGuardLastCaller - (unsigned long long)g_libGTASA));
+    CrashLogPut(" srcSize=");
+    CrashLogHex((uintptr_t)g_rleGuardLastSrcSize);
+    CrashLogPut(" dstSize=");
+    CrashLogHex((uintptr_t)g_rleGuardLastDestSize);
+    CrashLogPut(" pad=");
+    CrashLogHex((uintptr_t)g_rleGuardLastPad);
+    CrashLogPut("\n");
+
+    CrashLogPut("ui-lang:    translated=");
+    CrashLogHex((uintptr_t)Localization::TranslatedCount());
+    CrashLogPut(" untranslated=");
+    CrashLogHex((uintptr_t)Localization::UnmatchedCyrillicCount());
+    CrashLogPut("\n");
+
+    CrashLogPut("texdb:      variant-fallback=");
+    CrashLogHex((uintptr_t)g_texVariantFallbacks);
+    CrashLogPut(" load-failure=");
+    CrashLogHex((uintptr_t)g_texVariantLoadFailures);
+    CrashLogPut("\n");
+
+    CrashLogPut("========================\n");
+}
+
+// Hand the signal to whoever owned it before us (the AML crash logger on
+// device), so its symbolised report is still produced. Handler chaining is
+// skipped for SIG_DFL/SIG_IGN.
+static void CrashChainPrevious(int iSignum, siginfo_t* pInfo, void* pContextPtr, struct sigaction* pPrevious)
+{
+    if (!pPrevious) return;
+
+    if (pPrevious->sa_flags & SA_SIGINFO)
+    {
+        if (pPrevious->sa_sigaction &&
+            pPrevious->sa_sigaction != (void*)SIG_DFL &&
+            pPrevious->sa_sigaction != (void*)SIG_IGN)
+        {
+            pPrevious->sa_sigaction(iSignum, pInfo, pContextPtr);
+        }
+    }
+    else if (pPrevious->sa_handler &&
+             pPrevious->sa_handler != SIG_DFL &&
+             pPrevious->sa_handler != SIG_IGN)
+    {
+        pPrevious->sa_handler(iSignum);
+    }
+}
+
+// Restore the default disposition and return: the faulting instruction runs
+// again and terminates the process instead of looping through this handler.
+static void CrashRestoreDefault(int iSignum)
+{
+    struct sigaction dfl;
+    memset(&dfl, 0, sizeof(dfl));
+    dfl.sa_handler = SIG_DFL;
+    sigemptyset(&dfl.sa_mask);
+    sigaction(iSignum, &dfl, nullptr);
+}
+
 struct sigaction act_old;
 struct sigaction act1_old;
 struct sigaction act2_old;
@@ -126,86 +367,30 @@ extern int g_iLastProcessedSkinCollision, g_iLastProcessedEntityCollision, g_iLa
 extern uintptr_t g_dwLastRetAddrCrash;
 void handler(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act_old.sa_sigaction)
-	{
-		act_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGSEGV)
-	{
-		FLog("SIGSEGV | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act_old);
+    CrashRestoreDefault(signum);
 }
 
 void handler1(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act1_old.sa_sigaction)
-	{
-		act1_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGABRT)
-	{
-		FLog("SIGABRT | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act1_old);
+    CrashRestoreDefault(signum);
 }
 
 void handler2(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act2_old.sa_sigaction)
-	{
-		act2_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGFPE)
-	{
-		FLog("SIGFPE | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act2_old);
+    CrashRestoreDefault(signum);
 }
 
 void handler3(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act3_old.sa_sigaction)
-	{
-		act3_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGBUS)
-	{
-		FLog("SIGBUS | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+    CrashLogReport(signum, info, (ucontext_t*)contextPtr);
+    CrashChainPrevious(signum, info, contextPtr, &act3_old);
+    CrashRestoreDefault(signum);
 }
 
 
@@ -223,6 +408,9 @@ void ClearModelCache()
 
 void DoInitStuff()
 {
+    // The GTA engine can start while Activity.onCreate is still configuring
+    // the Java UI, storage and settings. Publish those before constructing CNetGame.
+    if (!g_javaReady.load(std::memory_order_acquire) || !pGame || !pUI || !g_pszStorage) return;
 	if (bGameInited == false)
 	{
 		ClearModelCache();
@@ -280,7 +468,7 @@ void DoInitStuff()
 }
 
 extern "C" {
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz, jstring path)
 	{
 		const char *str = pEnv->GetStringUTFChars(path, NULL);
 		if (str != NULL) {
@@ -291,16 +479,16 @@ extern "C" {
 		}
 
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
-
+        g_javaReady.store(true, std::memory_order_release);
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{
 		if(pUI)
 		{
 			pUI->keyboard()->sendForGB(pEnv, thiz, str);
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
 		if(pSettings)
 		{
@@ -308,7 +496,7 @@ extern "C" {
 				pJavaWrapper->HideKeyboard();
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_sampmobile_xyvern_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_hopepride_samp_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
 		jboolean isCopy = true;
 
@@ -325,7 +513,7 @@ extern "C" {
 		pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
 	}
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeOnBrowserInit(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeOnBrowserInit(
 			JNIEnv* env,
 			jobject thiz,
 			jboolean isSuccess,
@@ -340,7 +528,7 @@ extern "C" {
 	}
 
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSendClientEvent(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeSendClientEvent(
 			JNIEnv* env,
 			jobject thiz,
 			jstring eventName,
@@ -364,7 +552,7 @@ extern "C" {
 			env->ReleaseStringUTFChars(eventDataJson, data);
 	}
 	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSetJavaManager(
+	Java_com_hopepride_samp_cef_CefClientManager_nativeSetJavaManager(
 			JNIEnv* env,
 			jobject thiz,
 			jobject javaManager)
@@ -375,7 +563,7 @@ extern "C" {
 
 void MainLoop()
 {
-	if (pGame->bIsGameExiting) return;
+	if (!pGame || pGame->bIsGameExiting) return;
 
 	DoInitStuff();
 
@@ -393,7 +581,7 @@ void MainLoop()
 
 }
 
-void InitGui()
+bool InitGui()
 {
 	// new voice
 	if (pSettings)
@@ -412,13 +600,27 @@ void InitGui()
         pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), fontData);
         LOGI("Loaded font from assets: %s (size: %zu)", font_path.c_str(), fontData.size());
     } else {
-        // Fallback to file (should probably not happen if assets are correct, but safe to keep)
-	    std::string file_path = string_format("%sfonts/%s", g_pszStorage, FONT_NAME);
-	    pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), file_path.c_str());
-        LOGI("Loaded font from file: %s", file_path.c_str());
+        // Preserve the installed font when present. Only fall back to a bundled
+        // font when the optional downloaded font is missing.
+        std::string file_path = g_pszStorage ? string_format("%sfonts/%s", g_pszStorage, FONT_NAME) : "";
+        FILE* fontFile = file_path.empty() ? nullptr : fopen(file_path.c_str(), "rb");
+        if (fontFile) {
+            fclose(fontFile);
+            pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), file_path);
+        } else {
+            fontData = LoadAsset("Fonts/HELVETICANEUELTCYR-MDCOND.TTF");
+            pUI = new UI(ImVec2(RsGlobal->maximumWidth, RsGlobal->maximumHeight), fontData);
+            LOGI("Optional game UI font missing; using bundled or default font");
+        }
     }
-	pUI->initialize();
+    if (!pUI->initialize()) {
+        LOGE("SA-MP UI initialization failed");
+        delete pUI;
+        pUI = nullptr;
+        return false;
+    }
 	pUI->performLayout();
+    return true;
 }
 
 #include "game/multitouch.h"
@@ -684,6 +886,6 @@ AAssetManager* g_pAssetManager = nullptr;
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
+Java_com_hopepride_samp_game_SAMP_initAssetManager(JNIEnv *env, jobject thiz, jobject assetManager) {
     g_pAssetManager = AAssetManager_fromJava(env, assetManager);
 }

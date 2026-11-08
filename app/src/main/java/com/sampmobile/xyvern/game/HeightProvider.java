@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.app.Activity;
 import android.graphics.Rect;

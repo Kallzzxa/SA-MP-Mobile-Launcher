@@ -5,6 +5,7 @@
 #include "MemoryMgr.h"
 #include "CFileMgr.h"
 #include "game/Textures/TextureDatabaseRuntime.h"
+#include "game/Textures/TextureVariantFallback.h"
 #include "Scene.h"
 #include "TxdStore.h"
 #include "VisibilityPlugins.h"
@@ -433,8 +434,9 @@ bool CGame::RemovePlayer(CPlayerPed* pPed)
 {
 	if (!pPed) return false;
 
+	const auto playerNumber = pPed->m_bytePlayerNumber;
 	delete pPed;
-	bUsedPlayerSlots[pPed->m_bytePlayerNumber] = false;
+	bUsedPlayerSlots[playerNumber] = false;
 	return true;
 }
 
@@ -723,44 +725,78 @@ void LightsCreate(RpWorld* world) {
     CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x0046FC08 + 1 : 0x55BDCC), world);
 }
 
-void InitGui();
+bool InitGui();
+
+// Every database is loaded once. InitialiseRenderWare runs more than once in a
+// session (the log shows it three times), and loading the same texture database
+// again builds a second entry array on top of a live one - that is what left
+// TextureDatabaseRuntime::SortEntries with null entries and crashed it.
+static bool g_bTextureDatabasesLoaded = false;
+
+// DF_Default lets the engine choose the variant that matches this GPU and the
+// installed data set. The previous build hardcoded DF_DXT for every database,
+// which is not what a Mali/PowerVR device can read: the databases came out
+// empty (black world, black skins, black radar).
+static void LoadTextureDatabase(const char* name)
+{
+    // Loading a database whose files are not installed only produces an empty
+    // container, and an empty container is what the sort later walks into a null
+    // entry. Skip it and say so instead.
+    if (!TextureVariantFallback::DatabaseFilesPresent(name))
+    {
+        FLog("texdb '%s': no files in storage, not loaded", name);
+        return;
+    }
+
+    TextureDatabaseRuntime* db = TextureDatabaseRuntime::Load(name, false, TextureDatabaseFormat::DF_Default);
+    FLog("texdb '%s': %s", name, db ? "loaded" : "not loaded");
+}
 
 bool CGame::InitialiseRenderWare() {
-    FLog("InitialiseRenderWare ..");
+    static int s_callCount = 0;
+    s_callCount++;
+    FLog("InitialiseRenderWare .. (call #%d)", s_callCount);
 
     CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
 
     CTxdStore::Initialise();
     CVisibilityPlugins::Initialise();
 
+    if (!g_bTextureDatabasesLoaded)
+    {
+        g_bTextureDatabasesLoaded = true;
+
 #if VER_SAMP
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_DXT);
+        LoadTextureDatabase("mobile");
+        LoadTextureDatabase("txd");
+        LoadTextureDatabase("gta3");
+        LoadTextureDatabase("gta_int");
+        LoadTextureDatabase("cutscene");
+        LoadTextureDatabase("player");
+        LoadTextureDatabase("menu");
 #else
-    TextureDatabaseRuntime::Load("samp", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_DXT);
-    //TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_DXT);
-
+        LoadTextureDatabase("samp");
+        LoadTextureDatabase("mobile");
+        LoadTextureDatabase("txd");
+        LoadTextureDatabase("gta3");
+        LoadTextureDatabase("gta_int");
+        LoadTextureDatabase("player");
+        LoadTextureDatabase("menu");
 #endif
-
+    }
+    else
+    {
+        FLog("InitialiseRenderWare: texture databases already loaded, not loading again");
+    }
 
     const auto camera = RwCameraCreate();
-    if (!camera) {
+    if (!camera) return false;
+
+    const auto frame = RwFrameCreate();
+    if (!frame) {
         CameraDestroy(camera);
         return false;
     }
-
-    const auto frame = RwFrameCreate();
     rwObjectHasFrameSetFrame(&camera->object.object, frame);
     camera->frameBuffer = RwRasterCreate(RsGlobal->maximumWidth, RsGlobal->maximumHeight, 0, rwRASTERTYPECAMERA);
     camera->zBuffer = RwRasterCreate(RsGlobal->maximumWidth, RsGlobal->maximumHeight, 0, rwRASTERTYPEZBUFFER);
@@ -795,7 +831,7 @@ bool CGame::InitialiseRenderWare() {
     CGame::m_pWorkingMatrix1 = RwMatrixCreate();
     CGame::m_pWorkingMatrix2 = RwMatrixCreate();
 
-    InitGui();
+    if (!InitGui()) return false;
 
     return true;
 }

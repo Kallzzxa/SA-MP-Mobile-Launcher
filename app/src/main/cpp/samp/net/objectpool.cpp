@@ -26,12 +26,18 @@ CObjectPool::~CObjectPool()
 
 bool CObjectPool::New(OBJECTID ObjectID, int iModel, CVector vecPos, CVector vecRot, float fDrawDistance)
 {
+	if (ObjectID >= MAX_OBJECTS || !pGame) return false;
 	if (m_pObjects[ObjectID] != nullptr) {
 		Delete(ObjectID);
 	}
 
 	m_pObjects[ObjectID] = pGame->NewObject(iModel, vecPos, vecRot, fDrawDistance);
 	if (!m_pObjects[ObjectID]) return false;
+	if (!m_pObjects[ObjectID]->m_pEntity) {
+		delete m_pObjects[ObjectID];
+		m_pObjects[ObjectID] = nullptr;
+		return false;
+	}
 
 	m_bObjectSlotState[ObjectID] = true;
 	return true;
@@ -66,7 +72,7 @@ void CObjectPool::Process()
 
 	for (OBJECTID i = 0; i < MAX_OBJECTS; i++)
 	{
-		if (m_bObjectSlotState[i]) {
+		if (m_bObjectSlotState[i] && m_pObjects[i]) {
 			m_pObjects[i]->Process(fElapsedTime);
 		}
 	}

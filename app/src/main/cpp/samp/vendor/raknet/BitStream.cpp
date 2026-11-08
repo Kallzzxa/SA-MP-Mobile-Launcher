@@ -195,7 +195,7 @@ void BitStream::Write( BitStream *bitStream, int numberOfBits )
 		if ( numberOfBitsMod8 == 0 )
 		{
 			// New byte
-			if (bitStream->data[ bitStream->readOffset >> 3 ] & ( 0x80 >> ( bitStream->readOffset++ % 8 ) ) )
+			if (bitStream->ReadBit() )
 			{
 				// Write 1
 				data[ numberOfBitsUsed >> 3 ] = 0x80;
@@ -209,7 +209,7 @@ void BitStream::Write( BitStream *bitStream, int numberOfBits )
 		else
 		{
 			// Existing byte
-			if (bitStream->data[ bitStream->readOffset >> 3 ] & ( 0x80 >> ( bitStream->readOffset++ % 8 ) ) )
+			if (bitStream->ReadBit() )
 				data[ numberOfBitsUsed >> 3 ] |= 0x80 >> ( numberOfBitsMod8 ); // Set the bit to 1
 			// else 0, do nothing
 		}
@@ -284,7 +284,10 @@ void BitStream::Write1( void )
 // Returns true if the next data read is a 1, false if it is a 0
 bool BitStream::ReadBit( void )
 {
-	return ( bool ) ( data[ readOffset >> 3 ] & ( 0x80 >> ( readOffset++ & 7 ) ) );
+	// Reading and incrementing readOffset in one expression has undefined
+	// evaluation order and can select the wrong byte at bit boundaries.
+	const int bitOffset = readOffset++;
+	return (data[bitOffset >> 3] & (0x80 >> (bitOffset & 7))) != 0;
 }
 
 // Align the bitstream to the byte boundary and then write the specified number of bits.
@@ -362,6 +365,10 @@ void BitStream::WriteBits( const unsigned char *input, int numberOfBitsToWrite, 
 		
 		if ( numberOfBitsToWrite < 8 && rightAlignedBits )   // rightAlignedBits means in the case of a partial byte, the bits are aligned from the right (bit 0) rather than the left (as in the normal internal representation)
 			dataByte <<= 8 - numberOfBitsToWrite;  // shift left to get the bits on the left, as in our internal representation
+		// Bits beyond the requested count are not part of the stream. Leaving
+		// them set corrupts the next write, which merges into this same byte.
+		if (numberOfBitsToWrite < 8)
+			dataByte &= static_cast<unsigned char>(0xFFu << (8 - numberOfBitsToWrite));
 			
 		// Writing to a new byte each time
 		if ( numberOfBitsUsedMod8 == 0 )

@@ -1,3 +1,4 @@
+#include "streaming_budget.h"
 //
 // Created by x1y2z on 11.01.2023.
 //
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <functional>
 #include <vector>
+#include <cstring>
 #include <iostream>
 
 extern UI *pUI;
@@ -35,7 +37,7 @@ bool CStreaming::TryLoadModel(int modelId) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             if (count > 30) {
-                pUI->chat()->addDebugMessage("{ff0000} Error loading model %d", modelId);
+                pUI->chat()->addDebugMessage("{ff0000} Gagal memuat model %d", modelId);
                 return false;
             }
         }
@@ -230,25 +232,53 @@ void CStreaming::InjectHooks() {
 }
 
 int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
-    // find a free slot
-    std::int32_t fileIndex = 0;
+    if (!pFileName || !pFileName[0])
+        return -1;
+
+    int32 fileIndex = 0;
     for (; fileIndex < TOTAL_IMG_ARCHIVES; fileIndex++) {
         if (!ms_files[fileIndex].m_szName[0])
             break;
     }
 
-    if (fileIndex >= TOTAL_IMG_ARCHIVES) {
-        // No free slot: return -1 instead of writing out of bounds.
-        // (The old code had assert() here, which is a no-op in release builds,
-        //  leading to heap corruption via ms_files[fileIndex].)
-        // Callers MUST check for < 0.
+    if (fileIndex >= TOTAL_IMG_ARCHIVES)
+        return -1;
+
+    const char* storedName = pFileName;
+
+    // Absolute path Android bisa lebih panjang dari buffer 40 byte.
+    if (std::strlen(storedName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        const char* slash = std::strrchr(pFileName, '/');
+        const char* backslash = std::strrchr(pFileName, 92);
+
+        if (slash && (!backslash || slash > backslash))
+            storedName = slash + 1;
+        else if (backslash)
+            storedName = backslash + 1;
+    }
+
+    if (!storedName[0] ||
+        std::strlen(storedName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        FLog("AddImageToList: archive name too long: %s", pFileName);
         return -1;
     }
 
-    // free slot found, load the IMG file
-    strcpy(ms_files[fileIndex].m_szName, pFileName);
-    ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
+    // Tetap buka menggunakan absolute path asli.
+    const int32 streamHandle = CdStreamOpen(pFileName);
+
+    std::strncpy(
+        ms_files[fileIndex].m_szName,
+        storedName,
+        sizeof(ms_files[fileIndex].m_szName) - 1
+    );
+
+    ms_files[fileIndex].m_szName[
+        sizeof(ms_files[fileIndex].m_szName) - 1
+    ] = '\0';
+
+    ms_files[fileIndex].m_StreamHandle = streamHandle;
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
+
     return fileIndex;
 }
 
@@ -893,7 +923,8 @@ void CStreaming::RetryLoadFile(int32 chIdx) {
 
 void CStreaming::MakeSpaceFor(size_t memoryToCleanInBytes) {
     auto lastmemused = ms_memoryUsed;
-    while (ms_memoryUsed >= ms_memoryAvailable - memoryToCleanInBytes) {
+    const size_t target = StreamingRemainingBudget(ms_memoryAvailable, memoryToCleanInBytes);
+    while (ms_memoryUsed > target) {
         lastmemused = ms_memoryUsed;
         if (!RemoveLeastUsedModel(0) || lastmemused == ms_memoryUsed) {
           //  DeleteRwObjectsBehindCamera(ms_memoryAvailable - memoryToCleanInBytes);

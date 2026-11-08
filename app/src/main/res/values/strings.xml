@@ -1,12 +1,15 @@
 <resources>
-    <string name="app_name">SAMP MOBILE</string>
-    <string name="action_settings">Settings</string>
+    <string name="app_name">HopePride</string>
+    <string name="hopepride_banner_description">Banner HopePride Roleplay</string>
+    <string name="hopepride_logo_description">Logo HopePride</string>
+    <string name="launcher_developers">Dev Launcher: Pall &amp; Fann</string>
+    <string name="action_settings">Pengaturan</string>
     <!-- Strings used for fragments for navigation -->
-    <string name="first_fragment_label">First Fragment</string>
-    <string name="second_fragment_label">Second Fragment</string>
-    <string name="next">Next</string>
-    <string name="previous">Previous</string>
+    <string name="first_fragment_label">Halaman Pertama</string>
+    <string name="second_fragment_label">Halaman Kedua</string>
+    <string name="next">Berikutnya</string>
+    <string name="previous">Sebelumnya</string>
 
-    <string name="hello_first_fragment">Hello first fragment</string>
-    <string name="hello_second_fragment">Hello second fragment. Arg: %1$s</string>
+    <string name="hello_first_fragment">Halo, halaman pertama</string>
+    <string name="hello_second_fragment">Halo, halaman kedua. Arg: %1$s</string>
 </resources>

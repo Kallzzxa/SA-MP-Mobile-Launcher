@@ -1,0 +1,134 @@
+name: HopePride Debug APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Pilih build APK atau kirim daftar fitur ke Discord"
+        type: choice
+        options:
+          - build
+          - features
+        default: build
+        required: true
+  push:
+    branches:
+      - 'arena/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.task != 'features' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source and LFS binaries
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Host tests (interface table and safe mode)
+        shell: bash
+        run: ./tools/hosttest/run.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.2.11394342 cmake;3.22.1'
+          accept-android-sdk-licenses: true
+
+      - name: Check required native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for lib in \
+            app/src/main/jniLibs/armeabi-v7a/libGTASA.so \
+            app/src/main/jniLibs/arm64-v8a/libGTASA.so \
+            app/src/main/cpp/samp/vendor/GlossHook/libs/ARM/libGlossHook.so \
+            app/src/main/cpp/samp/vendor/GlossHook/libs/ARM64/libGlossHook.so; do
+            if [ ! -s "$lib" ] || head -c 40 "$lib" | grep -q 'version https://git-lfs.github.com/spec'; then
+              echo "Missing Git LFS binary: $lib" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check Discord reporting configuration (no secrets printed)
+        shell: bash
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$HOPEPRIDE_DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord webhook secret is present for this build (delivery not yet verified)."
+            echo "Discord webhook: configured; delivery not yet verified." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Discord webhook secret is not available to this build; launcher reporting is disabled."
+            echo "Discord webhook: secret unavailable; launcher reporting disabled." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Run unit tests and build debug APK
+        shell: bash
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: |
+          set +e
+          ./gradlew testDebugUnitTest assembleDebug --stacktrace 2>&1 | tee gradle.log
+          result=${PIPESTATUS[0]}
+          if [ "$result" -ne 0 ]; then
+            grep -E '(^FAILURE:|^\* What went wrong:|^Execution failed for task|^> |error:|^e:|^[[:space:]]*Line [0-9]+:|Unresolved reference|^Caused by:)' gradle.log | grep -v '^> Task ' | head -n 50 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$result"
+
+      - name: Report failing unit tests
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for report in app/build/test-results/testDebugUnitTest/*.xml; do
+            python3 -c "import sys,xml.etree.ElementTree as ET;t=ET.parse(sys.argv[1]);[print('::error title=Unit test '+c.get('classname','')+'.'+c.get('name','')+'::'+((f.get('message') or '').strip().replace(chr(10),' '))[:900]) for c in t.iter('testcase') for f in list(c.findall('failure'))+list(c.findall('error'))]" "$report"
+          done
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HopePride-build-log
+          path: gradle.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Prepare APK
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/HopePride-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HopePride-debug
+          path: artifacts/HopePride-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  send-feature-list:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.task == 'features') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[send-features]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Send feature list to Discord
+        env:
+          HOPEPRIDE_DISCORD_WEBHOOK_URL: ${{ secrets.HOPEPRIDE_DISCORD_WEBHOOK_URL }}
+        run: node server-side/discord-relay/send-feature-list.js

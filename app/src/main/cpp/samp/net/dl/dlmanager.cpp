@@ -208,7 +208,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("Downloading custom models from %s:%d...", serverIp.c_str(), serverPort);
+        pUI->chat()->addDebugMessage("Mengunduh model khusus dari %s:%d...", serverIp.c_str(), serverPort);
     }
 }
 
@@ -324,7 +324,7 @@ int16_t DLManager::GetVirtualModelId(int32_t networkId) {
     if (m_nextVirtualId > DL_VIRT_MAX) {
         if (!m_bVirtualIdExhausted) {
             m_bVirtualIdExhausted = true;
-            PushChat("Virtual model slot pool exhausted; extra models use their base id.");
+            PushChat("Slot model virtual habis; model tambahan memakai id dasar.");
         }
         return -1;
     }
@@ -345,6 +345,60 @@ bool DLManager::IsModelRegistered(int16_t virtualId) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_registeredModels.find(virtualId) != m_registeredModels.end();
 }
+
+// ---------------------------------------------------------------------------
+// RenderWare stream sanity check.
+//
+// A DFF/TXD file that is truncated, HTML error page, or a completely different
+// format is currently handed straight to the engine's parser, and a malformed
+// stream is exactly the kind of thing that kills the process while a custom
+// model server is loading. Every file is inspected before it is packed: the
+// first chunk header carries a version, a type id and a size, so junk is cheap
+// to reject here instead of inside the engine.
+// ---------------------------------------------------------------------------
+namespace {
+
+bool ReadRenderWareHeader(const std::string& path, uint32_t& version,
+                          uint32_t& type, uint32_t& chunkSize, long& fileSize) {
+    FILE* file = fopen(path.c_str(), "rb");
+    if (!file) return false;
+
+    if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return false; }
+    const long size = ftell(file);
+    if (size < 0) { fclose(file); return false; }
+    if (fseek(file, 0, SEEK_SET) != 0) { fclose(file); return false; }
+
+    unsigned char header[12];
+    const size_t got = fread(header, 1, sizeof(header), file);
+    fclose(file);
+    if (got != sizeof(header)) return false;
+
+    version = (uint32_t)header[0] | ((uint32_t)header[1] << 8) |
+              ((uint32_t)header[2] << 16) | ((uint32_t)header[3] << 24);
+    type = (uint32_t)header[4] | ((uint32_t)header[5] << 8) |
+           ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
+    chunkSize = (uint32_t)header[8] | ((uint32_t)header[9] << 8) |
+                ((uint32_t)header[10] << 16) | ((uint32_t)header[11] << 24);
+    fileSize = size;
+    return true;
+}
+
+// Returns nullptr when the file looks like a usable stream, otherwise the reason.
+const char* ValidateRenderWareFile(const std::string& path, bool expectTxd) {
+    uint32_t version = 0, type = 0, chunkSize = 0;
+    long size = 0;
+    if (!ReadRenderWareHeader(path, version, type, chunkSize, size)) {
+        return "tidak dapat dibaca";
+    }
+    if (size < 32) return "berkas terlalu kecil";
+    if (version < 0x0300u || version > 0x0600u) return "versi RenderWare tidak dikenal";
+    if (expectTxd && type != 0x16u) return "bukan texture dictionary";
+    if (!expectTxd && type != 0x10u) return "bukan clump DFF";
+    if (chunkSize > (uint32_t)size) return "header lebih besar dari berkas (terpotong)";
+    return nullptr;
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
@@ -370,6 +424,7 @@ bool DLManager::RegisterCustomModels() {
         std::string txdArcName;
     };
     std::vector<ModelFiles> toRegister;
+    int invalidFiles = 0;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -383,6 +438,21 @@ bool DLManager::RegisterCustomModels() {
             if (stat(dffPath.c_str(), &st) != 0) continue;
             if (stat(txdPath.c_str(), &st) != 0) continue;
 
+            const char* dffProblem = ValidateRenderWareFile(dffPath, false);
+            if (dffProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d dilewati, DFF %s: %s (%ld byte)",
+                     (int)m.virtualModelId, dffPath.c_str(), dffProblem, (long)st.st_size);
+                continue;
+            }
+            const char* txdProblem = ValidateRenderWareFile(txdPath, true);
+            if (txdProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d dilewati, TXD %s: %s",
+                     (int)m.virtualModelId, txdPath.c_str(), txdProblem);
+                continue;
+            }
+
             char dffName[32], txdName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
             snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
@@ -393,7 +463,14 @@ bool DLManager::RegisterCustomModels() {
     }
 
     if (toRegister.empty()) {
-        PushChat("No custom models to register.");
+        if (invalidFiles > 0) {
+            char warn[160];
+            snprintf(warn, sizeof(warn),
+                     "%d berkas model khusus ditolak (format tidak valid), lihat log.",
+                     invalidFiles);
+            PushChat(warn);
+        }
+        PushChat("Tidak ada model khusus untuk didaftarkan.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -409,15 +486,20 @@ bool DLManager::RegisterCustomModels() {
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
+    // Multiple models often reuse a texture or mesh by checksum. Store each
+    // archive name once, while still registering every virtual model below.
+    std::unordered_set<std::string> archiveNames;
     for (const auto& mf : toRegister) {
-        entries.push_back({mf.dffPath, mf.dffArcName});
-        entries.push_back({mf.txdPath, mf.txdArcName});
+        if (archiveNames.insert(mf.dffArcName).second)
+            entries.push_back({mf.dffPath, mf.dffArcName});
+        if (archiveNames.insert(mf.txdArcName).second)
+            entries.push_back({mf.txdPath, mf.txdArcName});
     }
 
     std::string packError;
     if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
         char msg[256];
-        snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
+        snprintf(msg, sizeof(msg), "Gagal mengemas IMG khusus: %s",
                  packError.c_str());
         PushChat(msg);
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -429,7 +511,7 @@ bool DLManager::RegisterCustomModels() {
     // Note: path format follows the game's CdStreamOpen expectations.
     int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
     if (imgIndex < 0) {
-        PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
+        PushChat("Gagal mendaftarkan IMG khusus ke streaming (slot IMG penuh).");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -437,9 +519,23 @@ bool DLManager::RegisterCustomModels() {
     // Verify the IMG was actually registered in the returned slot.
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
+    const char* expectedImgName = imgPath.c_str();
+
+    if (std::strlen(expectedImgName) >=
+        sizeof(CStreaming::ms_files[0].m_szName)) {
+
+        const char* slash = std::strrchr(expectedImgName, '/');
+        const char* backslash = std::strrchr(expectedImgName, 92);
+
+        if (slash && (!backslash || slash > backslash))
+            expectedImgName = slash + 1;
+        else if (backslash)
+            expectedImgName = backslash + 1;
+    }
+
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
-        PushChat("Custom IMG registration verification failed.");
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, expectedImgName) != 0) {
+        PushChat("Verifikasi pendaftaran IMG khusus gagal.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -474,17 +570,20 @@ bool DLManager::RegisterCustomModels() {
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
+            FLog("dl: model %d terdaftar (tipe %s, dff %s, txd %s)",
+                 (int)mf.virtualId, mf.type == 1 ? "skin" : "objek",
+                 mf.dffArcName.c_str(), mf.txdArcName.c_str());
         }
         m_bModelsRegistered = true;
     }
 
     char msg[128];
-    snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
+    snprintf(msg, sizeof(msg), "Terdaftar %d model khusus.", registered);
     PushChat(msg);
     if (skippedFull > 0) {
         char warn[128];
         snprintf(warn, sizeof(warn),
-                 "Warning: %d models skipped (model store full).",
+                 "Peringatan: %d model dilewati (penyimpanan model penuh).",
                  skippedFull);
         PushChat(warn);
     }
@@ -824,7 +923,7 @@ jmethodID g_dlHttpClientMid = nullptr; // downloadFile(Ljava/lang/String;Ljava/l
 
 void DLManager_InitJniCache(JNIEnv* env) {
     if (!env || g_dlHttpClientCls) return;  // already cached
-    jclass local = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
+    jclass local = env->FindClass("com/hopepride/samp/game/DLHttpClient");
     if (!local) {
         if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
         return;
@@ -842,7 +941,7 @@ void DLManager_InitJniCache(JNIEnv* env) {
 
 // ---------------------------------------------------------------------------
 // JNI HTTPS download: delegates https:// URLs to Android's HttpURLConnection
-// via com.sampmobile.xyvern.game.DLHttpClient. The JVM's TLS stack (system
+// via com.hopepride.samp.game.DLHttpClient. The JVM's TLS stack (system
 // trust store, full cert validation) is used — cert validation is NEVER
 // disabled. Worker threads attach/detach around the call.
 //
@@ -1268,7 +1367,7 @@ void DLManager::ProcessTick() {
     if (!m_bReportedNoManifest && !m_bSawAnyModel &&
         m_connectTime > 0 && (now - m_connectTime > 9000) && m_totalModels.load() == 0) {
         m_bReportedNoManifest = true;
-        PushChat("This server has no custom models. Joining...");
+        PushChat("Server ini tidak memiliki model khusus. Bergabung...");
     }
 
     if (m_bDownloadFinished.load()) return;
@@ -1351,7 +1450,7 @@ void DLManager::RequestRetryFailed() {
     }
     if (rearmed > 0) {
         m_workCv.notify_all();
-        PushChat("Retrying failed model downloads...");
+        PushChat("Mengunduh ulang model yang gagal...");
     }
 }
 
@@ -1416,26 +1515,26 @@ void DLManager::RenderImGui() {
     const size_t settled = done + failed;
 
     if (failed > 0 && !busy && !finished) {
-        snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
+        snprintf(label, sizeof(label), "Unduhan model: %zu gagal (/dlr untuk mencoba lagi)", failed);
     } else if (finished) {
         if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
+            snprintf(label, sizeof(label), "Model siap (%zu dilewati)", failed);
         } else {
-            snprintf(label, sizeof(label), "Models ready");
+            snprintf(label, sizeof(label), "Model siap");
         }
         fraction = 1.0f;
         showBar = total > 0;
     } else if (total > 0) {
         fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
         if (failed > 0) {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
+            snprintf(label, sizeof(label), "Mengunduh model %zu/%d (%zu dilewati)",
                      settled, total, failed);
         } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+            snprintf(label, sizeof(label), "Mengunduh model %zu/%d", done, total);
         }
         showBar = true;
     } else {
-        snprintf(label, sizeof(label), "Downloading models");
+        snprintf(label, sizeof(label), "Mengunduh model");
     }
 
     // ---- Layout: bottom-left, measured, scaled by screen size.
