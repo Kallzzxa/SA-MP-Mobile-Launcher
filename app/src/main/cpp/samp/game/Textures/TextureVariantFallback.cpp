@@ -7,6 +7,7 @@
 #include "../../main.h"
 #include "../../vendor/shadowhook/patch.h"
 #include "TextureDatabase.h"
+#include "../SafeMode.h"
 
 #include <unistd.h>
 #include <cstdio>
@@ -331,6 +332,16 @@ bool SortEntriesHook(void* thiz, bool arg)
 
 void TextureVariantFallback::Initialise()
 {
+    // Safe mode: the previous start-up did not survive, so none of the optional
+    // patches are installed and the engine runs exactly as it shipped. The
+    // inventory is still written, because that is what the report needs.
+    if (SafeMode::IsEnabled())
+    {
+        FLog("SafeMode: active (%s), texture database hooks not installed", SafeMode::ActiveMarker());
+        LogDatabaseInventory();
+        return;
+    }
+
     CHook::InlineHook("_ZN15TextureDatabase10LoadThumbsE21TextureDatabaseFormatb",
                       LoadThumbsHook, &orig_LoadThumbs);
 

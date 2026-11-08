@@ -12,6 +12,7 @@
 #include "Textures/TextureDatabaseRuntime.h"
 #include "Textures/TextureVariantFallback.h"
 #include "Localization.h"
+#include "SafeMode.h"
 #include "Scene.h"
 #include "sprite2d.h"
 #include "Entity/PlayerPedGta.h"
@@ -1248,6 +1249,9 @@ void NvUtilInit_hook()
         g_pszStorage = launcherStorage;
 
     FLog("Storage: using '%s'", g_pszStorage ? g_pszStorage : "(null)");
+
+    FLog("SafeMode: %s%s", SafeMode::IsEnabled() ? "active" : "inactive",
+         SafeMode::IsEnabled() ? SafeMode::ActiveMarker() : "");
 
     LogDirectoryInventory("Text", 24);
     LogDirectoryInventory("texdb", 24);
