@@ -45,8 +45,11 @@ import java.util.concurrent.Executors;
 @Obfuscate
 public class HomeFragment extends Fragment {
 
-    // Direct download URL untuk data pack resmi GTA SA / SAMP
-    private static final String DATA_ZIP_URL = "https://github.com/rezzylrn/samp-mobile-optimized/releases/download/data-v1/files.zip";
+    // Sumber data game yang dipakai aplikasi. Halaman MediaFire ditangani oleh
+    // GameDataDownloadService (resolve halaman -> tautan download langsung).
+    // Arsip wajib lolos validasi saat instalasi: zip harus dapat dibuka, ekstraksi
+    // harus selesai, dan penanda SAMP/.data_ready harus ada.
+    private static final String DATA_ZIP_URL = "https://www.mediafire.com/file/xa48mw36fgml6j5/files.zip/file";
 
     private View dotStatus;
     private TextView tvDataTitle;

@@ -52,7 +52,7 @@ import java.util.zip.ZipFile;
  */
 public final class GameDataManager {
     private static final String APP_CONFIG = "https://raw.githubusercontent.com/Kallzzxa/hehehaha/refs/heads/main/app.json";
-    private static final String FALLBACK_DATA_PAGE = "https://www.mediafire.com/file/rhkel93l3frrgtn/files.zip/file";
+    private static final String FALLBACK_DATA_PAGE = "https://www.mediafire.com/file/xa48mw36fgml6j5/files.zip/file";
     private static final String FALLBACK_DATA_VERSION = "1";
 
     private static final String PREFS = "samp_game_data";
@@ -352,55 +352,30 @@ public final class GameDataManager {
      * extract, sentinel-check and drop the .data_ready marker.
      */
     public static void finalizeGameDataInstall(Context c, File zipFile, String version, String sentinel) throws Exception {
-        try (ZipFile zip = new ZipFile(zipFile)) {
-            int totalEntries = zip.size();
-            if (totalEntries <= 0) {
-                com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_EMPTY");
-                throw new Exception("File zip kosong / rusak.");
-            }
-            java.util.ArrayList<String> names = new java.util.ArrayList<>(totalEntries);
-            java.util.Enumeration<? extends ZipEntry> scan = zip.entries();
-            while (scan.hasMoreElements()) names.add(scan.nextElement().getName());
-            final String stripPrefix = detectStripPrefix(names);
-
-            File root = c.getExternalFilesDir(null);
-            if (root == null) throw new Exception("Penyimpanan tidak tersedia.");
-            final String rootCanon = root.getCanonicalPath() + File.separator;
-
-            java.util.Enumeration<? extends ZipEntry> en = zip.entries();
-            byte[] buf = new byte[128 * 1024];
-            while (en.hasMoreElements()) {
-                ZipEntry e = en.nextElement();
-                String name = e.getName();
-                if (!stripPrefix.isEmpty()) {
-                    if (!name.startsWith(stripPrefix)) continue;
-                    name = name.substring(stripPrefix.length());
-                }
-                if (name.isEmpty()) continue;
-                File target = new File(root, name);
-                String canon = target.getCanonicalPath();
-                if (!canon.startsWith(rootCanon) && !canon.equals(root.getCanonicalPath())) {
-                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_UNSAFE_ENTRY");
-                    throw new Exception("Entri zip tidak valid: " + name);
-                }
-                if (e.isDirectory()) {
-                    target.mkdirs();
-                } else {
-                    File parent = target.getParentFile();
-                    if (parent != null && !parent.exists()) parent.mkdirs();
-                    try (InputStream in = new BufferedInputStream(zip.getInputStream(e));
-                         OutputStream os = new BufferedOutputStream(new FileOutputStream(target))) {
-                        int n;
-                        while ((n = in.read(buf)) != -1) os.write(buf, 0, n);
-                    }
-                }
-            }
+        File root = c.getExternalFilesDir(null);
+        if (root == null) {
+            com.hopepride.samp.diagnostics.Diagnostics.event("DATA_EXTRACT_NO_STORAGE");
+            throw new Exception("Penyimpanan eksternal tidak tersedia.");
         }
 
-        if (sentinel != null && !sentinel.isEmpty()
-                && !new File(c.getExternalFilesDir(null), sentinel).exists()) {
+        GameDataExtractor.Summary summary;
+        try {
+            summary = GameDataExtractor.extract(zipFile, root, null);
+        } catch (java.io.IOException error) {
+            com.hopepride.samp.diagnostics.Diagnostics.event(
+                    "DATA_EXTRACT_FAILED: " + error.getMessage());
+            throw new Exception("Ekstraksi data gagal: " + error.getMessage(), error);
+        }
+
+        com.hopepride.samp.diagnostics.Diagnostics.event("DATA_EXTRACT_OK: " + summary.describe());
+        if (!summary.problems.isEmpty()) {
+            com.hopepride.samp.diagnostics.Diagnostics.event(
+                    "DATA_EXTRACT_SKIPPED: " + String.join(" | ", summary.problems));
+        }
+
+        if (sentinel != null && !sentinel.isEmpty() && !new File(root, sentinel).exists()) {
             com.hopepride.samp.diagnostics.Diagnostics.event("DATA_SENTINEL_MISSING");
-            throw new Exception("Data tidak lengkap setelah ekstrak (sentinel hilang).");
+            throw new Exception("Data tidak lengkap setelah ekstrak (penanda " + sentinel + " tidak ditemukan).");
         }
 
         DataInfo done = new DataInfo();

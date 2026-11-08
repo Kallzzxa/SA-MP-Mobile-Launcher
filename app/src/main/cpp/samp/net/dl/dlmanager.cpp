@@ -347,6 +347,60 @@ bool DLManager::IsModelRegistered(int16_t virtualId) const {
 }
 
 // ---------------------------------------------------------------------------
+// RenderWare stream sanity check.
+//
+// A DFF/TXD file that is truncated, HTML error page, or a completely different
+// format is currently handed straight to the engine's parser, and a malformed
+// stream is exactly the kind of thing that kills the process while a custom
+// model server is loading. Every file is inspected before it is packed: the
+// first chunk header carries a version, a type id and a size, so junk is cheap
+// to reject here instead of inside the engine.
+// ---------------------------------------------------------------------------
+namespace {
+
+bool ReadRenderWareHeader(const std::string& path, uint32_t& version,
+                          uint32_t& type, uint32_t& chunkSize, long& fileSize) {
+    FILE* file = fopen(path.c_str(), "rb");
+    if (!file) return false;
+
+    if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return false; }
+    const long size = ftell(file);
+    if (size < 0) { fclose(file); return false; }
+    if (fseek(file, 0, SEEK_SET) != 0) { fclose(file); return false; }
+
+    unsigned char header[12];
+    const size_t got = fread(header, 1, sizeof(header), file);
+    fclose(file);
+    if (got != sizeof(header)) return false;
+
+    version = (uint32_t)header[0] | ((uint32_t)header[1] << 8) |
+              ((uint32_t)header[2] << 16) | ((uint32_t)header[3] << 24);
+    type = (uint32_t)header[4] | ((uint32_t)header[5] << 8) |
+           ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
+    chunkSize = (uint32_t)header[8] | ((uint32_t)header[9] << 8) |
+                ((uint32_t)header[10] << 16) | ((uint32_t)header[11] << 24);
+    fileSize = size;
+    return true;
+}
+
+// Returns nullptr when the file looks like a usable stream, otherwise the reason.
+const char* ValidateRenderWareFile(const std::string& path, bool expectTxd) {
+    uint32_t version = 0, type = 0, chunkSize = 0;
+    long size = 0;
+    if (!ReadRenderWareHeader(path, version, type, chunkSize, size)) {
+        return "tidak dapat dibaca";
+    }
+    if (size < 32) return "berkas terlalu kecil";
+    if (version < 0x0300u || version > 0x0600u) return "versi RenderWare tidak dikenal";
+    if (expectTxd && type != 0x16u) return "bukan texture dictionary";
+    if (!expectTxd && type != 0x10u) return "bukan clump DFF";
+    if (chunkSize > (uint32_t)size) return "header lebih besar dari berkas (terpotong)";
+    return nullptr;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
 // Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
 // and allocates CModelInfo slots so the game can actually load the models.
@@ -370,6 +424,7 @@ bool DLManager::RegisterCustomModels() {
         std::string txdArcName;
     };
     std::vector<ModelFiles> toRegister;
+    int invalidFiles = 0;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -383,6 +438,21 @@ bool DLManager::RegisterCustomModels() {
             if (stat(dffPath.c_str(), &st) != 0) continue;
             if (stat(txdPath.c_str(), &st) != 0) continue;
 
+            const char* dffProblem = ValidateRenderWareFile(dffPath, false);
+            if (dffProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d dilewati, DFF %s: %s (%ld byte)",
+                     (int)m.virtualModelId, dffPath.c_str(), dffProblem, (long)st.st_size);
+                continue;
+            }
+            const char* txdProblem = ValidateRenderWareFile(txdPath, true);
+            if (txdProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d dilewati, TXD %s: %s",
+                     (int)m.virtualModelId, txdPath.c_str(), txdProblem);
+                continue;
+            }
+
             char dffName[32], txdName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
             snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
@@ -393,6 +463,13 @@ bool DLManager::RegisterCustomModels() {
     }
 
     if (toRegister.empty()) {
+        if (invalidFiles > 0) {
+            char warn[160];
+            snprintf(warn, sizeof(warn),
+                     "%d berkas model khusus ditolak (format tidak valid), lihat log.",
+                     invalidFiles);
+            PushChat(warn);
+        }
         PushChat("Tidak ada model khusus untuk didaftarkan.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
@@ -494,6 +571,9 @@ bool DLManager::RegisterCustomModels() {
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
+            FLog("dl: model %d terdaftar (tipe %s, dff %s, txd %s)",
+                 (int)mf.virtualId, mf.type == 1 ? "skin" : "objek",
+                 mf.dffArcName.c_str(), mf.txdArcName.c_str());
         }
         m_bModelsRegistered = true;
     }
