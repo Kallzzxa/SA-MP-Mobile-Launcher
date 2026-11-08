@@ -175,8 +175,8 @@ public class GameDataExtractorTest {
 
     @Test public void detectsTopLevelPrefixOnlyWhenItReallyWrapsEverything() {
         List<ZipEntry> wrapped = new ArrayList<>();
-        wrapped.add(new ZipEntry("files/a.txt"));
-        wrapped.add(new ZipEntry("files/sub/b.txt"));
+        wrapped.add(new ZipEntry("files/data/handling.cfg"));
+        wrapped.add(new ZipEntry("files/models/player.dff"));
         assertEquals("files/", GameDataExtractor.detectStripPrefix(wrapped));
 
         List<ZipEntry> mixed = new ArrayList<>();
