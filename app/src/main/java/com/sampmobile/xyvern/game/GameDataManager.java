@@ -98,16 +98,35 @@ public final class GameDataManager {
                 info.size = config.optLong("data_size", 0);
                 info.sentinel = config.optString("data_sentinel", "SAMP/SAMP.ide");
 
-                String installed = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                        .getString(KEY_DATA_VERSION, "");
-                if (info.version.equals(installed) && isInstalled(activity, info)) {
-                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_INSTALL_VERIFIED");
-                    MAIN.post(() -> { dismissLoading(); if (!activity.isFinishing()) callback.onReady(); });
+                // Verify essential game data before showing download offer.
+                GameDataVerifier.VerificationResult verification =
+                        GameDataVerifier.verifyGameData(activity);
+
+                if (verification.isValid) {
+                    com.hopepride.samp.diagnostics.Diagnostics.event(
+                            "DATA_INSTALL_VERIFIED"
+                    );
+
+                    MAIN.post(() -> {
+                        dismissLoading();
+
+                        if (!activity.isFinishing() && !activity.isDestroyed()) {
+                            callback.onReady();
+                        }
+                    });
+
                     return;
                 }
-                com.hopepride.samp.diagnostics.Diagnostics.event("DATA_INSTALL_REQUIRED");
+
+                // Essential files are missing or incomplete.
+                com.hopepride.samp.diagnostics.Diagnostics.event(
+                        "DATA_INSTALL_REQUIRED"
+                );
+
                 final DataInfo fi = info;
+
                 MAIN.post(() -> showDownloadOffer(activity, fi, callback));
+                return;
             } catch (Exception e) {
                 com.hopepride.samp.diagnostics.Diagnostics.error("DATA_CONFIG_FAILED", e);
                 android.util.Log.e("GameDataManager", "Config check failed", e);
