@@ -2026,37 +2026,30 @@ uintptr_t LoadTexture(const char* texname)
 
 RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename)
 {
+    if (!texturename || !texturename[0])
+        return nullptr;
+
     RwTexture* tex = nullptr;
-    if (txdname && texturename && strncmp(txdname, "none", 5u))
+
+    if (txdname && txdname[0] && strncmp(txdname, "none", 5u) != 0)
     {
-        uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x5D3E60+1))(txdname);
-        CHook::CallFunction<void>(g_libGTASA + 0x5D4184 + 1);
-        CHook::CallFunction<void>(g_libGTASA + 0x5D4184 + 1, v10, 0);
-        tex = CHook::CallFunction<RwTexture*>(g_libGTASA + 0x1DBABC + 1, texturename, 0);
-        CHook::CallFunction<void>(g_libGTASA + 0x5D41C4 + 1);
+        tex = reinterpret_cast<RwTexture*>(
+            CUtil::LoadTextureFromDB(txdname, texturename)
+        );
     }
 
-    if (!texturename) return nullptr;
-    if(!tex && txdname) tex = (RwTexture*)LoadTexture(std::string(std::string(texturename) + "_" + txdname).c_str());
-    if(!tex && txdname) tex = (RwTexture*)LoadTexture(std::string(std::string(txdname) + "_" + texturename).c_str());
-    if(!tex) tex = (RwTexture*)LoadTexture(texturename);
-    if(!tex)
-    {
-        std::string str = texturename;
-        std::transform(str.begin(), str.end(), str.begin(), ::tolower);
-        tex = (RwTexture*)LoadTexture(str.c_str());
-    }
-    if(!tex)
-    {
-        std::string str = texturename;
-        std::transform(str.begin(), str.end(), str.begin(), ::toupper);
-        if (txdname) tex = (RwTexture*)LoadTexture(std::string(str + "_" + txdname).c_str());
-    }
+    if (!tex && txdname)
+        tex = reinterpret_cast<RwTexture*>(
+            LoadTexture((std::string(texturename) + "_" + txdname).c_str())
+        );
 
-    if (!tex && txdname && strncmp(txdname, "none", 5u) != 0)
-    {
-        tex = (RwTexture*)CUtil::LoadTextureFromDB(txdname, texturename);
-    }
+    if (!tex && txdname)
+        tex = reinterpret_cast<RwTexture*>(
+            LoadTexture((std::string(txdname) + "_" + texturename).c_str())
+        );
+
+    if (!tex)
+        tex = reinterpret_cast<RwTexture*>(LoadTexture(texturename));
 
     return tex;
 }
