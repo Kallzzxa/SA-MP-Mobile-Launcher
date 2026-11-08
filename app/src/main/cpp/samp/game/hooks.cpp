@@ -1168,6 +1168,29 @@ void CRadar_ClearBlip_hook(uint32_t a2)
 
 /* =============================================================================== */
 
+// True when the folder really contains this game's data (texdb, data, models
+// or the SAMP folder). Used to reject the engine's legacy default path
+// (/Android/data/com.samp.mobile/samp.data) which belongs to another package.
+static bool StorageHasGameData(const char* path)
+{
+    if (!path || !*path) return false;
+
+    const size_t length = strlen(path);
+    const bool needsSlash = (path[length - 1] != '/');
+
+    const char* markers[] = { "texdb", "data", "models", "SAMP" };
+    for (const char* marker : markers)
+    {
+        char probe[600];
+        const int written = snprintf(probe, sizeof(probe), "%s%s%s", path,
+                                     needsSlash ? "/" : "", marker);
+        if (written <= 0 || static_cast<size_t>(written) >= sizeof(probe)) continue;
+        if (access(probe, F_OK) == 0) return true;
+    }
+
+    return false;
+}
+
 void ReadSettingFile();
 void ApplyFPSPatch();
 void (*NvUtilInit)();
@@ -1177,7 +1200,24 @@ void NvUtilInit_hook()
 
     NvUtilInit();
 
-    g_pszStorage = (char*)(g_libGTASA + (VER_x32 ? 0x6D687C : 0x8B46A8)); // StorageRootBuffer
+    // The engine exposes its own storage root buffer, but its default value is
+    // built for the original SA-MP package (/Android/data/com.samp.mobile),
+    // while this build stores its data under com.hopepride.samp. Only take the
+    // engine's path when it actually points at a game data folder, otherwise
+    // keep the path the launcher handed us.
+    char* engineStorage = (char*)(g_libGTASA + (VER_x32 ? 0x6D687C : 0x8B46A8)); // StorageRootBuffer
+    char* launcherStorage = g_pszStorage;
+
+    FLog("Storage: engine='%s' launcher='%s'",
+         engineStorage ? engineStorage : "(null)",
+         launcherStorage ? launcherStorage : "(null)");
+
+    if (StorageHasGameData(engineStorage))
+        g_pszStorage = engineStorage;
+    else if (StorageHasGameData(launcherStorage))
+        g_pszStorage = launcherStorage;
+
+    FLog("Storage: using '%s'", g_pszStorage ? g_pszStorage : "(null)");
 
     ReadSettingFile();
 

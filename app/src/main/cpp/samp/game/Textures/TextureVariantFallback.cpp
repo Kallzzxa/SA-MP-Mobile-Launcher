@@ -121,6 +121,10 @@ bool ProbeVariant(const char* database, int format, VariantFiles& files)
 
 int PickExistingVariant(const char* database, int requested)
 {
+    // DF_Default and DF_ALL mean "the engine decides", which includes knowing
+    // the GPU and the data set. Never second guess those.
+    if (requested >= DF_Default) return requested;
+
     if (kForceVariant && requested != DF_UNC && VariantExists(database, DF_UNC))
         return DF_UNC;
 

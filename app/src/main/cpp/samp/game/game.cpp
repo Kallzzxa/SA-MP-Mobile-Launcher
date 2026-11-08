@@ -726,34 +726,58 @@ void LightsCreate(RpWorld* world) {
 
 bool InitGui();
 
+// Every database is loaded once. InitialiseRenderWare runs more than once in a
+// session (the log shows it three times), and loading the same texture database
+// again builds a second entry array on top of a live one - that is what left
+// TextureDatabaseRuntime::SortEntries with null entries and crashed it.
+static bool g_bTextureDatabasesLoaded = false;
+
+// DF_Default lets the engine choose the variant that matches this GPU and the
+// installed data set. The previous build hardcoded DF_DXT for every database,
+// which is not what a Mali/PowerVR device can read: the databases came out
+// empty (black world, black skins, black radar).
+static void LoadTextureDatabase(const char* name)
+{
+    TextureDatabaseRuntime* db = TextureDatabaseRuntime::Load(name, false, TextureDatabaseFormat::DF_Default);
+    FLog("texdb '%s': %s", name, db ? "loaded" : "not loaded");
+}
+
 bool CGame::InitialiseRenderWare() {
-    FLog("InitialiseRenderWare ..");
+    static int s_callCount = 0;
+    s_callCount++;
+    FLog("InitialiseRenderWare .. (call #%d)", s_callCount);
 
     CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
 
     CTxdStore::Initialise();
     CVisibilityPlugins::Initialise();
 
+    if (!g_bTextureDatabasesLoaded)
+    {
+        g_bTextureDatabasesLoaded = true;
+
 #if VER_SAMP
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_DXT);
+        LoadTextureDatabase("mobile");
+        LoadTextureDatabase("txd");
+        LoadTextureDatabase("gta3");
+        LoadTextureDatabase("gta_int");
+        LoadTextureDatabase("cutscene");
+        LoadTextureDatabase("player");
+        LoadTextureDatabase("menu");
 #else
-    TextureDatabaseRuntime::Load("samp", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_DXT);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_DXT);
-    //TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_DXT);
-
+        LoadTextureDatabase("samp");
+        LoadTextureDatabase("mobile");
+        LoadTextureDatabase("txd");
+        LoadTextureDatabase("gta3");
+        LoadTextureDatabase("gta_int");
+        LoadTextureDatabase("player");
+        LoadTextureDatabase("menu");
 #endif
-
+    }
+    else
+    {
+        FLog("InitialiseRenderWare: texture databases already loaded, not loading again");
+    }
 
     const auto camera = RwCameraCreate();
     if (!camera) return false;
