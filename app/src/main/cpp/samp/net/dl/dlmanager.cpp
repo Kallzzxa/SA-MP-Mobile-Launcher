@@ -965,7 +965,7 @@ jmethodID g_dlHttpClientMid = nullptr; // downloadFile(Ljava/lang/String;Ljava/l
 
 void DLManager_InitJniCache(JNIEnv* env) {
     if (!env || g_dlHttpClientCls) return;  // already cached
-    jclass local = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
+    jclass local = env->FindClass("com/hopepride/samp/game/DLHttpClient");
     if (!local) {
         if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
         return;
