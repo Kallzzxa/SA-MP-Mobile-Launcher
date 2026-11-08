@@ -539,7 +539,31 @@ void ConnectionRejected(RPCParameters *rpcParams)
 	switch (byteRejectReason)
 	{
 	case REJECT_REASON_BAD_VERSION:
-		if (pUI) pUI->chat()->addInfoMessage("CONNECTION REJECTED: Incorrect Version.");
+		// Retry using 0.3.DL if the selected version was not DL.
+		if (pSettings && !strstr(pSettings->Get().szVersion, "0.3.DL")) {
+			snprintf(
+				pSettings->Get().szVersion,
+				sizeof(pSettings->Get().szVersion),
+				"%s",
+				"0.3.DL-R1"
+			);
+
+			if (pUI) {
+				pUI->chat()->addInfoMessage(
+					"Server requires 0.3.DL. Retrying with 0.3.DL-R1..."
+				);
+			}
+
+			if (pNetGame) {
+				pNetGame->SetGameState(GAMESTATE_WAIT_CONNECT);
+			}
+		} else {
+			if (pUI) {
+				pUI->chat()->addInfoMessage(
+					"CONNECTION REJECTED: Incorrect Version (0.3.DL-R1 was also rejected)."
+				);
+			}
+		}
 		break;
 
 	case REJECT_REASON_BAD_NICKNAME:

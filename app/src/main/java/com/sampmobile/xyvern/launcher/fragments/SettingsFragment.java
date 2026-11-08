@@ -50,7 +50,7 @@ public class SettingsFragment extends Fragment {
     TextView mFPSText;
 
 
-    String[] titles = {"0.3.DL-R1", "0.3.7", "0.3.7-R5"};
+    String[] titles = {"0.3.7", "0.3.DL-R1", "0.3.7-R5"};
 
     Spinner autoCompleteTextView;
     ArrayAdapter<String> adapter;

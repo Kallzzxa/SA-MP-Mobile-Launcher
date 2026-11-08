@@ -442,7 +442,22 @@ bool DLManager::RegisterCustomModels() {
     // Verify the IMG was actually registered in the returned slot.
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
+    const char* expectedImgName = imgPath.c_str();
+
+    if (std::strlen(expectedImgName) >=
+        sizeof(CStreaming::ms_files[0].m_szName)) {
+
+        const char* slash = std::strrchr(expectedImgName, '/');
+        const char* backslash = std::strrchr(expectedImgName, 92);
+
+        if (slash && (!backslash || slash > backslash))
+            expectedImgName = slash + 1;
+        else if (backslash)
+            expectedImgName = backslash + 1;
+    }
+
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, expectedImgName) != 0) {
         strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
         PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
