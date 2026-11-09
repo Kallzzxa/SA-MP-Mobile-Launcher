@@ -75,12 +75,6 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
-void GetModelProgressStats(
-    size_t& ready,
-    size_t& failed,
-    size_t& pending
-) const;
-
 class DLManager {
 public:
     static DLManager& Instance();
@@ -121,7 +115,17 @@ public:
     int GetDownloadedModels() const { return m_downloadedModels.load(); }
     int GetActiveWorkers() const { return m_activeWorkers.load(); }
     float GetCurrentSpeedKBps() const { return m_speedKBps.load(); }
-    void GetProgressStats(size_t& queued, size_t& active, size_t& done, size_t& failed) const;
+    void GetProgressStats(
+        size_t& queued, 
+        size_t& active, 
+        size_t& done, 
+        size_t& failed
+    ) const;
+    void GetModelProgressStats(
+        size_t& ready,
+        size_t& failed,
+        size_t& pending
+    ) const;
 
     void SendFinishDownload();
     void ToggleOverlay();
