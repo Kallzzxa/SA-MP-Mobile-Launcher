@@ -19,6 +19,8 @@
 #include <functional>
 #include <vector>
 #include <iostream>
+#include <cstring>
+#include <cstdio>
 
 extern UI *pUI;
 
@@ -247,7 +249,27 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     }
 
     // free slot found, load the IMG file
-    strcpy(ms_files[fileIndex].m_szName, pFileName);
+    // Prevent overflow of the fixed 40-byte IMG archive name.
+    const char* fileName = strrchr(pFileName, '/');
+    const char* winFileName = strrchr(pFileName, '\\');
+
+    if (!fileName || (winFileName && winFileName > fileName))
+        fileName = winFileName;
+
+    fileName = fileName ? fileName + 1 : pFileName;
+
+    if (strlen(fileName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        return -1;
+    }
+
+    snprintf(
+        ms_files[fileIndex].m_szName,
+        sizeof(ms_files[fileIndex].m_szName),
+        "%s",
+        fileName
+    );
+
+    // Keep the original full path for opening the archive.
     ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
     return fileIndex;

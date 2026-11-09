@@ -443,7 +443,7 @@ bool DLManager::RegisterCustomModels() {
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, "custom_dl.img") != 0) {
         PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
@@ -475,7 +475,7 @@ bool DLManager::RegisterCustomModels() {
             snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
             snprintf(txdBase, sizeof(txdBase), "0x%08X", mf.txdCrc);
             pInfo->SetModelName(dffBase);
-            pInfo->SetTexDictionary(txdBase, "custom_dl");
+            pInfo->SetTexDictionary(txdBase, nullptr);
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
