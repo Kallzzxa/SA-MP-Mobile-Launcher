@@ -1438,7 +1438,7 @@ void DLManager::ProcessTick() {
         // Register downloaded models with the game engine BEFORE telling the
         // server we're ready. Must run on the game thread (ProcessTick is
         // called from CNetGame::Process).
-        RegisterCustomModels();
+        //RegisterCustomModels();
         SendFinishDownload();
     } else if (!haveManifest && !m_bSawAnyModel &&
                (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
