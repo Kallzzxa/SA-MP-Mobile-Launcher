@@ -475,7 +475,7 @@ bool DLManager::RegisterCustomModels() {
             snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
             snprintf(txdBase, sizeof(txdBase), "0x%08X", mf.txdCrc);
             pInfo->SetModelName(dffBase);
-            pInfo->SetTexDictionary(txdBase, nullptr);
+            pInfo->SetTexDictionary(txdBase, "custom_dl");
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
@@ -1438,7 +1438,7 @@ void DLManager::ProcessTick() {
         // Register downloaded models with the game engine BEFORE telling the
         // server we're ready. Must run on the game thread (ProcessTick is
         // called from CNetGame::Process).
-        //RegisterCustomModels();
+        RegisterCustomModels();
         SendFinishDownload();
     } else if (!haveManifest && !m_bSawAnyModel &&
                (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
