@@ -175,11 +175,11 @@ void CEntityGTA::Remove() {
 }
 
 void CEntityGTA::SetModelIndex(uint32 index) {
-
+    m_nModelIndex = static_cast<uint16_t>(index);
 }
 
 void CEntityGTA::SetModelIndexNoCreate(uint32 index) {
-
+    m_nModelIndex = static_cast<uint16_t>(index);
 }
 
 void CEntityGTA::SetIsStatic(bool isStatic) {
