@@ -12,6 +12,8 @@
 #include "game/References.h"
 #include "game/Pools.h"
 
+#include <android/log.h>
+
 extern CGame* pGame;
 
 CEntityGTA::CEntityGTA() : CPlaceable() {
@@ -166,8 +168,26 @@ CBaseModelInfo* CEntityGTA::GetModelInfo() const {
     return CModelInfo::GetModelInfo(m_nModelIndex);
 }
 
-void CEntityGTA::Add(const CRect* rect) {
-    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x3ED8FC + 1 : 0x4CD5C0), this, rect);
+void CEntityGTA::Add()
+{
+    const uint32_t modelId = m_nModelIndex;
+
+    if (modelId >= CModelInfo::NUM_MODEL_INFOS ||
+        CModelInfo::GetModelInfo(modelId) == nullptr)
+    {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            "HOPE_MODEL_GUARD",
+            "Blocked invalid entity: modelId=%u",
+            modelId
+        );
+        return;
+    }
+
+    CHook::CallFunction<void>(
+        g_libGTASA + (VER_x32 ? 0x3ED8D8 + 1 : 0x4CD574),
+        this
+    );
 }
 
 void CEntityGTA::Remove() {
