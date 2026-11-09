@@ -1564,89 +1564,220 @@ void DLManager::ToggleOverlay() {
 // Hardening: sizes measured via calculateTextSize (not a 0.58 guess), laid out
 // bottom-left against the real screen size, and failures are actionable.
 // ---------------------------------------------------------------------------
+
 void DLManager::RenderImGui() {
-    if (!m_bInitialized.load()) return;
-    if (!pUI) return;
+    if (!m_bInitialized.load() || !pUI)
+        return;
 
-    ImGuiRenderer* r = pUI->renderer();
-    if (!r) return;
+    ImGuiRenderer* renderer = pUI->renderer();
+    if (!renderer)
+        return;
 
-    size_t queued = 0, active = 0, fileDone = 0, fileFailed = 0;
-    GetProgressStats(queued, active, fileDone, fileFailed);
+    // Snapshot task agar aman saat worker download mengubah m_tasks.
+    std::vector<DLFileTask> tasks;
+    std::vector<DLModelInfo> models;
 
-    size_t done = 0, failed = 0, pending = 0;
-    GetModelProgressStats(done, failed, pending);
-
-    const int      total    = m_totalModels.load();
-    const bool     finished = m_bDownloadFinished.load();
-    const uint32_t now      = GetCurrentTick();
-
-    const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
-    const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
-    const bool busy = !finished && (active > 0 || queued > 0 || (total > 0 && (done + failed) < (size_t)total));
-
-    // Visible while there is real work, while the manifest is still expected,
-    // or for a beat after finishing. The /dl command pins it open.
-    if (!m_bForceShowOverlay && !busy && !waiting && !(finished && showDone)) return;
-
-    // ---- Compose the one line the player needs.
-    char label[96];
-    bool showBar = false;
-    float fraction = 0.0f;
-
-    // Progress counts settled work: downloaded + skipped. The bar must always
-    // be able to reach 100% — failures are skipped, never stuck.
-    const size_t settled = done + failed;
-
-    if (failed > 0 && !busy && !finished) {
-        snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
-    } else if (finished) {
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
-        } else {
-            snprintf(label, sizeof(label), "Models ready");
-        }
-        fraction = 1.0f;
-        showBar = total > 0;
-    } else if (total > 0) {
-        fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
-                     settled, total, failed);
-        } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
-        }
-        showBar = true;
-    } else {
-        snprintf(label, sizeof(label), "Downloading models");
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        tasks.assign(m_tasks.begin(), m_tasks.end());
+        models = m_models;
     }
 
-    // ---- Layout: bottom-left, measured, scaled by screen size.
-    const ImVec2 screen = ImGui::GetIO().DisplaySize;
-    const float  fs     = std::max(UISettings::fontSize() * 0.85f, 11.0f);
-    const float  margin = std::max(screen.y * 0.03f, 16.0f);
-    const float  barH   = std::max(fs * 0.14f, 3.0f);
-    const float  gap    = fs * 0.35f;
+    size_t queued = 0;
+    size_t active = 0;
+    size_t done = 0;
+    size_t failed = 0;
 
-    const ImVec2 labelSize = r->calculateTextSize(label, fs);
-    const float  barW      = std::min(std::max(screen.x * 0.28f, labelSize.x), fs * 22.0f);
-    const float  totalH    = labelSize.y + (showBar ? gap + barH : 0.0f);
+    for (const auto& task : tasks) {
+        if (task.done) ++done;
+        else if (task.failed) ++failed;
+        else if (task.started) ++active;
+        else ++queued;
+    }
 
-    const float x = margin;
-    const float y = screen.y - margin - totalH;
+    size_t cached = 0;
+    uint64_t expectedBytes = 0;
 
-    // Stock HUD colours: white pair with the black outline, flat grey bar.
-    const ImColor kText (245, 245, 245, 255);
-    const ImColor kTrack(0, 0, 0, 110);
-    const ImColor kFill (235, 235, 235, 235);
+    for (const auto& model : models) {
+        if (model.dffChecksum != 0) {
+            expectedBytes += model.dffSize;
+            if (model.dffCached) ++cached;
+        }
 
-    r->drawText(ImVec2(x, y), kText, label, true, fs);
-
-    if (showBar) {
-        const float by0 = y + labelSize.y + gap;
-        r->drawRect(ImVec2(x, by0), ImVec2(x + barW, by0 + barH), kTrack, true);
-        if (fraction > 0.0f) {
-            r->drawRect(ImVec2(x, by0), ImVec2(x + barW * fraction, by0 + barH), kFill, true);
+        if (model.txdChecksum != 0) {
+            expectedBytes += model.txdSize;
+            if (model.txdCached) ++cached;
         }
     }
+
+    const size_t totalFiles = tasks.size() + cached;
+    const size_t processed = done + failed + cached;
+
+    const uint64_t receivedBytes = m_totalBytesRx.load();
+    const float speed = m_speedKBps.load();
+
+    const float progress = totalFiles > 0
+        ? std::clamp(
+            static_cast<float>(processed) /
+            static_cast<float>(totalFiles),
+            0.0f, 1.0f)
+        : 0.0f;
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    // Posisi dan ukuran awal panel.
+    static bool firstPosition = true;
+
+    if (firstPosition) {
+        ImGui::SetNextWindowPos(
+            ImVec2(io.DisplaySize.x - 510.0f, 20.0f),
+            ImGuiCond_Always
+        );
+
+        ImGui::SetNextWindowSize(
+            ImVec2(490.0f, 420.0f),
+            ImGuiCond_Always
+        );
+
+        firstPosition = false;
+    }
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoResize;
+
+    // Jangan gunakan NoMove agar panel bisa di-drag.
+    if (ImGui::Begin("Model downloads", nullptr, flags)) {
+
+        char progressText[96];
+
+        snprintf(
+            progressText,
+            sizeof(progressText),
+            "%zu / %zu processed",
+            processed,
+            totalFiles
+        );
+
+        ImGui::TextDisabled("%s", progressText);
+
+        ImGui::Spacing();
+
+        ImGui::ProgressBar(
+            progress,
+            ImVec2(-1.0f, 8.0f),
+            ""
+        );
+
+        ImGui::Spacing();
+
+        ImGui::Text(
+            "%zu downloaded    %zu cached    %zu failed",
+            done,
+            cached,
+            failed
+        );
+
+        ImGui::Separator();
+
+        const double receivedMiB =
+            static_cast<double>(receivedBytes) / (1024.0 * 1024.0);
+
+        const double expectedMiB =
+            static_cast<double>(expectedBytes) / (1024.0 * 1024.0);
+
+        ImGui::Text(
+            "%.1f MiB received - %.1f KiB/s",
+            receivedMiB,
+            speed
+        );
+
+        ImGui::Text(
+            "%zu / %zu known files - %.1f MiB expected",
+            processed,
+            totalFiles,
+            expectedMiB
+        );
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("Files");
+
+        ImGui::BeginChild(
+            "DownloadFileList",
+            ImVec2(0.0f, 220.0f),
+            true
+        );
+
+        if (tasks.empty()) {
+            ImGui::TextDisabled("No pending files.");
+        }
+
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            const auto& task = tasks[i];
+
+            const char* status = "Queued";
+
+            if (task.done)
+                status = "Downloaded";
+            else if (task.failed)
+                status = "Failed";
+            else if (task.started)
+                status = task.haveUrl()
+                    ? "Downloading"
+                    : "Waiting for URL";
+
+            const char* type = task.isDff ? "DFF" : "TXD";
+
+            const double currentSize = task.done
+                ? static_cast<double>(task.size)
+                : 0.0;
+
+            const double totalSize =
+                static_cast<double>(task.size);
+
+            ImGui::PushID(static_cast<int>(i));
+
+            ImGui::Text(
+                "%zu. %s %s",
+                i + 1,
+                type,
+                task.hexName.c_str()
+            );
+
+            ImGui::SameLine();
+
+            ImGui::TextDisabled(
+                "%s - %.1f / %.1f KiB",
+                status,
+                currentSize / 1024.0,
+                totalSize / 1024.0
+            );
+
+            if (task.failed && !task.lastError.empty()) {
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+                    "%s",
+                    task.lastError.c_str()
+                );
+            }
+
+            ImGui::Separator();
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndChild();
+
+        ImGui::Spacing();
+
+        ImGui::TextDisabled(
+            "Active: %zu | Queued: %zu",
+            active,
+            queued
+        );
+    }
+
+    ImGui::End();
 }
