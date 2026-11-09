@@ -143,7 +143,7 @@ void ScrSetSpawnInfo(RPCParameters *rpcParams)
 	if (bsData.GetNumberOfUnreadBits() >= (50 * 8)) {
 		uint8_t byteTeam;
 		int iSkin;
-		uint32_t dCustomSkinID;
+		int32_t dCustomSkinID;
 		uint8_t unk;
 		CVector vecPos;
 		float fRotation;
@@ -417,7 +417,7 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 
 	int iPlayerID;
 	int iModel;
-	uint32_t dCustomSkinID = 0;
+	int32_t dCustomSkinID = 0;
 	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
 	bsData.SetWriteOffset(iBitLength);
 	if (!bsData.Read(iPlayerID) || !bsData.Read(iModel)) return;
@@ -426,7 +426,7 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 	}
 
 	int actualModel = iModel;
-	if (dCustomSkinID > 0) {
+	if (dCustomSkinID != 0) {
 		int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 		if (IsValidPedModel(virtId)) {
 			actualModel = virtId;

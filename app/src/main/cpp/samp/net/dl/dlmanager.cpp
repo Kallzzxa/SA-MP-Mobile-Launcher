@@ -1462,12 +1462,51 @@ void DLManager::GetProgressStats(size_t& queued, size_t& active, size_t& done, s
     }
 }
 
-void DLManager::RecomputeProgress() {
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
-    if (m_totalModels.load() > 0) {
-        m_downloadedModels = static_cast<int>(done);
+void DLManager::GetModelProgressStats(
+    size_t& ready,
+    size_t& failed,
+    size_t& pending
+) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    ready = failed = pending = 0;
+
+    auto assetReady = [&](uint32_t crc, bool isDff, bool cached) {
+        if (cached) return 1;
+
+        for (const auto& task : m_tasks) {
+            if (task.crc != crc || task.isDff != isDff)
+                continue;
+
+            if (task.done) return 1;
+            if (task.failed) return -1;
+            return 0;
+        }
+
+        return 0;
+    };
+
+    for (const auto& model : m_models) {
+        int dff = assetReady(
+            model.dffChecksum, true, model.dffCached
+        );
+
+        int txd = assetReady(
+            model.txdChecksum, false, model.txdCached
+        );
+
+        if (dff < 0 || txd < 0)
+            ++failed;
+        else if (dff > 0 && txd > 0)
+            ++ready;
+        else
+            ++pending;
     }
+}
+
+void DLManager::RecomputeProgress() {
+    size_t ready = 0, failed = 0, pending = 0;
+    GetModelProgressStats(ready, failed, pending);
+    m_downloadedModels = static_cast<int>(ready);
 }
 
 void DLManager::RequestRetryFailed() {
@@ -1532,8 +1571,11 @@ void DLManager::RenderImGui() {
     ImGuiRenderer* r = pUI->renderer();
     if (!r) return;
 
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
+    size_t queued = 0, active = 0, fileDone = 0, fileFailed = 0;
+    GetProgressStats(queued, active, fileDone, fileFailed);
+
+    size_t done = 0, failed = 0, pending = 0;
+    GetModelProgressStats(done, failed, pending);
 
     const int      total    = m_totalModels.load();
     const bool     finished = m_bDownloadFinished.load();
@@ -1541,7 +1583,7 @@ void DLManager::RenderImGui() {
 
     const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
     const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
-    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && done < (size_t)total));
+    const bool busy = !finished && (active > 0 || queued > 0 || (total > 0 && (done + failed) < (size_t)total));
 
     // Visible while there is real work, while the manifest is still expected,
     // or for a beat after finishing. The /dl command pins it open.

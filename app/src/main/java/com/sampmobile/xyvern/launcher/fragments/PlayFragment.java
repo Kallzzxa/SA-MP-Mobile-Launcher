@@ -68,7 +68,7 @@ public class PlayFragment extends Fragment {
         void onServerClick(SAMPServerInfo server);
     }
 
-    private static final String HOSTED_URL = "https://kethrnensm.github.io/web/hosted.json";
+    private static final String HOSTED_URL = "https://xaeraa.github.io/hosted-server-list/hosted.json";
     private RecyclerView rvServers;
     private ServerAdapter adapter;
     private final ArrayList<SAMPServerInfo> hostedServers = new ArrayList<>();

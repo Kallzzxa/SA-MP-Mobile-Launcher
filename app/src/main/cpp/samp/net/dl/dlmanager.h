@@ -75,6 +75,12 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
+void GetModelProgressStats(
+    size_t& ready,
+    size_t& failed,
+    size_t& pending
+) const;
+
 class DLManager {
 public:
     static DLManager& Instance();

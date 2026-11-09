@@ -348,7 +348,7 @@ void RequestClass(RPCParameters *rpcParams)
 	if (bsData.GetNumberOfUnreadBits() >= (50 * 8)) {
 		uint8_t byteTeam;
 		int iSkin;
-		uint32_t dCustomSkinID;
+		int32_t dCustomSkinID;
 		uint8_t unk;
 		CVector vecPos;
 		float fRotation;
@@ -684,7 +684,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 
 	if (!bsData.Read(playerId) || !bsData.Read(byteTeam) || !bsData.Read(iSkin)) return;
 	if (bsData.GetNumberOfUnreadBits() >= (47 * 8)) {
-		uint32_t dCustomSkinID = 0;
+		int32_t dCustomSkinID = 0;
 		if (!bsData.Read(dCustomSkinID)) return;
 		if (dCustomSkinID > 0) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
@@ -1509,7 +1509,7 @@ void ShowActor(RPCParameters* rpcParams)
 
 	if (bsData.GetNumberOfUnreadBits() >= (31 * 8)) {
 		if (!bsData.Read(newActor.ActorID) || !bsData.Read(newActor.iSkin)) return;
-		uint32_t dCustomSkinID = 0;
+		int32_t dCustomSkinID = 0;
 		if (!bsData.Read(dCustomSkinID)) return;
 		if (dCustomSkinID > 0) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
