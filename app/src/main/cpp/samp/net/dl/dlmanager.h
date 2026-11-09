@@ -150,7 +150,8 @@ private:
 
     std::string m_serverIp;
     int m_serverPort;
-    std::string m_cachePath;
+   std::string m_cachePath;
+    std::string m_storagePath;
     mutable std::mutex m_cachePathMutex;   // guards m_cachePath string read by workers
     RakClientInterface* m_pRakClient;      // game-thread owned; nulled on Reset
 

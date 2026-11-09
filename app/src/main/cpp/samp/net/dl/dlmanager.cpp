@@ -190,6 +190,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath = cacheDir;
+        m_storagePath = cleanStorage;
     }
     MakeDirectoryTree(cacheDir);
 
@@ -266,6 +267,7 @@ void DLManager::Reset() {
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath.clear();
+        m_storagePath.clear();
     }
     {
         std::lock_guard<std::mutex> cm(m_chatMutex);
@@ -400,12 +402,21 @@ bool DLManager::RegisterCustomModels() {
     }
 
     // Pack into IMG.
-    std::string cacheBase;
+    std::string storageBase;
     {
         std::lock_guard<std::mutex> lock(m_cachePathMutex);
-        cacheBase = m_cachePath;
+        storageBase = m_storagePath;
     }
-    std::string imgPath = cacheBase + "custom_dl.img";
+
+    if (storageBase.empty()) {
+        PushChat("Custom IMG registration failed: storage path is empty.");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Simpan IMG di folder TEXDB game.
+    std::string imgPath = storageBase + "TEXDB/custom_dl.img";
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
@@ -432,7 +443,10 @@ bool DLManager::RegisterCustomModels() {
 
     // Register IMG with the streaming system.
     // Note: path format follows the game's CdStreamOpen expectations.
-    int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
+    int imgIndex = CStreaming::AddImageToList(
+        "TEXDB\\custom_dl.img",
+        false
+    );
     if (imgIndex < 0) {
         PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
         std::lock_guard<std::mutex> lock(m_mutex);
