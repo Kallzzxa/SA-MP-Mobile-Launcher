@@ -454,35 +454,71 @@ bool DLManager::RegisterCustomModels() {
     // Register each model slot.
     int registered = 0;
     int skippedFull = 0;
+    int skippedOccupied = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+
         for (const auto& mf : toRegister) {
+
+            // Validate virtual model ID before touching CModelInfo.
+            if (mf.virtualId < DL_VIRT_MIN ||
+                mf.virtualId > DL_VIRT_MAX) {
+                ++skippedOccupied;
+                continue;
+            }
+
+            // Never overwrite an existing GTA SA model entry.
+            if (CModelInfo::GetModelInfo(mf.virtualId) != nullptr) {
+                char msg[160];
+                snprintf(msg, sizeof(msg),
+                        "DL model %d skipped: model slot %d is already occupied.",
+                        mf.virtualId, mf.virtualId);
+                PushChat(msg);
+
+                ++skippedOccupied;
+                continue;
+            }
+
             CBaseModelInfo* pInfo = nullptr;
-            if (mf.type == 1) { // Skin -> ped model
+
+            if (mf.type == 1) {
+                // Skin -> ped model
                 pInfo = CModelInfo::AddPedModel(mf.virtualId);
-            } else { // Object -> atomic model
+            }
+            else {
+                // Object -> atomic model
                 pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
             }
+
             if (!pInfo) {
-                // Store is full (shouldn't happen with enlarged capacities,
-                // but never crash: skip this model, it will use fallback).
                 ++skippedFull;
                 continue;
             }
 
-            // DFF name (without extension) for streaming lookup.
-            // Matches the arc name "0x<CRC>.dff" so the IMG directory hash aligns.
-            char dffBase[32], txdBase[32];
-            snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
-            snprintf(txdBase, sizeof(txdBase), "0x%08X", mf.txdCrc);
+            char dffBase[32];
+            char txdBase[32];
+
+            snprintf(dffBase, sizeof(dffBase),
+                    "0x%08X", mf.dffCrc);
+
+            snprintf(txdBase, sizeof(txdBase),
+                    "0x%08X", mf.txdCrc);
+
             pInfo->SetModelName(dffBase);
             pInfo->SetTexDictionary(txdBase, "custom_dl");
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
         }
+
         m_bModelsRegistered = true;
     }
+
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+            "Custom models: %d registered, %d occupied slots, %d store full.",
+            registered, skippedOccupied, skippedFull);
+    PushChat(msg);
 
     char msg[128];
     snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);

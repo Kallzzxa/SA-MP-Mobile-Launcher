@@ -1248,6 +1248,16 @@ stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
         sprintf(rel, "data/popcycle.dat");
         useRel = rel;
     }
+    // Restore TEXDB path for IMG archives.
+    else if (!strcmp(r1, "GTA3.IMG") ||
+             !strcmp(r1, "GTA_INT.IMG") ||
+             !strcmp(r1, "SAMP.IMG") ||
+             !strcmp(r1, "SAMPCOL.IMG"))
+    {
+        snprintf(rel, sizeof(rel), "TEXDB/%s", r1);
+        useRel = rel;
+        FLog("Loading IMG archive: %s", rel);
+    }
 
 #if VER_x32
     auto *st = (stFile*)malloc(8);

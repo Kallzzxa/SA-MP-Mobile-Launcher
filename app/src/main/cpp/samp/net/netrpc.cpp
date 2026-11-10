@@ -1513,7 +1513,9 @@ void ShowActor(RPCParameters* rpcParams)
 		if (!bsData.Read(dCustomSkinID)) return;
 		if (dCustomSkinID > 0) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
-			if (IsValidPedModel(virtId)) {
+			if (IsValidPedModel(virtId) &&
+				DLManager::Instance().IsModelRegistered(virtId)) {
+					
 				newActor.iSkin = virtId;
 			}
 		}
