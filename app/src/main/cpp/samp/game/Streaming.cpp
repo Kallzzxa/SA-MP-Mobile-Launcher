@@ -270,7 +270,14 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     );
 
     // Keep the original full path for opening the archive.
+    FLog("AddImageToList: pFileName=%s | fileName=%s",
+        pFileName, fileName);
+
     ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
+
+    FLog("AddImageToList: streamHandle=%d",
+        ms_files[fileIndex].m_StreamHandle);
+
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
     return fileIndex;
 }

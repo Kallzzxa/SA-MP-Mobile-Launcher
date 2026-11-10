@@ -267,7 +267,6 @@ void DLManager::Reset() {
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath.clear();
-        m_storagePath.clear();
     }
     {
         std::lock_guard<std::mutex> cm(m_chatMutex);

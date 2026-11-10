@@ -1178,6 +1178,7 @@ char lastFile[123];
 stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
 {
     if (!r1) return nullptr;
+    FLog("NvFOpen input: r0=%s | r1=%s", r0 ? r0 : "(null)", r1);
     snprintf(lastFile, sizeof(lastFile), "%s", r1);
     const size_t pathLength = strlen(r1);
 
