@@ -359,7 +359,14 @@ void CStreaming::RequestModel(int32 modelId, int32 streamingFlags) {
                     CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(modelId);
 
                     if (modelInfo && modelInfo->m_nTxdIndex >= 0) {
-                        RequestTxdModel(modelInfo->m_nTxdIndex, streamingFlags);
+                        const int32 txdModelId = TXDToModelId(modelInfo->m_nTxdIndex);
+
+                        if (txdModelId < RESOURCE_ID_TXD || txdModelId >= RESOURCE_ID_COL) {
+                            FLog("Streaming: Invalid TXD index %d for model %d",
+                                modelInfo->m_nTxdIndex, modelId);
+                        } else {
+                            RequestModel(txdModelId, streamingFlags);
+                        }
                     }
 
                     const int32 animFileIndex = modelInfo->GetAnimFileIndex();
@@ -884,7 +891,7 @@ bool CStreaming::ProcessLoadingChannel(int32 chIdx) {
                     // Conversion failed: do not leave the model marked as loaded.
                     info.m_nLoadState = LOADSTATE_NOT_LOADED;
 
-                    Log("Streaming: ConvertBufferToObject failed for model %d", modelId);
+                    FLog("Streaming: ConvertBufferToObject failed for model %d", modelId);
                 }
 
                 ch.modelIds[i] = MODEL_INVALID;
