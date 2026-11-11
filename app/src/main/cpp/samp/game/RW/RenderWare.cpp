@@ -8,7 +8,7 @@ RsGlobalType* RsGlobal;
 RwCamera* (*RwCameraBeginUpdate)(RwCamera* camera);
 RwCamera* (*RwCameraShowRaster)(RwCamera * camera, void *pDev, RwUInt32 flags);
 
-RwStream* (*RwStreamOpen)(
+RwStream* (*pRwStreamOpen)(
     RwStreamType,
     RwStreamAccessType,
     const void*
@@ -21,7 +21,7 @@ RwBool (*RwStreamFindChunk)(
     RwUInt32*
 ) = nullptr;
 
-RwBool (*RwStreamClose)(RwStream*, void*) = nullptr;
+RwBool (*pRwStreamClose)(RwStream*, void*) = nullptr;
 
 RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
     RwStream*
@@ -91,7 +91,7 @@ void InitRenderWareFunctions()
 	*(void**)(&RwCameraBeginUpdate) 			= (void*)(CHook::getSym("_Z19RwCameraBeginUpdateP8RwCamera"));
 	*(void**)(&RwCameraShowRaster)				= (void*)(CHook::getSym("_Z18RwCameraShowRasterP8RwCameraPvj"));
 
-	*(void**)(&RwStreamOpen) =
+	*(void**)(&pRwStreamOpen) =
 		(void*)CHook::getSym(
 			"_Z12RwStreamOpen12RwStreamType18RwStreamAccessTypePKv"
 		);
@@ -101,7 +101,7 @@ void InitRenderWareFunctions()
 			"_Z17RwStreamFindChunkP8RwStreamjPjS1_"
 		);
 
-	*(void**)(&RwStreamClose) =
+	*(void**)(&pRwStreamClose) =
 		(void*)CHook::getSym(
 			"_Z13RwStreamCloseP8RwStreamPv"
 		);
@@ -167,9 +167,9 @@ void InitRenderWareFunctions()
 
 	*(void**)(&RwTextureDestroy) 				= (void*)(CHook::getSym("_Z16RwTextureDestroyP9RwTexture"));
 
-	if (!RwStreamOpen ||
+	if (!pRwStreamOpen ||
 		!RwStreamFindChunk ||
-		!RwStreamClose ||
+		!pRwStreamClose ||
 		!RwTexDictionaryGtaStreamRead ||
 		!RpClumpStreamRead)
 	{

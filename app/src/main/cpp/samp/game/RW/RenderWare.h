@@ -14,7 +14,7 @@
 
 struct RwTexDictionary;
 
-extern RwStream* (*RwStreamOpen)(
+extern RwStream* (*pRwStreamOpen)(
     RwStreamType type,
     RwStreamAccessType accessType,
     const void* data
@@ -27,7 +27,7 @@ extern RwBool (*RwStreamFindChunk)(
     RwUInt32* versionOut
 );
 
-extern RwBool (*RwStreamClose)(RwStream* stream, void* data);
+extern RwBool (*pRwStreamClose)(RwStream* stream, void* data);
 
 extern RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
     RwStream* stream
