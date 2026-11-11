@@ -185,7 +185,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     char cacheDir[512];
-    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s.%d/",
+    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s:%d/",
              cleanStorage.c_str(), serverIp.c_str(), serverPort);
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
