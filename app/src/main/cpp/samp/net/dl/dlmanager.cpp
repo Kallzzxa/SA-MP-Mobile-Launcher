@@ -520,7 +520,6 @@ bool DLManager::RegisterCustomModels() {
             registered, skippedOccupied, skippedFull);
     PushChat(msg);
 
-    char msg[128];
     snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
     PushChat(msg);
     if (skippedFull > 0) {
