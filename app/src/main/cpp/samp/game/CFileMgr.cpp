@@ -124,14 +124,31 @@ FILE* CFileMgr::OpenFile(const char *path, const char *mode) {
         }
     }
 
-    if (!g_pszStorage) return nullptr;
-    int pathLength = snprintf(ms_path, sizeof(ms_path), "%s%s", g_pszStorage, path);
-    if (pathLength < 0 || static_cast<size_t>(pathLength) >= sizeof(ms_path)) {
-        FLog("File path too long");
-        return nullptr;
+    char resolvedPath[sizeof(ms_path)];
+    const char* openPath = path;
+
+    if (path[0] == '/') {
+        // Absolute path: do not prepend storage root again.
+        openPath = path;
+    } else {
+        int pathLength = snprintf(
+            resolvedPath,
+            sizeof(resolvedPath),
+            "%s%s",
+            g_pszStorage,
+            path
+        );
+
+        if (pathLength < 0 ||
+            static_cast<size_t>(pathLength) >= sizeof(resolvedPath)) {
+            FLog("File path too long");
+            return nullptr;
+        }
+
+        openPath = resolvedPath;
     }
 
-    auto file = fopen(ms_path, mode);
+    FILE* file = fopen(openPath, mode);
 
     // Some game data uses this mixed-case audio path on case-sensitive storage.
     if (!file && strcmp(path, "AUDIO/CONFIG/BANKSLOT.DAT") == 0 && strcmp(mode, "rb") == 0) {
