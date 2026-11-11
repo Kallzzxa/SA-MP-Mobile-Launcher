@@ -183,7 +183,7 @@ void C3DTextLabelPool::ClearLabel(uint16_t wLabelId) {
 void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
 {
 	CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
-	if(!pPlayerPed) return;
+	if(!pPlayerPed || !pPlayerPed->m_pPed) return;
 
     static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
 
@@ -237,7 +237,7 @@ void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
 				}
 			}
 
-			if (pPlayerPed->m_pPed->GetDistanceFromPoint(pTextLabel->vecPos.x, pTextLabel->vecPos.y, pTextLabel->vecPos.z) <= pTextLabel->fDistance)
+			if (pPlayerPed->m_pPed && pPlayerPed->m_pPed->GetDistanceFromPoint(pTextLabel->vecPos.x, pTextLabel->vecPos.y, pTextLabel->vecPos.z) <= pTextLabel->fDistance)
 				this->Draw(renderer, pTextLabel, vecTextPos, pTextLabel->text,
 						   pTextLabel->dwColor);
         }
@@ -261,7 +261,15 @@ void C3DTextLabelPool::Draw(ImGuiRenderer* renderer, TEXT_LABEL* label, CVector 
 			return;
 		}
 
-        RwMatrix matPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed->GetMatrix().ToRwMatrix();
+        // The local GTA ped may not exist yet while the client is still
+        // loading the world; drawing a label with testLOS must not crash then.
+        if (!pNetGame || !pNetGame->GetPlayerPool()) return;
+        CLocalPlayer* pLocal = pNetGame->GetPlayerPool()->GetLocalPlayer();
+        if (!pLocal) return;
+        CPlayerPed* pLocalPed = pLocal->GetPlayerPed();
+        if (!pLocalPed || !pLocalPed->m_pPed) return;
+
+        RwMatrix matPlayer = pLocalPed->m_pPed->GetMatrix().ToRwMatrix();
 
 		CVector vec;
 		vec.x = pCam->pos1x;

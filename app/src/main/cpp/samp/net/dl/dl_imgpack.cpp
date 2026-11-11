@@ -195,7 +195,10 @@ bool PackImgV2(const std::vector<ImgEntry>& entries,
         }
     }
 
-    fclose(out);
+    if (fclose(out) != 0) {
+        ok = false;
+        if (outError.empty()) outError = "failed to flush archive";
+    }
 
     if (!ok) {
         remove(tmpPath.c_str());

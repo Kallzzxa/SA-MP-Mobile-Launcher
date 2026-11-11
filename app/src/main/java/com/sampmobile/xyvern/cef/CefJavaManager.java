@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.cef;
+package com.hopepride.samp.cef;
 
 import android.app.Activity;
 import android.content.res.AssetManager;

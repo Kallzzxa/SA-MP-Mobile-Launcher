@@ -1,10 +1,14 @@
-package com.sampmobile.xyvern.launcher;
+package com.hopepride.samp.launcher;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -22,15 +26,15 @@ import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentPagerAdapter;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.game.GameDataManager;
-import com.sampmobile.xyvern.launcher.config.Config;
-import com.sampmobile.xyvern.launcher.fragments.HomeFragment;
-import com.sampmobile.xyvern.launcher.fragments.PlayFragment;
-import com.sampmobile.xyvern.launcher.fragments.SettingsFragment;
-import com.sampmobile.xyvern.launcher.util.ConfigValidator;
-import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
-import com.sampmobile.xyvern.launcher.util.ViewPagerWithoutSwipe;
+import com.hopepride.samp.R;
+import com.hopepride.samp.game.GameDataManager;
+import com.hopepride.samp.launcher.config.Config;
+import com.hopepride.samp.launcher.fragments.HomeFragment;
+import com.hopepride.samp.launcher.fragments.PlayFragment;
+import com.hopepride.samp.launcher.fragments.SettingsFragment;
+import com.hopepride.samp.launcher.util.ConfigValidator;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.ViewPagerWithoutSwipe;
 
 import java.io.File;
 
@@ -48,25 +52,69 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivHome, ivPlay, ivSettings;
     private TextView tvHome, tvPlay, tvSettings;
     private boolean launcherInitialized = false;
+    private MediaPlayer welcomePlayer;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        com.hopepride.samp.diagnostics.Diagnostics.event("LAUNCHER_ACTIVITY_START");
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
+        if (savedInstanceState == null) playWelcomeSound();
         Config.currentContext = this;
         checkFirstRun();
 
         // If the process died mid-download, relaunch the foreground service from
         // persisted state so the download continues without a manual re-tap.
-        com.sampmobile.xyvern.game.GameDataDownloadService.autoResume(this);
+        com.hopepride.samp.game.GameDataDownloadService.autoResume(this);
 
         GameDataManager.checkAndPrepare(this, () -> {
             if (isFinishing() || isDestroyed() || launcherInitialized) return;
             launcherInitialized = true;
+            com.hopepride.samp.diagnostics.Diagnostics.event("LAUNCHER_DATA_GATE_READY");
             initializeLauncherUi();
         });
+    }
+
+    private void playWelcomeSound() {
+        try {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+            welcomePlayer = MediaPlayer.create(this, R.raw.hopepride_welcome, attributes,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE);
+            if (welcomePlayer == null) {
+                com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYER_UNAVAILABLE");
+                return;
+            }
+            welcomePlayer.setOnCompletionListener(player -> releaseWelcomeSound());
+            welcomePlayer.setOnErrorListener((player, what, extra) -> {
+                com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_ERROR");
+                Log.w("MainActivity", "Welcome sound failed: " + what + "/" + extra);
+                releaseWelcomeSound();
+                return true;
+            });
+            welcomePlayer.start();
+            com.hopepride.samp.diagnostics.Diagnostics.event("WELCOME_PLAYBACK_STARTED");
+        } catch (RuntimeException e) {
+            com.hopepride.samp.diagnostics.Diagnostics.error("WELCOME_PLAYBACK_FAILED", e);
+            Log.w("MainActivity", "Welcome sound unavailable", e);
+            releaseWelcomeSound();
+        }
+    }
+
+    private void releaseWelcomeSound() {
+        MediaPlayer player = welcomePlayer;
+        welcomePlayer = null;
+        if (player != null) player.release();
+    }
+
+    @Override
+    protected void onStop() {
+        releaseWelcomeSound();
+        super.onStop();
     }
 
     private void initializeLauncherUi() {
@@ -88,7 +136,7 @@ public class MainActivity extends AppCompatActivity {
         pa.setOffscreenPageLimit(3);
 
         initNav();
-        updateNavUI(0);
+        updateNavUI(pa.getCurrentItem());
     }
 
     private void initNav() {
@@ -108,24 +156,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateNavUI(int position) {
-        if (navHome == null || navPlay == null || navSettings == null ||
-                tvHome == null || tvPlay == null || tvSettings == null) return;
-        navHome.setBackground(null);
-        navPlay.setBackground(null);
-        navSettings.setBackground(null);
-        tvHome.setVisibility(View.GONE);
-        tvPlay.setVisibility(View.GONE);
-        tvSettings.setVisibility(View.GONE);
-
-        if (position == 0) {
-            navHome.setBackgroundResource(R.drawable.bg_nav_active);
-            tvHome.setVisibility(View.VISIBLE);
-        } else if (position == 1) {
-            navPlay.setBackgroundResource(R.drawable.bg_nav_active);
-            tvPlay.setVisibility(View.VISIBLE);
-        } else if (position == 2) {
-            navSettings.setBackgroundResource(R.drawable.bg_nav_active);
-            tvSettings.setVisibility(View.VISIBLE);
+        if (navHome == null || navPlay == null || navSettings == null) return;
+        View[] tabs = {navHome, navPlay, navSettings};
+        ImageView[] icons = {ivHome, ivPlay, ivSettings};
+        TextView[] labels = {tvHome, tvPlay, tvSettings};
+        for (int i = 0; i < tabs.length; i++) {
+            boolean selected = i == position;
+            tabs[i].setBackgroundResource(selected ? R.drawable.bg_hope_nav_selected : 0);
+            tabs[i].setSelected(selected);
+            int color = android.graphics.Color.parseColor(selected ? "#79D5FF" : "#8397AD");
+            androidx.core.widget.ImageViewCompat.setImageTintList(icons[i],
+                    android.content.res.ColorStateList.valueOf(color));
+            labels[i].setTextColor(color);
         }
     }
 
@@ -174,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkFirstRun() {
-        SharedPreferences prefs = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences("com.hopepride.samp", MODE_PRIVATE);
         if (prefs.getBoolean("firstrun", true)) {
             new SharedPreferenceCore().setInt(getApplicationContext(), "FPS_LIMIT", 60);
             new SharedPreferenceCore().setInt(getApplicationContext(), "MESSAGE_COUNT", 6);

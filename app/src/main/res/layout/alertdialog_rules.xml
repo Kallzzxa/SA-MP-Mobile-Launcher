@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/bg_dialog_round" android:orientation="vertical" android:padding="20dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_bold" android:letterSpacing="0.08"
+        android:text="SERVER  /  INFO" android:textColor="#64CCFF" android:textSize="10sp" />
+    <TextView android:id="@+id/rules_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:fontFamily="@font/montserrat_bold" android:text="Info server"
+        android:textColor="#F8FAFC" android:textSize="20sp" />
+    <TextView android:id="@+id/rules_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:fontFamily="@font/montserrat_regular" android:lineSpacingExtra="2dp"
+        android:text="Memuat info server..." android:textColor="#9AADC1" android:textSize="12sp" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/rules_list"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="12dp" android:clipToPadding="false" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:orientation="horizontal">
+        <Button android:id="@+id/rules_close" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
+            android:layout_marginEnd="4dp" android:backgroundTint="#263B50" android:fontFamily="@font/montserrat_bold"
+            android:text="Tutup" android:textAllCaps="false" android:textColor="#FFFFFF" android:textSize="12sp" />
+        <Button android:id="@+id/rules_refresh" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
+            android:layout_marginStart="4dp" android:backgroundTint="#129FE4" android:fontFamily="@font/montserrat_bold"
+            android:text="Perbarui" android:textAllCaps="false" android:textColor="#FFFFFF" android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

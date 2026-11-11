@@ -69,7 +69,24 @@ void CEntityGTA::ResolveReferences()
 
 void CEntityGTA::Add()
 {
-    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x3ED8D8 + 1 : 0x4CD574), this);
+    const uint32_t modelId = m_nModelIndex;
+
+    if (modelId >= CModelInfo::NUM_MODEL_INFOS ||
+        CModelInfo::GetModelInfo(modelId) == nullptr)
+    {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            "HOPE_MODEL_GUARD",
+            "Blocked invalid entity: modelId=%u",
+            modelId
+        );
+        return;
+    }
+
+    CHook::CallFunction<void>(
+        g_libGTASA + (VER_x32 ? 0x3ED8D8 + 1 : 0x4CD574),
+        this
+    );
 }
 
 void CEntityGTA::SetInterior(int interiorId, bool needRefresh)
@@ -175,11 +192,11 @@ void CEntityGTA::Remove() {
 }
 
 void CEntityGTA::SetModelIndex(uint32 index) {
-
+    m_nModelIndex = static_cast<uint16_t>(index);
 }
 
-void CEntityGTA::SetModelIndexNoCreate(uint32 index) {
-
+void CEntityGTA::SetModelIndexNoCreate(uint32 index){
+    m_nModelIndex = static_cast<uint16_t>(index);
 }
 
 void CEntityGTA::SetIsStatic(bool isStatic) {

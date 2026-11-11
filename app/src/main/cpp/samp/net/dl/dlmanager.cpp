@@ -4,6 +4,7 @@
 #include "../../gui/gui.h"
 #include "../../game/Streaming.h"
 #include "../../game/Models/ModelInfo.h"
+#include "../../game/TxdStore.h"
 #include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
@@ -27,7 +28,89 @@
 #include <chrono>
 #include <mutex>
 
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <unordered_map>
+
 extern UI* pUI;
+
+struct DLCustomImgEntry {
+    uint32_t sectorOffset;
+    uint32_t sectorCount;
+    std::string name;
+};
+
+static uint32_t ReadImgU32(const uint8_t* p)
+{
+    return (uint32_t)p[0]
+        | ((uint32_t)p[1] << 8)
+        | ((uint32_t)p[2] << 16)
+        | ((uint32_t)p[3] << 24);
+}
+
+static bool ReadCustomImgDirectory(
+    const std::string& path,
+    std::vector<DLCustomImgEntry>& entries)
+{
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp)
+        return false;
+
+    uint8_t header[8]{};
+
+    if (fread(header, 1, sizeof(header), fp) != sizeof(header) ||
+        memcmp(header, "VER2", 4) != 0)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    const uint32_t count = ReadImgU32(header + 4);
+
+    if (count == 0 || count > DLImgPack::IMG_MAX_ENTRIES)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    entries.clear();
+    entries.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        uint8_t raw[32]{};
+
+        if (fread(raw, 1, sizeof(raw), fp) != sizeof(raw))
+        {
+            fclose(fp);
+            entries.clear();
+            return false;
+        }
+
+        DLCustomImgEntry entry{};
+        entry.sectorOffset = ReadImgU32(raw);
+        entry.sectorCount = ReadImgU32(raw + 4);
+
+        const char* name =
+            reinterpret_cast<const char*>(raw + 8);
+
+        const size_t len = strnlen(name, 24);
+
+        if (len == 0 || len >= 24 || entry.sectorCount == 0)
+        {
+            fclose(fp);
+            entries.clear();
+            return false;
+        }
+
+        entry.name.assign(name, len);
+        entries.push_back(std::move(entry));
+    }
+
+    fclose(fp);
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // CRC32 (IEEE 802.3, reflected, init 0xFFFFFFFF, xorout 0xFFFFFFFF).
@@ -185,11 +268,12 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     char cacheDir[512];
-    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s.%d/",
+    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s:%d/",
              cleanStorage.c_str(), serverIp.c_str(), serverPort);
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath = cacheDir;
+        m_storagePath = cleanStorage;
     }
     MakeDirectoryTree(cacheDir);
 
@@ -409,9 +493,14 @@ bool DLManager::RegisterCustomModels() {
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
+    // Multiple models often reuse a texture or mesh by checksum. Store each
+    // archive name once, while still registering every virtual model below.
+    std::unordered_set<std::string> archiveNames;
     for (const auto& mf : toRegister) {
-        entries.push_back({mf.dffPath, mf.dffArcName});
-        entries.push_back({mf.txdPath, mf.txdArcName});
+        if (archiveNames.insert(mf.dffArcName).second)
+            entries.push_back({mf.dffPath, mf.dffArcName});
+        if (archiveNames.insert(mf.txdArcName).second)
+            entries.push_back({mf.txdPath, mf.txdArcName});
     }
 
     std::string packError;
@@ -438,47 +527,140 @@ bool DLManager::RegisterCustomModels() {
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, "custom_dl.img") != 0) {
         PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
     }
 
+    // Read custom IMG directory.
+    std::vector<DLCustomImgEntry> imgEntries;
+
+    if (!ReadCustomImgDirectory(imgPath, imgEntries)) {
+        PushChat("Custom DL: failed to read IMG directory.");
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Map archive entry names to streaming resource IDs.
+    std::unordered_map<std::string, std::vector<int32>> imgModelIds;
+
+    for (const auto& entry : imgEntries)
+    {
+        auto it = imgModelIds.find(entry.name);
+
+        if (it == imgModelIds.end())
+            continue;
+
+        for (const int32 modelId : it->second)
+        {
+            if (modelId < 0 || modelId >= RESOURCE_ID_TOTAL)
+                continue;
+
+            CStreamingInfo& info = CStreaming::GetInfo(modelId);
+
+            info.m_nImgId = static_cast<uint8>(imgIndex);
+
+            info.SetCdPosnAndSize(
+                entry.sectorOffset,
+                entry.sectorCount
+            );
+
+            info.m_nNextIndexOnCd = -1;
+        }
+    }
+
     // Register each model slot.
     int registered = 0;
     int skippedFull = 0;
+    int skippedOccupied = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+
         for (const auto& mf : toRegister) {
+
+            // Validate virtual model ID before touching CModelInfo.
+            if (mf.virtualId < DL_VIRT_MIN ||
+                mf.virtualId > DL_VIRT_MAX) {
+                ++skippedOccupied;
+                continue;
+            }
+
+            // Never overwrite an existing GTA SA model entry.
+            if (CModelInfo::GetModelInfo(mf.virtualId) != nullptr) {
+                char msg[160];
+                snprintf(msg, sizeof(msg),
+                        "DL model %d skipped: model slot %d is already occupied.",
+                        mf.virtualId, mf.virtualId);
+                PushChat(msg);
+
+                ++skippedOccupied;
+                continue;
+            }
+
             CBaseModelInfo* pInfo = nullptr;
-            if (mf.type == 1) { // Skin -> ped model
+
+            if (mf.type == 1) {
+                // Skin -> ped model
                 pInfo = CModelInfo::AddPedModel(mf.virtualId);
-            } else { // Object -> atomic model
+            }
+            else {
+                // Object -> atomic model
                 pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
             }
+
             if (!pInfo) {
-                // Store is full (shouldn't happen with enlarged capacities,
-                // but never crash: skip this model, it will use fallback).
                 ++skippedFull;
                 continue;
             }
 
-            // DFF name (without extension) for streaming lookup.
-            // Matches the arc name "0x<CRC>.dff" so the IMG directory hash aligns.
-            char dffBase[32], txdBase[32];
-            snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
-            snprintf(txdBase, sizeof(txdBase), "0x%08X", mf.txdCrc);
+            char dffBase[32];
+            char txdBase[32];
+
+            snprintf(dffBase, sizeof(dffBase),
+                    "0x%08X", mf.dffCrc);
+
+            snprintf(txdBase, sizeof(txdBase),
+                    "0x%08X", mf.txdCrc);
+
             pInfo->SetModelName(dffBase);
-            pInfo->SetTexDictionary(txdBase, "custom_dl");
+
+            const int32 txdIndex =
+                CTxdStore::FindOrAddTxdSlot(txdBase, "custom_dl");
+
+            if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
+            {
+                FLog("DLManager: invalid TXD slot");
+                continue;
+            }
+
+            pInfo->m_nTxdIndex = static_cast<int16>(txdIndex);
+
+            const int32 dffStreamId =
+                DFFToModelId(mf.virtualId);
+
+            const int32 txdStreamId =
+                TXDToModelId(txdIndex);
+
+            imgModelIds[mf.dffArcName].push_back(dffStreamId);
+            imgModelIds[mf.txdArcName].push_back(txdStreamId);
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
         }
+
         m_bModelsRegistered = true;
     }
 
-    char msg[128];
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+            "Custom models: %d registered, %d occupied slots, %d store full.",
+            registered, skippedOccupied, skippedFull);
+    PushChat(msg);
+
     snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
     PushChat(msg);
     if (skippedFull > 0) {
@@ -600,53 +782,166 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
 
     unsigned char* data = reinterpret_cast<unsigned char*>(rpcParams->input);
     int bitLength = rpcParams->numberOfBitsOfData;
-    if (bitLength < static_cast<int>(DL_RPC183_MIN_BYTES * 8)) return;
+    if (bitLength < 7 * 8) return;
+
     int byteLength = bitLength / 8;
-
     RakNet::BitStream bs(data, byteLength, false);
-    uint8_t  arg = 0;        // 6 = HTTP transport
-    uint8_t  fileType = 0;   // 1 = DFF, 2 = TXD
+
+    uint8_t arg = 0;
+    uint8_t fileType = 0;
     uint32_t fileChecksum = 0;
-    uint8_t  urlLen = 0;
 
-    bs.Read(arg);
-    bs.Read(fileType);
-    bs.Read(fileChecksum);
-    bs.Read(urlLen);
+    if (!bs.Read(arg)) return;
+    if (!bs.Read(fileType)) return;
+    if (!bs.Read(fileChecksum)) return;
 
-    // Only the HTTP-URL prefix is handled here; in-band RakNet chunking (arg=1)
-    // is a different transport and is out of scope.
-    if (arg != 6) return;
-    if (fileChecksum == 0) return;
+    if (fileChecksum == 0 || (fileType != 1 && fileType != 2))
+        return;
 
     const bool isDff = (fileType == 1);
 
-    std::string url;
-    if (urlLen > 0) {
-        // Bound the read by what actually arrived (audit A4): 4 (arg/type/crc) +
-        // 1 (urlLen) bytes of prefix precede the URL body.
-        const size_t available = (byteLength > 5) ? static_cast<size_t>(byteLength - 5) : 0u;
-        size_t toRead = std::min<size_t>({ urlLen, available, DL_MAX_URL_BYTES });
-        if (toRead > 0) {
-            char urlBuffer[512] = {0};
-            bs.Read(urlBuffer, toRead);
-            urlBuffer[toRead] = '\0';
-            url = urlBuffer;
+    // arg = 1: file dikirim langsung melalui RakNet.
+    if (arg == 1) {
+        uint32_t fileLength = 0;
+
+        if (byteLength < 10 || !bs.Read(fileLength))
+            return;
+
+        // Batasi ukuran file agar paket tidak menyebabkan alokasi berlebihan.
+        static const uint32_t MAX_MODEL_SIZE = 64u * 1024u * 1024u;
+
+        if (fileLength == 0 || fileLength > MAX_MODEL_SIZE)
+            return;
+
+        const size_t payloadOffset = 10;
+        const size_t available = static_cast<size_t>(byteLength) - payloadOffset;
+
+        if (fileLength > available)
+            return;
+
+        const uint8_t* payload = data + payloadOffset;
+
+        // Pastikan CRC sesuai dengan checksum dari server.
+        if (CalculateCRC32(payload, fileLength) != fileChecksum)
+            return;
+
+        uint32_t expectedSize = 0;
+        bool foundTask = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (const auto& t : m_tasks) {
+                if (t.crc == fileChecksum && t.isDff == isDff) {
+                    expectedSize = t.size;
+                    foundTask = true;
+                    break;
+                }
+            }
         }
-    }
 
-    if (url.empty()) return;
+        if (!foundTask)
+            return;
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        for (auto& t : m_tasks) {
-            if (t.crc == fileChecksum && t.isDff == isDff) {
-                t.url = url;
+        if (expectedSize > 0 && fileLength != expectedSize)
+            return;
+
+        const std::string finalPath = GetModelPath(fileChecksum, isDff);
+
+        char tempPath[600];
+        snprintf(tempPath, sizeof(tempPath),
+                 "%s%08X.%d.inband.tmp",
+                 GetCachePath().c_str(),
+                 fileChecksum,
+                 static_cast<int>(getpid()));
+
+        FILE* fp = fopen(tempPath, "wb");
+        if (!fp)
+            return;
+
+        bool writeOk = fwrite(payload, 1, fileLength, fp) == fileLength;
+
+        if (writeOk) {
+            fflush(fp);
+            int fd = fileno(fp);
+            if (fd >= 0)
+                fsync(fd);
+        }
+
+        fclose(fp);
+
+        if (!writeOk) {
+            unlink(tempPath);
+            return;
+        }
+
+        if (rename(tempPath, finalPath.c_str()) != 0) {
+            unlink(tempPath);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (auto& t : m_tasks) {
+                if (t.crc != fileChecksum || t.isDff != isDff)
+                    continue;
+
+                t.done = true;
+                t.failed = false;
+                t.started = false;
+                t.url.clear();
+                t.lastError.clear();
                 break;
             }
         }
+
+        m_totalBytesRx += fileLength;
+
+        RecomputeProgress();
+        m_workCv.notify_all();
+
+        return;
     }
-    m_workCv.notify_all();
+
+    // arg = 6: file dikirim melalui HTTP.
+    if (arg == 6) {
+        uint8_t urlLen = 0;
+        if (!bs.Read(urlLen))
+            return;
+
+        if (urlLen == 0 || urlLen > DL_MAX_URL_BYTES)
+            return;
+
+        const size_t available =
+            (byteLength > 7) ? static_cast<size_t>(byteLength - 7) : 0u;
+
+        if (urlLen > available)
+            return;
+
+        char urlBuffer[512] = {0};
+
+        if (!bs.Read(urlBuffer, urlLen))
+            return;
+
+        urlBuffer[urlLen] = '\0';
+
+        std::string url(urlBuffer);
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            for (auto& t : m_tasks) {
+                if (t.crc == fileChecksum && t.isDff == isDff) {
+                    if (!t.done && !t.failed)
+                        t.url = url;
+                    break;
+                }
+            }
+        }
+
+        m_workCv.notify_all();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -732,30 +1027,51 @@ void DLManager::WorkerLoop() {
                 RequestFileFromServer(pickedCrc, pickedIsDff);
             }
 
-            // 3. Wait (bounded) for RPC 183 to deliver the URL.
+            // 3. Wait for RPC 183: URL transport or direct RakNet file transfer.
             std::string url;
             uint32_t expectedSize = 0;
             bool isDff = pickedIsDff;
-            for (uint32_t waited = 0; waited < DL_URL_WAIT_MS && !m_bShutdown.load(); waited += 25) {
+            bool receivedInBand = false;
+
+            for (uint32_t waited = 0;
+                waited < DL_URL_WAIT_MS && !m_bShutdown.load();
+                waited += 25) {
+
                 bool gotUrl = false;
+
                 {
                     std::lock_guard<std::mutex> lock(m_mutex);
+
                     for (auto& t : m_tasks) {
-                        if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                        if (t.crc != pickedCrc || t.isDff != pickedIsDff)
+                            continue;
+
+                        // RPC 183 arg=1 may have completed this task directly.
+                        if (t.done) {
+                            receivedInBand = true;
+                            break;
+                        }
+
                         if (!t.url.empty()) {
                             url = t.url;
                             expectedSize = t.size;
                             isDff = t.isDff;
                             gotUrl = true;
                         }
+
                         break;
                     }
                 }
-                if (gotUrl) break;
+
+                if (receivedInBand || gotUrl)
+                    break;
+
                 std::this_thread::sleep_for(std::chrono::milliseconds(25));
             }
 
-            if (url.empty()) {
+            if (receivedInBand) {
+                fetchOk = true;
+            } else if (url.empty()) {
                 fetchError = "no url (RPC 183 timeout)";
             } else {
                 // 4. Fetch over HTTP(S). The guard keeps m_activeWorkers paired
@@ -786,7 +1102,9 @@ void DLManager::WorkerLoop() {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
                 if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
-                if (fetchOk) {
+                if (t.done) {
+                    // Already completed by direct RakNet transfer (arg=1).
+                } else if (fetchOk) {
                     t.done = true;
                     t.url.clear();
                 } else if (++t.attempts >= DL_MAX_ATTEMPTS) {
@@ -824,7 +1142,7 @@ jmethodID g_dlHttpClientMid = nullptr; // downloadFile(Ljava/lang/String;Ljava/l
 
 void DLManager_InitJniCache(JNIEnv* env) {
     if (!env || g_dlHttpClientCls) return;  // already cached
-    jclass local = env->FindClass("com/sampmobile/xyvern/game/DLHttpClient");
+    jclass local = env->FindClass("com/hopepride/samp/game/DLHttpClient");
     if (!local) {
         if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
         return;
@@ -842,7 +1160,7 @@ void DLManager_InitJniCache(JNIEnv* env) {
 
 // ---------------------------------------------------------------------------
 // JNI HTTPS download: delegates https:// URLs to Android's HttpURLConnection
-// via com.sampmobile.xyvern.game.DLHttpClient. The JVM's TLS stack (system
+// via com.hopepride.samp.game.DLHttpClient. The JVM's TLS stack (system
 // trust store, full cert validation) is used — cert validation is NEVER
 // disabled. Worker threads attach/detach around the call.
 //
@@ -1321,12 +1639,51 @@ void DLManager::GetProgressStats(size_t& queued, size_t& active, size_t& done, s
     }
 }
 
-void DLManager::RecomputeProgress() {
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
-    if (m_totalModels.load() > 0) {
-        m_downloadedModels = static_cast<int>(done);
+void DLManager::GetModelProgressStats(
+    size_t& ready,
+    size_t& failed,
+    size_t& pending
+) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    ready = failed = pending = 0;
+
+    auto assetReady = [&](uint32_t crc, bool isDff, bool cached) {
+        if (cached) return 1;
+
+        for (const auto& task : m_tasks) {
+            if (task.crc != crc || task.isDff != isDff)
+                continue;
+
+            if (task.done) return 1;
+            if (task.failed) return -1;
+            return 0;
+        }
+
+        return 0;
+    };
+
+    for (const auto& model : m_models) {
+        int dff = assetReady(
+            model.dffChecksum, true, model.dffCached
+        );
+
+        int txd = assetReady(
+            model.txdChecksum, false, model.txdCached
+        );
+
+        if (dff < 0 || txd < 0)
+            ++failed;
+        else if (dff > 0 && txd > 0)
+            ++ready;
+        else
+            ++pending;
     }
+}
+
+void DLManager::RecomputeProgress() {
+    size_t ready = 0, failed = 0, pending = 0;
+    GetModelProgressStats(ready, failed, pending);
+    m_downloadedModels = static_cast<int>(ready);
 }
 
 void DLManager::RequestRetryFailed() {
@@ -1384,86 +1741,220 @@ void DLManager::ToggleOverlay() {
 // Hardening: sizes measured via calculateTextSize (not a 0.58 guess), laid out
 // bottom-left against the real screen size, and failures are actionable.
 // ---------------------------------------------------------------------------
+
 void DLManager::RenderImGui() {
-    if (!m_bInitialized.load()) return;
-    if (!pUI) return;
+    if (!m_bInitialized.load() || !pUI)
+        return;
 
-    ImGuiRenderer* r = pUI->renderer();
-    if (!r) return;
+    ImGuiRenderer* renderer = pUI->renderer();
+    if (!renderer)
+        return;
 
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
+    // Snapshot task agar aman saat worker download mengubah m_tasks.
+    std::vector<DLFileTask> tasks;
+    std::vector<DLModelInfo> models;
 
-    const int      total    = m_totalModels.load();
-    const bool     finished = m_bDownloadFinished.load();
-    const uint32_t now      = GetCurrentTick();
-
-    const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
-    const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
-    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && done < (size_t)total));
-
-    // Visible while there is real work, while the manifest is still expected,
-    // or for a beat after finishing. The /dl command pins it open.
-    if (!m_bForceShowOverlay && !busy && !waiting && !(finished && showDone)) return;
-
-    // ---- Compose the one line the player needs.
-    char label[96];
-    bool showBar = false;
-    float fraction = 0.0f;
-
-    // Progress counts settled work: downloaded + skipped. The bar must always
-    // be able to reach 100% — failures are skipped, never stuck.
-    const size_t settled = done + failed;
-
-    if (failed > 0 && !busy && !finished) {
-        snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
-    } else if (finished) {
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
-        } else {
-            snprintf(label, sizeof(label), "Models ready");
-        }
-        fraction = 1.0f;
-        showBar = total > 0;
-    } else if (total > 0) {
-        fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
-                     settled, total, failed);
-        } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
-        }
-        showBar = true;
-    } else {
-        snprintf(label, sizeof(label), "Downloading models");
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        tasks.assign(m_tasks.begin(), m_tasks.end());
+        models = m_models;
     }
 
-    // ---- Layout: bottom-left, measured, scaled by screen size.
-    const ImVec2 screen = ImGui::GetIO().DisplaySize;
-    const float  fs     = std::max(UISettings::fontSize() * 0.85f, 11.0f);
-    const float  margin = std::max(screen.y * 0.03f, 16.0f);
-    const float  barH   = std::max(fs * 0.14f, 3.0f);
-    const float  gap    = fs * 0.35f;
+    size_t queued = 0;
+    size_t active = 0;
+    size_t done = 0;
+    size_t failed = 0;
 
-    const ImVec2 labelSize = r->calculateTextSize(label, fs);
-    const float  barW      = std::min(std::max(screen.x * 0.28f, labelSize.x), fs * 22.0f);
-    const float  totalH    = labelSize.y + (showBar ? gap + barH : 0.0f);
+    for (const auto& task : tasks) {
+        if (task.done) ++done;
+        else if (task.failed) ++failed;
+        else if (task.started) ++active;
+        else ++queued;
+    }
 
-    const float x = margin;
-    const float y = screen.y - margin - totalH;
+    size_t cached = 0;
+    uint64_t expectedBytes = 0;
 
-    // Stock HUD colours: white pair with the black outline, flat grey bar.
-    const ImColor kText (245, 245, 245, 255);
-    const ImColor kTrack(0, 0, 0, 110);
-    const ImColor kFill (235, 235, 235, 235);
+    for (const auto& model : models) {
+        if (model.dffChecksum != 0) {
+            expectedBytes += model.dffSize;
+            if (model.dffCached) ++cached;
+        }
 
-    r->drawText(ImVec2(x, y), kText, label, true, fs);
-
-    if (showBar) {
-        const float by0 = y + labelSize.y + gap;
-        r->drawRect(ImVec2(x, by0), ImVec2(x + barW, by0 + barH), kTrack, true);
-        if (fraction > 0.0f) {
-            r->drawRect(ImVec2(x, by0), ImVec2(x + barW * fraction, by0 + barH), kFill, true);
+        if (model.txdChecksum != 0) {
+            expectedBytes += model.txdSize;
+            if (model.txdCached) ++cached;
         }
     }
+
+    const size_t totalFiles = tasks.size() + cached;
+    const size_t processed = done + failed + cached;
+
+    const uint64_t receivedBytes = m_totalBytesRx.load();
+    const float speed = m_speedKBps.load();
+
+    const float progress = totalFiles > 0
+        ? std::clamp(
+            static_cast<float>(processed) /
+            static_cast<float>(totalFiles),
+            0.0f, 1.0f)
+        : 0.0f;
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    // Posisi dan ukuran awal panel.
+    static bool firstPosition = true;
+
+    if (firstPosition) {
+        ImGui::SetNextWindowPos(
+            ImVec2(io.DisplaySize.x - 510.0f, 20.0f),
+            ImGuiCond_Always
+        );
+
+        ImGui::SetNextWindowSize(
+            ImVec2(490.0f, 420.0f),
+            ImGuiCond_Always
+        );
+
+        firstPosition = false;
+    }
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoResize;
+
+    // Jangan gunakan NoMove agar panel bisa di-drag.
+    if (ImGui::Begin("Model downloads", nullptr, flags)) {
+
+        char progressText[96];
+
+        snprintf(
+            progressText,
+            sizeof(progressText),
+            "%zu / %zu processed",
+            processed,
+            totalFiles
+        );
+
+        ImGui::TextDisabled("%s", progressText);
+
+        ImGui::Spacing();
+
+        ImGui::ProgressBar(
+            progress,
+            ImVec2(-1.0f, 8.0f),
+            ""
+        );
+
+        ImGui::Spacing();
+
+        ImGui::Text(
+            "%zu downloaded    %zu cached    %zu failed",
+            done,
+            cached,
+            failed
+        );
+
+        ImGui::Separator();
+
+        const double receivedMiB =
+            static_cast<double>(receivedBytes) / (1024.0 * 1024.0);
+
+        const double expectedMiB =
+            static_cast<double>(expectedBytes) / (1024.0 * 1024.0);
+
+        ImGui::Text(
+            "%.1f MiB received - %.1f KiB/s",
+            receivedMiB,
+            speed
+        );
+
+        ImGui::Text(
+            "%zu / %zu known files - %.1f MiB expected",
+            processed,
+            totalFiles,
+            expectedMiB
+        );
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("Files");
+
+        ImGui::BeginChild(
+            "DownloadFileList",
+            ImVec2(0.0f, 220.0f),
+            true
+        );
+
+        if (tasks.empty()) {
+            ImGui::TextDisabled("No pending files.");
+        }
+
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            const auto& task = tasks[i];
+
+            const char* status = "Queued";
+
+            if (task.done)
+                status = "Downloaded";
+            else if (task.failed)
+                status = "Failed";
+            else if (task.started)
+                status = task.haveUrl()
+                    ? "Downloading"
+                    : "Waiting for URL";
+
+            const char* type = task.isDff ? "DFF" : "TXD";
+
+            const double currentSize = task.done
+                ? static_cast<double>(task.size)
+                : 0.0;
+
+            const double totalSize =
+                static_cast<double>(task.size);
+
+            ImGui::PushID(static_cast<int>(i));
+
+            ImGui::Text(
+                "%zu. %s %s",
+                i + 1,
+                type,
+                task.hexName.c_str()
+            );
+
+            ImGui::SameLine();
+
+            ImGui::TextDisabled(
+                "%s - %.1f / %.1f KiB",
+                status,
+                currentSize / 1024.0,
+                totalSize / 1024.0
+            );
+
+            if (task.failed && !task.lastError.empty()) {
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+                    "%s",
+                    task.lastError.c_str()
+                );
+            }
+
+            ImGui::Separator();
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndChild();
+
+        ImGui::Spacing();
+
+        ImGui::TextDisabled(
+            "Active: %zu | Queued: %zu",
+            active,
+            queued
+        );
+    }
+
+    ImGui::End();
 }

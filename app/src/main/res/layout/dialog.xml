@@ -216,7 +216,7 @@
 						app:layout_constraintStart_toStartOf="parent"
 						app:layout_constraintTop_toBottomOf="@+id/dialog_tablist_row">
 
-						<com.sampmobile.xyvern.launcher.util.CustomRecyclerView
+						<com.hopepride.samp.launcher.util.CustomRecyclerView
 							android:id="@+id/dialog_list_recycler"
 							android:layout_width="0dp"
 							android:layout_height="0dp"

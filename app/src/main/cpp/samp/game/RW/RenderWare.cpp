@@ -8,6 +8,27 @@ RsGlobalType* RsGlobal;
 RwCamera* (*RwCameraBeginUpdate)(RwCamera* camera);
 RwCamera* (*RwCameraShowRaster)(RwCamera * camera, void *pDev, RwUInt32 flags);
 
+RwStream* (*pRwStreamOpen)(
+    RwStreamType,
+    RwStreamAccessType,
+    const void*
+) = nullptr;
+
+RwBool (*RwStreamFindChunk)(
+    RwStream*,
+    RwUInt32,
+    RwUInt32*,
+    RwUInt32*
+) = nullptr;
+
+RwBool (*pRwStreamClose)(RwStream*, void*) = nullptr;
+
+RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
+    RwStream*
+) = nullptr;
+
+RpClump* (*RpClumpStreamRead)(RwStream*) = nullptr;
+
 RwRaster* 	(*RwRasterCreate)(RwInt32 width, RwInt32 height, RwInt32 depth, RwInt32 flags);
 RwBool 		(*RwRasterDestroy)(RwRaster * raster);
 RwRaster* 	(*RwRasterGetOffset)(RwRaster *raster, RwInt16 *xOffset, RwInt16 *yOffset);
@@ -70,6 +91,31 @@ void InitRenderWareFunctions()
 	*(void**)(&RwCameraBeginUpdate) 			= (void*)(CHook::getSym("_Z19RwCameraBeginUpdateP8RwCamera"));
 	*(void**)(&RwCameraShowRaster)				= (void*)(CHook::getSym("_Z18RwCameraShowRasterP8RwCameraPvj"));
 
+	*(void**)(&pRwStreamOpen) =
+		(void*)CHook::getSym(
+			"_Z12RwStreamOpen12RwStreamType18RwStreamAccessTypePKv"
+		);
+
+	*(void**)(&RwStreamFindChunk) =
+		(void*)CHook::getSym(
+			"_Z17RwStreamFindChunkP8RwStreamjPjS1_"
+		);
+
+	*(void**)(&pRwStreamClose) =
+		(void*)CHook::getSym(
+			"_Z13RwStreamCloseP8RwStreamPv"
+		);
+
+	*(void**)(&RwTexDictionaryGtaStreamRead) =
+		(void*)CHook::getSym(
+			"_Z28RwTexDictionaryGtaStreamReadP8RwStream"
+		);
+
+	*(void**)(&RpClumpStreamRead) =
+		(void*)CHook::getSym(
+			"_Z17RpClumpStreamReadP8RwStream"
+		);
+
 	*(void **)(&RwRasterCreate) 				= (void*)(CHook::getSym("_Z14RwRasterCreateiiii"));
 	*(void **)(&RwRasterDestroy) 				= (void*)(CHook::getSym("_Z15RwRasterDestroyP8RwRaster"));
 	*(void **)(&RwRasterGetOffset) 				= (void*)(CHook::getSym("_Z17RwRasterGetOffsetP8RwRasterPsS1_"));
@@ -120,4 +166,17 @@ void InitRenderWareFunctions()
 	*(void **)(&RtPNGImageRead)					= (void*)(CHook::getSym("_Z14RtPNGImageReadPKc"));
 
 	*(void**)(&RwTextureDestroy) 				= (void*)(CHook::getSym("_Z16RwTextureDestroyP9RwTexture"));
+
+	if (!pRwStreamOpen ||
+		!RwStreamFindChunk ||
+		!pRwStreamClose ||
+		!RwTexDictionaryGtaStreamRead ||
+		!RpClumpStreamRead)
+	{
+		FLog("RenderWare stream functions unavailable!");
+	}
+	else
+	{
+		FLog("RenderWare stream functions resolved!");
+	}
 }

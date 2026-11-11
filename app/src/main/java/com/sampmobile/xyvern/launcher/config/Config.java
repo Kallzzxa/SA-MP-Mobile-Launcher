@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.config;
+package com.hopepride.samp.launcher.config;
 
 import android.app.Activity;
 

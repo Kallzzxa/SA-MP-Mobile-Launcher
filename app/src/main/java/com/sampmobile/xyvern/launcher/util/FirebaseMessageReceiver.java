@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -14,13 +14,13 @@ import android.widget.RemoteViews;
 import androidx.core.app.NotificationCompat;
 
 import com.bumptech.glide.Glide;
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.concurrent.ExecutionException;
 
-import com.sampmobile.xyvern.launcher.MainActivity;
+import com.hopepride.samp.launcher.MainActivity;
 
 public class FirebaseMessageReceiver extends FirebaseMessagingService {
     @Override

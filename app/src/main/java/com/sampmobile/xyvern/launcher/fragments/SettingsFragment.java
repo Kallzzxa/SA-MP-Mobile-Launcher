@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.fragments;
+package com.hopepride.samp.launcher.fragments;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -22,9 +22,11 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.fragment.app.Fragment;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.MainActivity;
-import com.sampmobile.xyvern.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.MainActivity;
+import com.hopepride.samp.launcher.util.SharedPreferenceCore;
+import com.hopepride.samp.launcher.util.LauncherVersion;
+import com.hopepride.samp.launcher.util.LauncherEvents;
 
 import org.ini4j.Wini;
 
@@ -61,6 +63,9 @@ public class SettingsFragment extends Fragment {
             ((MainActivity) getActivity()).hideKeyboard(getActivity());
         }
 
+        view.findViewById(R.id.share_diagnostic_logs).setOnClickListener(v ->
+                com.hopepride.samp.diagnostics.DiagnosticShare.confirm(requireActivity()));
+
         // Ánh xạ các thành phần giao diện
         mNickName = view.findViewById(R.id.settings_nickname);
         autoCompleteTextView = view.findViewById(R.id.spinner);
@@ -70,9 +75,23 @@ public class SettingsFragment extends Fragment {
         mModifySwitch = view.findViewById(R.id.modify_switch);
         mAMLSwitch = view.findViewById(R.id.aml_switch);
         mAMLSwitch.setChecked(requireContext()
-            .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+            .getSharedPreferences("com.hopepride.samp", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
         mCefSwitch = view.findViewById(R.id.cef_switch);
+        SwitchCompat eventReporting = view.findViewById(R.id.event_reporting_switch);
+        boolean relayConfigured = LauncherEvents.isConfigured();
+        eventReporting.setEnabled(relayConfigured);
+        eventReporting.setChecked(relayConfigured && LauncherEvents.preferences(requireContext())
+                .getBoolean(LauncherEvents.ENABLED, LauncherEvents.DEFAULT_ENABLED));
+        TextView eventDescription = view.findViewById(R.id.event_reporting_description);
+        if (!relayConfigured) {
+            eventDescription.setText("Tidak tersedia: webhook Discord atau relay belum dikonfigurasi saat build.");
+        } else if (LauncherEvents.isDirectDiscord()) {
+            eventDescription.setText("Aktif secara default jika webhook dikonfigurasi; dapat dimatikan di sini. Alamat dan port server dikirim saat mencoba masuk. Discord dapat melihat IP internet; nickname dan password tidak dikirim.");
+        }
+        eventReporting.setOnCheckedChangeListener((button, enabled) ->
+                LauncherEvents.preferences(requireContext()).edit().putBoolean(LauncherEvents.ENABLED, enabled).apply());
+
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -83,17 +102,18 @@ public class SettingsFragment extends Fragment {
         adapter.setDropDownViewResource(R.layout.spinner_item);
         autoCompleteTextView.setAdapter(adapter);
 
-        // Migrasi sekali: petakan nilai VERSION lama (0-4) ke skema baru (0-1).
-        // 4 (dulu R5) -> 1, nilai > 1 lainnya -> 0. Disimpan permanen.
+        // Keep all currently supported selections. Only normalize legacy/out-of-range values.
         SharedPreferenceCore versionPrefs = new SharedPreferenceCore();
         int rawVersion = versionPrefs.getInt(requireContext().getApplicationContext(), "VERSION", 0);
-        if (rawVersion > 1) {
-            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", rawVersion == 4 ? 1 : 0);
+        int versionIndex = LauncherVersion.normalizeIndex(rawVersion, titles.length);
+        if (versionIndex != rawVersion) {
+            versionPrefs.setInt(requireContext().getApplicationContext(), "VERSION", versionIndex);
         }
+        autoCompleteTextView.setSelection(versionIndex);
 
         File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
         try {
-            com.sampmobile.xyvern.launcher.util.ConfigValidator.validateConfigFiles(getActivity());
+            com.hopepride.samp.launcher.util.ConfigValidator.validateConfigFiles(getActivity());
             mWini = new Wini(file);
 
             String nn = mWini.get("client", "name");
@@ -134,7 +154,7 @@ public class SettingsFragment extends Fragment {
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 String text = charSequence.toString();
                 if (getActivity() != null) {
-                    android.content.SharedPreferences sp = getActivity().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE);
+                    android.content.SharedPreferences sp = getActivity().getSharedPreferences("com.hopepride.samp", android.content.Context.MODE_PRIVATE);
                     sp.edit().putString("nickname", text).apply();
                 }
             }
@@ -151,7 +171,7 @@ public class SettingsFragment extends Fragment {
         });
 
         mAMLSwitch.setOnCheckedChangeListener((buttonView, enabled) -> {
-            requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+            requireContext().getSharedPreferences("com.hopepride.samp", android.content.Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean("aml_enabled", enabled)
                 .apply();
@@ -278,11 +298,11 @@ public class SettingsFragment extends Fragment {
         mVoiceSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "VOICE_CHAT"));
         mFPSSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "FPS_DISPLAY"));
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
-        mAMLSwitch.setChecked(requireContext().getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
+        mAMLSwitch.setChecked(requireContext().getSharedPreferences("com.hopepride.samp", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
         // CEF default ON; only OFF when the user explicitly disabled it before.
         android.content.SharedPreferences cefPrefs = requireContext().getApplicationContext()
-                .getSharedPreferences(com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
+                .getSharedPreferences(com.hopepride.samp.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
         boolean cefOn = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
         mCefSwitch.setChecked(cefOn);
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));

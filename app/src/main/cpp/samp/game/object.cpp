@@ -14,7 +14,7 @@ extern MaterialTextGenerator* pMaterialTextGenerator;
 
 CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance, uint8_t bAttached)
 {
-    if(!CModelInfo::GetModelInfo(iModel))
+    if (iModel < 0 || iModel >= CModelInfo::NUM_MODEL_INFOS || !CModelInfo::GetModelInfo(iModel))
         iModel = 18631; // ????????
 
 	m_AttachedVehicleID = INVALID_VEHICLE_ID;
@@ -31,6 +31,32 @@ CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance
 	m_vecAttachedRot.y = 0.0f;
 	m_vecAttachedRot.z = 0.0f;
 	m_bSyncRotation = true;
+
+	m_iModel = iModel;
+	m_byteMoving = 0;
+	m_fMoveSpeed = 0.0f;
+	m_bNeedRotate = false;
+	for (int i = 0; i < 16; i++)
+	{
+		m_MaterialTexture[i] = 0;
+		m_MaterialTextTexture[i] = 0;
+		m_dwMaterialColor[i] = 0;
+		m_iMaterialType[i] = 0;
+
+		/* material text */
+		m_szMaterialText[i] = nullptr;
+		m_iMaterialSize[i] = 0;
+		m_iMaterialFontSize[i] = 0;
+		m_dwMaterialFontColor[i] = 0;
+		m_dwMaterialBackColor[i] = 0;
+		m_iMaterialTextAlign[i] = 0;
+	}
+	m_bHasMaterial = false;
+	m_bHasMaterialText = false;
+
+	m_bAttachedToPed = bAttached;
+
+	m_bForceRender = false;
 
 	ScriptCommand(&create_object, iModel, vecPos.x, vecPos.y, vecPos.z, &m_dwGTAId);
     if(!m_dwGTAId) return;
@@ -54,39 +80,24 @@ CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance
     m_pEntity->SetMatrix((CMatrix&)m_Matrix);*/
     InstantRotate(vecRot.x, vecRot.y ,vecRot.z);
 
-	for (int i = 0; i < 16; i++)
-	{
-		m_MaterialTexture[i] = 0;
-		m_MaterialTextTexture[i] = 0;
-		m_dwMaterialColor[i] = 0;
-		m_iMaterialType[i] = 0;
 
-		/* material text */
-		m_szMaterialText[i] = nullptr;
-		m_iMaterialSize[i] = 0;
-		m_iMaterialFontSize[i] = 0;
-		m_dwMaterialFontColor[i] = 0;
-		m_dwMaterialBackColor[i] = 0;
-		m_iMaterialTextAlign[i] = 0;
-	}
-	m_bHasMaterial = false;
-	m_bHasMaterialText = false;
-
-	m_bAttachedToPed = bAttached;
-
-	m_bForceRender = false;
 }
 
 CObject::~CObject()
 {
-    if(m_pEntity)
+    if (m_pEntity && GamePool_Object_GetAt(m_dwGTAId) == m_pEntity) {
+        // DestroyObject may invalidate the entity; use the saved model ID instead.
+        const int modelId = m_pEntity->m_nModelIndex;
         ScriptCommand(&destroy_object, m_dwGTAId);
-    CStreaming::RemoveModelIfNoRefs(m_pEntity->m_nModelIndex);
+        m_pEntity = nullptr;
+        if (modelId >= 0 && modelId < CModelInfo::NUM_MODEL_INFOS && CModelInfo::GetModelInfo(modelId))
+            CStreaming::RemoveModelIfNoRefs(modelId);
+    }
 
 	for (int i = 0; i < 16; i++)
 	{
 		if (m_szMaterialText[i] != nullptr) {
-			delete m_szMaterialText[i];
+			delete[] m_szMaterialText[i];
 			m_szMaterialText[i] = nullptr;
 		}
 	}
@@ -94,6 +105,7 @@ CObject::~CObject()
 
 void CObject::Process(float fElapsedTime)
 {
+	if (!m_pEntity || GamePool_Object_GetAt(m_dwGTAId) != m_pEntity) return;
 	if (m_AttachedVehicleID != INVALID_VEHICLE_ID)
 	{
 		if (pNetGame)
@@ -104,7 +116,7 @@ void CObject::Process(float fElapsedTime)
 				CVehicle* pVehicle = pVehiclePool->GetAt(m_AttachedVehicleID);
 				if (pVehicle)
 				{
-					if (pVehicle->m_pVehicle->IsAdded()) {
+					if (pVehicle->m_pVehicle && pVehicle->m_pVehicle->IsAdded()) {
 						this->AttachToVehicle(pVehicle);
 					}
 				}
@@ -132,11 +144,13 @@ void CObject::Process(float fElapsedTime)
 
 	if (m_byteMoving & 1)
 	{
+		if (!std::isfinite(fElapsedTime)) return;
 		CVector vecSpeed = { 0.0f, 0.0f, 0.0f };
 		RwMatrix matEnt;
         matEnt = m_pEntity->GetMatrix().ToRwMatrix();
 		float distance = fElapsedTime * m_fMoveSpeed;
 		float remaining = DistanceRemaining(&matEnt);
+		if (!std::isfinite(remaining) || !std::isfinite(m_fDistanceToTargetPoint)) return;
 		uint32_t dwThisTick = CTimer::m_snTimeInMillisecondsNonClipped;
 
 		float posX = matEnt.pos.x;
@@ -165,10 +179,10 @@ void CObject::Process(float fElapsedTime)
 			return;
 		}
 
-		if (fElapsedTime <= 0.0f)
-			return;
+		if (!std::isfinite(fElapsedTime) || fElapsedTime <= 0.0f || m_fMoveSpeed <= 0.0f ||
+			!std::isfinite(remaining) || m_fDistanceToTargetPoint <= 0.0f) return;
 
-		float delta = 1.0f / (remaining / distance);
+		float delta = distance / remaining;
 		matEnt.pos.x += ((m_matTarget.pos.x - matEnt.pos.x) * delta);
 		matEnt.pos.y += ((m_matTarget.pos.y - matEnt.pos.y) * delta);
 		matEnt.pos.z += ((m_matTarget.pos.z - matEnt.pos.z) * delta);
@@ -347,14 +361,14 @@ void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* t
 
 	int iTryCount = 0;
 
-	if (iMaterialIndex < 16)
+	if (iMaterialIndex >= 0 && iMaterialIndex < 16)
 	{
 		if (m_MaterialTexture[iMaterialIndex]) {
 			RwTextureDestroy(reinterpret_cast<RwTexture *>(m_MaterialTexture[iMaterialIndex]));
 			m_MaterialTexture[iMaterialIndex] = 0;
 		}
 
-		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTexture(texturename);
+		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTextureFromTxd(txdname, texturename);
 		m_dwMaterialColor[iMaterialIndex] = dwColor;
 		m_iMaterialType[iMaterialIndex] = MATERIAL_TYPE_MATERIAL;
 		m_bHasMaterial = true;
@@ -365,7 +379,7 @@ void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* t
 void CObject::SetMaterialText(int index, char* text, int materialSize, char* fontname, int fontSize, bool bold,
 	uint32_t dwFontColor, uint32_t dwBackColor, int textAlignment)
 {
-	if (index >= 16) return;
+	if (index < 0 || index >= 16 || !text) return;
 
 	if (m_MaterialTextTexture[index]) {
         RwTextureDestroy(reinterpret_cast<RwTexture *>(m_MaterialTextTexture[index]));
@@ -383,7 +397,8 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 	}
 
 	m_szMaterialText[index] = new char[2048];
-	strcpy(m_szMaterialText[index], text);
+	strncpy(m_szMaterialText[index], text, 2047);
+	m_szMaterialText[index][2047] = '\0';
 
 	m_iMaterialSize[index] = materialSize;
 	m_iMaterialFontSize[index] = fontSize;
@@ -395,13 +410,14 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 
 void CObject::ProcessMaterialText()
 {
+	if (!pMaterialTextGenerator) return;
 	for (int i = 0; i < 16; i++)
 	{
 		if (m_iMaterialType[i] == MATERIAL_TYPE_TEXT && m_MaterialTextTexture[i] == 0)
 		{
-			m_iMaterialFontSize[i]*=0.75f;
+			const int scaledFontSize = (int)(m_iMaterialFontSize[i] * 0.75f);
 			m_MaterialTextTexture[i] = reinterpret_cast<uintptr_t>(pMaterialTextGenerator->Generate(
-                    m_szMaterialText[i], m_iMaterialSize[i], m_iMaterialFontSize[i],
+                    m_szMaterialText[i], m_iMaterialSize[i], scaledFontSize,
                     false, m_dwMaterialFontColor[i], m_dwMaterialBackColor[i],
                     m_iMaterialTextAlign[i]));
 			m_bHasMaterialText = true;
@@ -412,6 +428,11 @@ void CObject::ProcessMaterialText()
 
 void CObject::MoveTo(float fX, float fY, float fZ, float fSpeed, float fRotX, float fRotY, float fRotZ)
 {
+	if (!m_pEntity || GamePool_Object_GetAt(m_dwGTAId) != m_pEntity ||
+		!std::isfinite(fX) || !std::isfinite(fY) || !std::isfinite(fZ) ||
+		!std::isfinite(fSpeed) || fSpeed <= 0.0f || !std::isfinite(fRotX) ||
+		!std::isfinite(fRotY) || !std::isfinite(fRotZ)) return;
+	if (fRotX > -999.0f && fRotY > -999.0f && fRotZ > -999.0f && !m_pEntity->m_matrix) return;
 	RwMatrix mat;
     mat = m_pEntity->GetMatrix().ToRwMatrix();
 
@@ -483,10 +504,11 @@ void CObject::MoveTo(float fX, float fY, float fZ, float fSpeed, float fRotX, fl
 
 void CObject::StopMoving()
 {
-	CVector vec = { 0.0f, 0.0f, 0.0f };
-	m_pEntity->SetVelocity(vec);
-	m_pEntity->SetTurnSpeed(vec);
-
+	if (m_pEntity && GamePool_Object_GetAt(m_dwGTAId) == m_pEntity) {
+		CVector vec = { 0.0f, 0.0f, 0.0f };
+		m_pEntity->SetVelocity(vec);
+		m_pEntity->SetTurnSpeed(vec);
+	}
 	m_byteMoving &= ~1;
 }
 
