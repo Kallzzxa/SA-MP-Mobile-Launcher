@@ -27,7 +27,89 @@
 #include <chrono>
 #include <mutex>
 
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <unordered_map>
+
 extern UI* pUI;
+
+struct DLCustomImgEntry {
+    uint32_t sectorOffset;
+    uint32_t sectorCount;
+    std::string name;
+};
+
+static uint32_t ReadImgU32(const uint8_t* p)
+{
+    return (uint32_t)p[0]
+        | ((uint32_t)p[1] << 8)
+        | ((uint32_t)p[2] << 16)
+        | ((uint32_t)p[3] << 24);
+}
+
+static bool ReadCustomImgDirectory(
+    const std::string& path,
+    std::vector<DLCustomImgEntry>& entries)
+{
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp)
+        return false;
+
+    uint8_t header[8]{};
+
+    if (fread(header, 1, sizeof(header), fp) != sizeof(header) ||
+        memcmp(header, "VER2", 4) != 0)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    const uint32_t count = ReadImgU32(header + 4);
+
+    if (count == 0 || count > DLImgPack::IMG_MAX_ENTRIES)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    entries.clear();
+    entries.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        uint8_t raw[32]{};
+
+        if (fread(raw, 1, sizeof(raw), fp) != sizeof(raw))
+        {
+            fclose(fp);
+            entries.clear();
+            return false;
+        }
+
+        DLCustomImgEntry entry{};
+        entry.sectorOffset = ReadImgU32(raw);
+        entry.sectorCount = ReadImgU32(raw + 4);
+
+        const char* name =
+            reinterpret_cast<const char*>(raw + 8);
+
+        const size_t len = strnlen(name, 24);
+
+        if (len == 0 || len >= 24 || entry.sectorCount == 0)
+        {
+            fclose(fp);
+            entries.clear();
+            return false;
+        }
+
+        entry.name.assign(name, len);
+        entries.push_back(std::move(entry));
+    }
+
+    fclose(fp);
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // CRC32 (IEEE 802.3, reflected, init 0xFFFFFFFF, xorout 0xFFFFFFFF).
@@ -451,6 +533,45 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
+    // Read custom IMG directory.
+    std::vector<DLCustomImgEntry> imgEntries;
+
+    if (!ReadCustomImgDirectory(imgPath, imgEntries)) {
+        PushChat("Custom DL: failed to read IMG directory.");
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    // Map archive entry names to streaming resource IDs.
+    std::unordered_map<std::string, std::vector<int32>> imgModelIds;
+
+    for (const auto& entry : imgEntries)
+    {
+        auto it = imgModelIds.find(entry.name);
+
+        if (it == imgModelIds.end())
+            continue;
+
+        for (const int32 modelId : it->second)
+        {
+            if (modelId < 0 || modelId >= RESOURCE_ID_TOTAL)
+                continue;
+
+            CStreamingInfo& info = CStreaming::GetInfo(modelId);
+
+            info.m_nImgId = static_cast<uint8>(imgIndex);
+
+            info.SetCdPosnAndSize(
+                entry.sectorOffset,
+                entry.sectorCount
+            );
+
+            info.m_nNextIndexOnCd = -1;
+        }
+    }
+
     // Register each model slot.
     int registered = 0;
     int skippedFull = 0;
@@ -505,7 +626,26 @@ bool DLManager::RegisterCustomModels() {
                     "0x%08X", mf.txdCrc);
 
             pInfo->SetModelName(dffBase);
-            pInfo->SetTexDictionary(txdBase, "custom_dl");
+
+            const int32 txdIndex =
+                CTxdStore::FindOrAddTxdSlot(txdBase, "custom_dl");
+
+            if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
+            {
+                Log("DLManager: invalid TXD slot");
+                continue;
+            }
+
+            pInfo->m_nTxdIndex = static_cast<int16>(txdIndex);
+
+            const int32 dffStreamId =
+                DFFToModelId(mf.virtualId);
+
+            const int32 txdStreamId =
+                TXDToModelId(txdIndex);
+
+            imgModelIds[mf.dffArcName].push_back(dffStreamId);
+            imgModelIds[mf.txdArcName].push_back(txdStreamId);
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
