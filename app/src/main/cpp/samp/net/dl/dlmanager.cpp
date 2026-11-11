@@ -4,6 +4,7 @@
 #include "../../gui/gui.h"
 #include "../../game/Streaming.h"
 #include "../../game/Models/ModelInfo.h"
+#include "../../game/TxdStore.h"
 #include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
@@ -632,7 +633,7 @@ bool DLManager::RegisterCustomModels() {
 
             if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
             {
-                Log("DLManager: invalid TXD slot");
+                FLog("DLManager: invalid TXD slot");
                 continue;
             }
 
