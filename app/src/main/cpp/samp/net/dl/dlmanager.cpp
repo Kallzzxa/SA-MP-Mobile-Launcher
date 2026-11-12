@@ -733,6 +733,13 @@ bool DLManager::RegisterCustomModels() {
                 continue;
             }
 
+            FLog(
+                "DL TXD DEBUG: name=%s db=custom_dl slot=%d streamId=%d",
+                txdBase,
+                txdIndex,
+                txdIndex >= 0 ? TXDToModelId(txdIndex) : -1
+            );
+
             pInfo->m_nTxdIndex = static_cast<int16>(txdIndex);
 
             const int32 dffStreamId =
@@ -1938,8 +1945,12 @@ void DLManager::ToggleOverlay() {
 // ---------------------------------------------------------------------------
 
 void DLManager::RenderImGui() {
-    if (!m_bInitialized.load() || !pUI)
+    if (!m_bInitialized.load() ||
+        !pUI ||
+        m_bDownloadFinished.load())
+    {
         return;
+    }
 
     ImGuiRenderer* renderer = pUI->renderer();
     if (!renderer)
