@@ -36,8 +36,10 @@ static const uint32_t DL_HTTP_STALL_MS     = 15000; // no bytes for this long =>
 static const uint32_t DL_CONNECT_TIMEOUT_MS= 8000;
 static const uint32_t DL_URL_WAIT_MS       = 10000; // wait for RPC 183 after request
 static const int      DL_MAX_ATTEMPTS      = 4;
-static const int16_t DL_VIRT_MIN           = 20001;
-static const int16_t DL_VIRT_MAX           = 30000;
+// Internal CModelInfo/DFF indices must stay inside [0, 19999].
+// Allocate only slots whose CModelInfo pointer is currently null.
+static const int16_t  DL_VIRT_MIN          = 1;
+static const int16_t  DL_VIRT_MAX          = 19999;
 
 struct DLModelInfo {
     uint32_t poolID;
@@ -156,7 +158,7 @@ private:
     std::vector<DLModelInfo> m_models;
     std::unordered_map<int32_t, int16_t> m_networkToVirtual;
     std::unordered_map<int16_t, int32_t> m_virtualToNetwork;
-    int16_t m_nextVirtualId{DL_VIRT_MIN};
+    int16_t m_nextVirtualId{DL_VIRT_MAX};
     bool    m_bVirtualIdExhausted{false};
 
     // Custom models successfully registered with the game engine

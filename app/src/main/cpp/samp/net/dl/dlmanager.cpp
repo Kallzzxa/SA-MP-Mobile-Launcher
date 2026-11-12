@@ -313,7 +313,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     m_serverIp = serverIp;
     m_serverPort = serverPort;
     m_pRakClient = pRakClient;
-    m_nextVirtualId = DL_VIRT_MIN;
+    m_nextVirtualId = DL_VIRT_MAX;
     m_bVirtualIdExhausted = false;
     m_connectTime = GetCurrentTick();
     m_lastModelRequestTick = m_connectTime;
@@ -476,24 +476,41 @@ bool DLManager::ValidateOrPurge(const std::string& path, uint32_t crc, uint32_t 
 // ---------------------------------------------------------------------------
 // Virtual model id remap (server ids -> safe internal CModelInfo slots)
 // ---------------------------------------------------------------------------
-int16_t DLManager::GetVirtualModelId(int32_t networkId) {
+int16_t DLManager::GetVirtualModelId(int32_t networkId)
+{
     std::lock_guard<std::mutex> lock(m_mutex);
-    auto it = m_networkToVirtual.find(networkId);
-    if (it != m_networkToVirtual.end()) return it->second;
 
-    // Do not wrap and alias a live slot (audit A8). On exhaustion, log once and
-    // hand back -1 so the caller keeps the base id.
-    if (m_nextVirtualId > DL_VIRT_MAX) {
-        if (!m_bVirtualIdExhausted) {
-            m_bVirtualIdExhausted = true;
-            PushChat("Virtual model slot pool exhausted; extra models use their base id.");
-        }
-        return -1;
+    auto existing = m_networkToVirtual.find(networkId);
+    if (existing != m_networkToVirtual.end())
+        return existing->second;
+
+    // Search backwards for an actually unused CModelInfo slot.
+    while (m_nextVirtualId >= DL_VIRT_MIN)
+    {
+        const int16_t candidate = m_nextVirtualId--;
+
+        if (CModelInfo::GetModelInfo(candidate) != nullptr)
+            continue;
+
+        m_networkToVirtual[networkId] = candidate;
+        m_virtualToNetwork[candidate] = networkId;
+
+        FLog(
+            "DLManager: allocated virtual ID %d for network ID %d",
+            candidate,
+            networkId
+        );
+
+        return candidate;
     }
-    int16_t virtualId = m_nextVirtualId++;
-    m_networkToVirtual[networkId] = virtualId;
-    m_virtualToNetwork[virtualId] = networkId;
-    return virtualId;
+
+    if (!m_bVirtualIdExhausted)
+    {
+        m_bVirtualIdExhausted = true;
+        PushChat("No free CModelInfo slots for custom models.");
+    }
+
+    return -1;
 }
 
 int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
@@ -649,6 +666,9 @@ bool DLManager::RegisterCustomModels() {
     // Maps IMG archive entries to their streaming resource IDs.
     std::unordered_map<std::string, std::vector<int32>> imgModelIds;
 
+    std::vector<int16_t> registeredIds;
+    registeredIds.reserve(toRegister.size());
+
     // Register each model slot.
     int registered = 0;
     int skippedFull = 0;
@@ -671,7 +691,7 @@ bool DLManager::RegisterCustomModels() {
                 snprintf(msg, sizeof(msg),
                         "DL model %d skipped: model slot %d is already occupied.",
                         mf.virtualId, mf.virtualId);
-                PushChat(msg);
+                FLog(msg);
 
                 ++skippedOccupied;
                 continue;
@@ -726,6 +746,7 @@ bool DLManager::RegisterCustomModels() {
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
+            registeredIds.push_back(mf.virtualId);
         }
 
         m_bModelsRegistered = true;
@@ -768,6 +789,42 @@ bool DLManager::RegisterCustomModels() {
                 entry.sectorCount
             );
         }
+    }
+
+    // Explicitly request every successfully registered custom DFF.
+    // RequestModel() also requests its TXD dependency.
+    for (const int16_t virtualId : registeredIds)
+    {
+        const int32 dffModelId = DFFToModelId(virtualId);
+
+        if (dffModelId < RESOURCE_ID_DFF ||
+            dffModelId >= RESOURCE_ID_TXD)
+        {
+            FLog(
+                "DLManager: invalid DFF streaming ID %d",
+                dffModelId
+            );
+            continue;
+        }
+
+        if (!CModelInfo::GetModelInfo(virtualId))
+        {
+            FLog(
+                "DLManager: missing CModelInfo for virtual ID %d",
+                virtualId
+            );
+            continue;
+        }
+
+        CStreaming::RequestModel(
+            dffModelId,
+            STREAMING_GAME_REQUIRED | STREAMING_KEEP_IN_MEMORY
+        );
+
+        FLog(
+            "DLManager: requested custom DFF model %d",
+            dffModelId
+        );
     }
 
     FLog(

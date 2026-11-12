@@ -355,27 +355,47 @@ void CStreaming::RequestModel(int32 modelId, int32 streamingFlags) {
 
         case eStreamingLoadState::LOADSTATE_NOT_LOADED: {
             switch (GetModelType(modelId)) {
-                case eModelType::DFF: {
-                    CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(modelId);
+                case eModelType::DFF:
+                {
+                    CBaseModelInfo* modelInfo =
+                        CModelInfo::GetModelInfo(modelId);
 
-                    if (modelInfo && modelInfo->m_nTxdIndex >= 0) {
-                        const int32 txdModelId = TXDToModelId(modelInfo->m_nTxdIndex);
+                    if (modelInfo)
+                    {
+                        // Request the texture dictionary first.
+                        if (modelInfo->m_nTxdIndex >= 0)
+                        {
+                            const int32 txdModelId =
+                                TXDToModelId(modelInfo->m_nTxdIndex);
 
-                        if (txdModelId < RESOURCE_ID_TXD || txdModelId >= RESOURCE_ID_COL) {
-                            FLog("Streaming: Invalid TXD index %d for model %d",
-                                modelInfo->m_nTxdIndex, modelId);
-                        } else {
-                            RequestModel(txdModelId, streamingFlags);
+                            if (txdModelId >= RESOURCE_ID_TXD &&
+                                txdModelId < RESOURCE_ID_COL)
+                            {
+                                RequestModel(txdModelId, streamingFlags);
+                            }
+                            else
+                            {
+                                FLog(
+                                    "Streaming: Invalid TXD index %d for model %d",
+                                    modelInfo->m_nTxdIndex,
+                                    modelId
+                                );
+                            }
+                        }
+
+                        // Request animation if this model uses one.
+                        const int32 animFileIndex =
+                            modelInfo->GetAnimFileIndex();
+
+                        if (animFileIndex != -1)
+                        {
+                            RequestModel(
+                                IFPToModelId(animFileIndex),
+                                STREAMING_KEEP_IN_MEMORY
+                            );
                         }
                     }
 
-                    const int32 animFileIndex = modelInfo->GetAnimFileIndex();
-                    if (animFileIndex != -1) {
-                        RequestModel(
-                            IFPToModelId(animFileIndex),
-                            STREAMING_KEEP_IN_MEMORY
-                        );
-                    }
                     break;
                 }
             }
