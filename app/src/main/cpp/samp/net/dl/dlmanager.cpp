@@ -646,6 +646,9 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
+    // Maps IMG archive entries to their streaming resource IDs.
+    std::unordered_map<std::string, std::vector<int32>> imgModelIds;
+
     // Register each model slot.
     int registered = 0;
     int skippedFull = 0;
