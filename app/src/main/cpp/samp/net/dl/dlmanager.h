@@ -36,8 +36,8 @@ static const uint32_t DL_HTTP_STALL_MS     = 15000; // no bytes for this long =>
 static const uint32_t DL_CONNECT_TIMEOUT_MS= 8000;
 static const uint32_t DL_URL_WAIT_MS       = 10000; // wait for RPC 183 after request
 static const int      DL_MAX_ATTEMPTS      = 4;
-static const int16_t  DL_VIRT_MIN          = 18631; // safe internal CModelInfo range
-static const int16_t  DL_VIRT_MAX          = 19999;
+static const int16_t DL_VIRT_MIN           = 20001;
+static const int16_t DL_VIRT_MAX           = 30000;
 
 struct DLModelInfo {
     uint32_t poolID;

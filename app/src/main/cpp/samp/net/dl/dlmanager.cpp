@@ -372,10 +372,6 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     for (int i = 0; i < DL_MAX_CONCURRENT; ++i) {
         m_workers.emplace_back([this]() { WorkerLoop(); });
     }
-
-    if (pUI && pUI->chat()) {
-        pUI->chat()->addDebugMessage("Downloading custom models from %s:%d...", serverIp.c_str(), serverPort);
-    }
 }
 
 void DLManager::Reset() {
@@ -536,7 +532,6 @@ bool DLManager::RegisterCustomModels() {
         std::string txdArcName;
     };
     std::vector<ModelFiles> toRegister;
-
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const auto& m : m_models) {
@@ -545,9 +540,33 @@ bool DLManager::RegisterCustomModels() {
             // Both files must exist (downloader CRC-validates on fetch).
             std::string dffPath = GetModelPath(m.dffChecksum, true);
             std::string txdPath = GetModelPath(m.txdChecksum, false);
-            struct stat st;
-            if (stat(dffPath.c_str(), &st) != 0) continue;
-            if (stat(txdPath.c_str(), &st) != 0) continue;
+            if (!ValidateOrPurge(
+                    dffPath,
+                    m.dffChecksum,
+                    m.dffSize
+                ))
+            {
+                FLog(
+                    "DLManager: invalid cached DFF: %s",
+                    dffPath.c_str()
+                );
+
+                continue;
+            }
+
+            if (!ValidateOrPurge(
+                    txdPath,
+                    m.txdChecksum,
+                    m.txdSize
+                ))
+            {
+                FLog(
+                    "DLManager: invalid cached TXD: %s",
+                    txdPath.c_str()
+                );
+
+                continue;
+            }
 
             char dffName[32], txdName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
@@ -625,34 +644,6 @@ bool DLManager::RegisterCustomModels() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
-    }
-
-    // Map archive entry names to streaming resource IDs.
-    std::unordered_map<std::string, std::vector<int32>> imgModelIds;
-
-    for (const auto& entry : imgEntries)
-    {
-        auto it = imgModelIds.find(entry.name);
-
-        if (it == imgModelIds.end())
-            continue;
-
-        for (const int32 modelId : it->second)
-        {
-            if (modelId < 0 || modelId >= RESOURCE_ID_TOTAL)
-                continue;
-
-            CStreamingInfo& info = CStreaming::GetInfo(modelId);
-
-            info.m_nImgId = static_cast<uint8>(imgIndex);
-
-            info.SetCdPosnAndSize(
-                entry.sectorOffset,
-                entry.sectorCount
-            );
-
-            info.m_nNextIndexOnCd = -1;
-        }
     }
 
     // Register each model slot.
@@ -737,21 +728,55 @@ bool DLManager::RegisterCustomModels() {
         m_bModelsRegistered = true;
     }
 
+    // Apply IMG directory metadata AFTER all model IDs are registered.
+    // imgModelIds is populated inside the model registration loop.
+    int mappedResources = 0;
+
+    for (const auto& entry : imgEntries)
+    {
+        auto it = imgModelIds.find(entry.name);
+
+        if (it == imgModelIds.end())
+            continue;
+
+        for (const int32 modelId : it->second)
+        {
+            if (modelId < 0 || modelId >= RESOURCE_ID_TOTAL)
+                continue;
+
+            CStreamingInfo& info = CStreaming::GetInfo(modelId);
+
+            info.m_nImgId = static_cast<uint8>(imgIndex);
+
+            info.SetCdPosnAndSize(
+                entry.sectorOffset,
+                entry.sectorCount
+            );
+
+            info.m_nNextIndexOnCd = -1;
+
+            ++mappedResources;
+
+            FLog(
+                "DLManager: IMG resource mapped: %s -> %d (offset=%u, size=%u)",
+                entry.name.c_str(),
+                modelId,
+                entry.sectorOffset,
+                entry.sectorCount
+            );
+        }
+    }
+
+    FLog(
+        "DLManager: custom IMG metadata applied: %d resources",
+        mappedResources
+    );
+
     char msg[160];
     snprintf(msg, sizeof(msg),
             "Custom models: %d registered, %d occupied slots, %d store full.",
             registered, skippedOccupied, skippedFull);
     PushChat(msg);
-
-    snprintf(msg, sizeof(msg), "Registered %d custom models.", registered);
-    PushChat(msg);
-    if (skippedFull > 0) {
-        char warn[128];
-        snprintf(warn, sizeof(warn),
-                 "Warning: %d models skipped (model store full).",
-                 skippedFull);
-        PushChat(warn);
-    }
     return registered > 0;
 }
 
