@@ -160,15 +160,74 @@ uint32_t DLManager::CalculateFileCRC32(const std::string& filepath) {
     return crc ^ 0xFFFFFFFF;
 }
 
-static void MakeDirectoryTree(const std::string& path) {
+
+static bool MakeDirectoryTree(const std::string& path)
+{
+    if (path.empty())
+        return false;
+
     std::string current;
-    for (size_t i = 0; i < path.length(); i++) {
-        current += path[i];
-        if (path[i] == '/' || i == path.length() - 1) {
-            mkdir(current.c_str(), 0777); // EEXIST is fine; fopen reports hard failures
-        }
+    size_t pos = 0;
+
+    if (path[0] == '/')
+    {
+        current = "/";
+        pos = 1;
     }
+
+    while (pos < path.size())
+    {
+        size_t end = path.find('/', pos);
+
+        std::string component = path.substr(
+            pos,
+            end == std::string::npos
+                ? std::string::npos
+                : end - pos
+        );
+
+        if (!component.empty())
+        {
+            if (!current.empty() && current.back() != '/')
+                current += '/';
+
+            current += component;
+
+            if (mkdir(current.c_str(), 0777) != 0 &&
+                errno != EEXIST)
+            {
+                FLog(
+                    "DLManager: mkdir failed: %s (errno=%d)",
+                    current.c_str(),
+                    errno
+                );
+
+                return false;
+            }
+
+            struct stat st{};
+
+            if (stat(current.c_str(), &st) != 0 ||
+                !S_ISDIR(st.st_mode))
+            {
+                FLog(
+                    "DLManager: invalid cache directory: %s",
+                    current.c_str()
+                );
+
+                return false;
+            }
+        }
+
+        if (end == std::string::npos)
+            break;
+
+        pos = end + 1;
+    }
+
+    return true;
 }
+
 
 static uint32_t GetCurrentTick() {
     auto now = std::chrono::steady_clock::now();
@@ -268,14 +327,38 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
     }
 
     char cacheDir[512];
-    snprintf(cacheDir, sizeof(cacheDir), "%sSAMP/cache/%s:%d/",
-             cleanStorage.c_str(), serverIp.c_str(), serverPort);
+    std::string cacheDir =
+        cleanStorage +
+        "SAMP/cache/" +
+        serverIp +
+        ":" +
+        std::to_string(serverPort) +
+        "/";
+
+    // Create the server-specific cache directory.
+    if (!MakeDirectoryTree(cacheDir))
+    {
+        FLog(
+            "DLManager: failed to create server cache: %s",
+            cacheDir.c_str()
+        );
+
+        std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_cachePath.clear();
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath = cacheDir;
         m_storagePath = cleanStorage;
     }
-    MakeDirectoryTree(cacheDir);
+
+    FLog(
+        "DLManager: server cache initialized: %s",
+        cacheDir.c_str()
+    );
+
 
     m_bShutdown = false;
     m_bInitialized = true;
@@ -875,10 +958,24 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
             return;
         }
 
-        if (rename(tempPath, finalPath.c_str()) != 0) {
+        if (rename(tempPath, finalPath.c_str()) != 0)
+        {
+            FLog(
+                "DLManager: inband rename failed: %s -> %s (errno=%d)",
+                tempPath,
+                finalPath.c_str(),
+                errno
+            );
+
             unlink(tempPath);
             return;
         }
+
+        FLog(
+            "DLManager: inband cached %s: %s",
+            isDff ? "DFF" : "TXD",
+            finalPath.c_str()
+        );
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -1279,11 +1376,25 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
             FILE* fp = fopen(tempPath, "rb");
             if (fp) { int fd = fileno(fp); if (fd >= 0) fsync(fd); fclose(fp); }
         }
-        if (rename(tempPath, finalPath.c_str()) != 0) {
+        if (rename(tempPath, finalPath.c_str()) != 0)
+        {
+            FLog(
+                "DLManager: HTTP rename failed: %s -> %s (errno=%d)",
+                tempPath,
+                finalPath.c_str(),
+                errno
+            );
+
             unlink(tempPath);
             outError = "rename";
             return false;
         }
+
+        FLog(
+            "DLManager: HTTP cached %s: %s",
+            task.isDff ? "DFF" : "TXD",
+            finalPath.c_str()
+        );
         struct stat st;
         outBytes = (stat(finalPath.c_str(), &st) == 0)
             ? static_cast<uint64_t>(st.st_size) : 0ull;
@@ -1802,17 +1913,34 @@ void DLManager::RenderImGui() {
 
     const ImGuiIO& io = ImGui::GetIO();
 
-    // Posisi dan ukuran awal panel.
+    // Responsive panel size based on the actual game resolution.
+    const float panelWidth = ImClamp(
+        io.DisplaySize.x * 0.62f,
+        420.0f,
+        900.0f
+    );
+
+    const float panelHeight = ImClamp(
+        io.DisplaySize.y * 0.78f,
+        420.0f,
+        820.0f
+    );
+
+    // Center the panel when it first appears.
     static bool firstPosition = true;
 
-    if (firstPosition) {
+    if (firstPosition)
+    {
         ImGui::SetNextWindowPos(
-            ImVec2(io.DisplaySize.x - 510.0f, 20.0f),
+            ImVec2(
+                (io.DisplaySize.x - panelWidth) * 0.5f,
+                (io.DisplaySize.y - panelHeight) * 0.5f
+            ),
             ImGuiCond_Always
         );
 
         ImGui::SetNextWindowSize(
-            ImVec2(490.0f, 420.0f),
+            ImVec2(panelWidth, panelHeight),
             ImGuiCond_Always
         );
 
@@ -1824,7 +1952,9 @@ void DLManager::RenderImGui() {
         ImGuiWindowFlags_NoResize;
 
     // Jangan gunakan NoMove agar panel bisa di-drag.
-    if (ImGui::Begin("Model downloads", nullptr, flags)) {
+    if (ImGui::Begin("Custom Model Downloads", nullptr, flags))
+    {
+        ImGui::SetWindowFontScale(1.15f);
 
         char progressText[96];
 
@@ -1881,9 +2011,14 @@ void DLManager::RenderImGui() {
 
         ImGui::Text("Files");
 
+        const float listHeight = ImMax(
+            160.0f,
+            ImGui::GetContentRegionAvail().y - 10.0f
+        );
+
         ImGui::BeginChild(
             "DownloadFileList",
-            ImVec2(0.0f, 220.0f),
+            ImVec2(0.0f, listHeight),
             true
         );
 

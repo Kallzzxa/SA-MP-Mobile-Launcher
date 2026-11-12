@@ -133,7 +133,15 @@ void ImGuiWrapper::render()
 		}
 	}
 
-	DLManager::Instance().RenderImGui();
+	// Show the custom model UI only after joining a server
+	// that actually provides a 0.3.DL custom model manifest.
+	if (pNetGame &&
+		pNetGame->GetGameState() == GAMESTATE_CONNECTED &&
+		DLManager::Instance().IsInitialized() &&
+		DLManager::Instance().GetTotalModels() > 0)
+	{
+		DLManager::Instance().RenderImGui();
+	}
 
 	drawList();
 	ImGui::EndFrame();
