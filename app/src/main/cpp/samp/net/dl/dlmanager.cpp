@@ -326,7 +326,6 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
         cleanStorage += "/";
     }
 
-    char cacheDir[512];
     std::string cacheDir =
         cleanStorage +
         "SAMP/cache/" +
