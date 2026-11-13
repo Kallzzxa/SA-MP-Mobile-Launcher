@@ -725,7 +725,7 @@ bool DLManager::RegisterCustomModels() {
             pInfo->SetModelName(dffBase);
 
             const int32 txdIndex =
-                CTxdStore::FindOrAddTxdSlot(txdBase, "txd");
+                CTxdStore::FindOrAddTxdSlot(txdBase, "custom_dl");
 
             if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
             {
@@ -734,7 +734,7 @@ bool DLManager::RegisterCustomModels() {
             }
 
             FLog(
-                "DL TXD DEBUG: name=%s db=txd slot=%d streamId=%d",
+                "DL TXD DEBUG: name=%s db=custom_dl slot=%d streamId=%d",
                 txdBase,
                 txdIndex,
                 txdIndex >= 0 ? TXDToModelId(txdIndex) : -1
