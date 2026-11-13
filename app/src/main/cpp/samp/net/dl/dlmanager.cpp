@@ -5,7 +5,6 @@
 #include "../../game/Streaming.h"
 #include "../../game/Models/ModelInfo.h"
 #include "../../game/TxdStore.h"
-#include "../../game/TxdDef.h"
 #include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
@@ -734,24 +733,11 @@ bool DLManager::RegisterCustomModels() {
                 continue;
             }
 
-            TxdDef* txdDef = CTxdStore::ms_pTxdPool->GetAt(txdIndex);
-            if (!txdDef)
-            {
-                FLog(
-                    "DL TXD ERROR: pool entry is NULL: slot=%d name=%s",
-                    txdIndex,
-                    txdBase
-                );
-                continue;
-            }
-
             FLog(
-                "DL TXD POOL: slot=%d name='%s' dbname='%s' refs=%d dictionary=%p",
+                "DL TXD DEBUG: name=%s db=txd slot=%d streamId=%d",
+                txdBase,
                 txdIndex,
-                txdDef->name,
-                txdDef->dbname,
-                txdDef->m_wRefsCount,
-                txdDef->m_pRwDictionary
+                txdIndex >= 0 ? TXDToModelId(txdIndex) : -1
             );
 
             pInfo->m_nTxdIndex = static_cast<int16>(txdIndex);
