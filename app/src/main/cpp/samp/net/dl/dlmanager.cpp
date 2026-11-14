@@ -724,8 +724,14 @@ bool DLManager::RegisterCustomModels() {
 
             pInfo->SetModelName(dffBase);
 
+            FLog(
+                "DL TXD: creating slot name=%s database=%s",
+                txdBase,
+                "gta3"
+            );
+
             const int32 txdIndex =
-                CTxdStore::FindOrAddTxdSlot(txdBase, "custom_dl");
+                CTxdStore::FindOrAddTxdSlot(txdBase, "gta3");
 
             if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
             {
@@ -734,8 +740,9 @@ bool DLManager::RegisterCustomModels() {
             }
 
             FLog(
-                "DL TXD DEBUG: name=%s db=custom_dl slot=%d streamId=%d",
+                "DL TXD DEBUG: name=%s db=%s slot=%d streamId=%d",
                 txdBase,
+                "gta3",
                 txdIndex,
                 txdIndex >= 0 ? TXDToModelId(txdIndex) : -1
             );
