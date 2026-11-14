@@ -5,6 +5,7 @@
 #include "../../game/Streaming.h"
 #include "../../game/Models/ModelInfo.h"
 #include "../../game/TxdStore.h"
+#include "../../game/RW/RenderWare.h"
 #include "../../vendor/imgui/imgui.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 
@@ -22,6 +23,7 @@
 #include <csignal>
 
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
@@ -110,6 +112,34 @@ static bool ReadCustomImgDirectory(
 
     fclose(fp);
     return true;
+}
+
+static bool CopyFileForCustomTxd(const std::string& source, const std::string& target)
+{
+    std::ifstream in(source, std::ios::binary);
+    if (!in)
+        return false;
+
+    std::ofstream out(target, std::ios::binary | std::ios::trunc);
+    if (!out)
+        return false;
+
+    out << in.rdbuf();
+    return out.good();
+}
+
+static RwTexDictionary* LoadCustomTxd(const std::string& path)
+{
+    if (!RwTexDictionaryGtaStreamRead)
+        return nullptr;
+
+    RwStream* stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, path.c_str());
+    if (!stream)
+        return nullptr;
+
+    RwTexDictionary* dictionary = RwTexDictionaryGtaStreamRead(stream);
+    RwStreamClose(stream, nullptr);
+    return dictionary;
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +416,48 @@ void DLManager::Reset() {
     }
     m_workers.clear();
 
+    // Reset is called on the game thread (before the old net game is torn
+    // down). Drop engine references before forgetting which custom resources
+    // belong to this server.
+    std::vector<int16_t> registeredModels;
+    std::vector<int32> customTxdSlots;
+    {
+        std::lock_guard<std::mutex> stateLock(m_mutex);
+        registeredModels.assign(m_registeredModels.begin(), m_registeredModels.end());
+        customTxdSlots = m_customTxdSlots;
+    }
+    for (const int16_t virtualId : registeredModels) {
+        const int32 modelId = DFFToModelId(virtualId);
+        if (modelId >= RESOURCE_ID_DFF && modelId < RESOURCE_ID_TXD) {
+            CStreaming::RemoveModel(modelId);
+            CStreamingInfo& info = CStreaming::GetInfo(modelId);
+            info.ClearAllFlags();
+            info.m_nImgId = 0;
+            info.SetCdPosnAndSize(0, 0);
+            info.m_nNextIndexOnCd = -1;
+        }
+        CModelInfo::SetModelInfo(virtualId, nullptr);
+    }
+    if (CTxdStore::ms_pTxdPool) {
+        for (const int32 txdIndex : customTxdSlots) {
+            if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
+                continue;
+            const int32 txdModelId = TXDToModelId(txdIndex);
+            CStreaming::RemoveModel(txdModelId);
+            CStreamingInfo& txdInfo = CStreaming::GetInfo(txdModelId);
+            txdInfo.ClearAllFlags();
+            txdInfo.m_nImgId = 0;
+            txdInfo.SetCdPosnAndSize(0, 0);
+            txdInfo.m_nNextIndexOnCd = -1;
+
+            TxdDef* slot = CTxdStore::ms_pTxdPool->GetAt(txdIndex);
+            if (!slot || !slot->m_pRwDictionary)
+                continue;
+            CTxdStore::RemoveTxd(txdIndex);
+            slot->m_pRwDictionary = nullptr;
+        }
+    }
+
     std::lock_guard<std::mutex> lock(m_mutex);
     // Null the RakClient (audit C2): the caller destroys it right after Reset(),
     // so a surviving outbox item must never dereference the old pointer.
@@ -403,6 +475,7 @@ void DLManager::Reset() {
     m_nextVirtualId = DL_VIRT_MIN;
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
+    m_customTxdSlots.clear();
     m_bModelsRegistered = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
@@ -428,6 +501,7 @@ void DLManager::Reset() {
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
         m_cachePath.clear();
+        m_storagePath.clear();
     }
     {
         std::lock_guard<std::mutex> cm(m_chatMutex);
@@ -527,7 +601,7 @@ bool DLManager::IsModelRegistered(int16_t virtualId) const {
 
 // ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
-// Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
+// Packs downloaded DFFs into a VER2 IMG, registers it with CStreaming,
 // and allocates CModelInfo slots so the game can actually load the models.
 // MUST run on the game thread (called from ProcessTick).
 // ---------------------------------------------------------------------------
@@ -601,6 +675,75 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
+    // Materialize each validated TXD under a CRC-addressed TEXDB/SAMP path,
+    // then read it directly into its TXD store slot before any DFF is exposed
+    // to CStreaming. This avoids archive-name collisions and makes the DFF's
+    // texture dependency ready synchronously.
+    std::string storageBase;
+    {
+        std::lock_guard<std::mutex> lock(m_cachePathMutex);
+        storageBase = m_storagePath;
+    }
+    const std::string txdDirectory = storageBase + "TEXDB/SAMP/";
+    if (!MakeDirectoryTree(txdDirectory)) {
+        PushChat("Custom DL: failed to create TEXDB/SAMP directory.");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
+    std::unordered_map<uint32_t, int32> txdSlots;
+    std::unordered_set<uint32_t> failedTxds;
+    std::vector<ModelFiles> txdReadyModels;
+    txdReadyModels.reserve(toRegister.size());
+    for (const auto& mf : toRegister) {
+        auto txd = txdSlots.find(mf.txdCrc);
+        if (txd == txdSlots.end() && failedTxds.find(mf.txdCrc) == failedTxds.end()) {
+            char txdName[32];
+            snprintf(txdName, sizeof(txdName), "0x%08X", mf.txdCrc);
+            const int32 txdIndex = CTxdStore::FindOrAddTxdSlot(txdName, "gta3");
+            TxdDef* slot = (txdIndex >= 0 && txdIndex < TOTAL_TXD_MODEL_IDS &&
+                            CTxdStore::ms_pTxdPool)
+                ? CTxdStore::ms_pTxdPool->GetAt(txdIndex)
+                : nullptr;
+
+            char stagedName[40];
+            snprintf(stagedName, sizeof(stagedName), "0x%08X.txd", mf.txdCrc);
+            const std::string stagedPath = txdDirectory + stagedName;
+            const bool copied = CopyFileForCustomTxd(mf.txdPath, stagedPath) &&
+                CalculateFileCRC32(stagedPath) == mf.txdCrc;
+            RwTexDictionary* dictionary = nullptr;
+            bool dictionaryLoadedHere = false;
+            if (slot && slot->m_pRwDictionary) {
+                dictionary = reinterpret_cast<RwTexDictionary*>(slot->m_pRwDictionary);
+            } else if (slot && copied) {
+                dictionary = LoadCustomTxd(stagedPath);
+                if (dictionary) {
+                    slot->m_pRwDictionary = reinterpret_cast<uintptr*>(dictionary);
+                    dictionaryLoadedHere = true;
+                }
+            }
+
+            if (!slot || !dictionary) {
+                FLog("DLManager: failed to load custom TXD CRC %08X", mf.txdCrc);
+                failedTxds.insert(mf.txdCrc);
+            } else {
+                txdSlots.emplace(mf.txdCrc, txdIndex);
+                if (dictionaryLoadedHere)
+                    m_customTxdSlots.push_back(txdIndex);
+            }
+        }
+        if (txdSlots.find(mf.txdCrc) != txdSlots.end())
+            txdReadyModels.push_back(mf);
+    }
+    toRegister.swap(txdReadyModels);
+    if (toRegister.empty()) {
+        PushChat("Custom DL: no TXD dictionaries could be loaded.");
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_bModelsRegistered = true;
+        return false;
+    }
+
     // Pack into IMG.
     std::string cacheBase;
     {
@@ -610,15 +753,12 @@ bool DLManager::RegisterCustomModels() {
     std::string imgPath = cacheBase + "custom_dl.img";
 
     std::vector<DLImgPack::ImgEntry> entries;
-    entries.reserve(toRegister.size() * 2);
-    // Multiple models often reuse a texture or mesh by checksum. Store each
-    // archive name once, while still registering every virtual model below.
+    entries.reserve(toRegister.size());
+    // TXDs are loaded directly; only DFFs enter the streaming IMG.
     std::unordered_set<std::string> archiveNames;
     for (const auto& mf : toRegister) {
         if (archiveNames.insert(mf.dffArcName).second)
             entries.push_back({mf.dffPath, mf.dffArcName});
-        if (archiveNames.insert(mf.txdArcName).second)
-            entries.push_back({mf.txdPath, mf.txdArcName});
     }
 
     std::string packError;
@@ -730,8 +870,10 @@ bool DLManager::RegisterCustomModels() {
                 "gta3"
             );
 
-            const int32 txdIndex =
-                CTxdStore::FindOrAddTxdSlot(txdBase, "gta3");
+            const auto loadedTxd = txdSlots.find(mf.txdCrc);
+            const int32 txdIndex = loadedTxd != txdSlots.end()
+                ? loadedTxd->second
+                : -1;
 
             if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
             {
@@ -752,11 +894,7 @@ bool DLManager::RegisterCustomModels() {
             const int32 dffStreamId =
                 DFFToModelId(mf.virtualId);
 
-            const int32 txdStreamId =
-                TXDToModelId(txdIndex);
-
             imgModelIds[mf.dffArcName].push_back(dffStreamId);
-            imgModelIds[mf.txdArcName].push_back(txdStreamId);
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;

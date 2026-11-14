@@ -371,7 +371,15 @@ void CStreaming::RequestModel(int32 modelId, int32 streamingFlags) {
                             if (txdModelId >= RESOURCE_ID_TXD &&
                                 txdModelId < RESOURCE_ID_COL)
                             {
-                                RequestModel(txdModelId, streamingFlags);
+                                // Custom DL TXDs are read directly by
+                                // DLManager into their TxdDef slot. Do not
+                                // enqueue the same dictionary through IMG
+                                // streaming when that slot is already ready.
+                                TxdDef* txdDef = CTxdStore::ms_pTxdPool
+                                    ? CTxdStore::ms_pTxdPool->GetAt(modelInfo->m_nTxdIndex)
+                                    : nullptr;
+                                if (!txdDef || !txdDef->m_pRwDictionary)
+                                    RequestModel(txdModelId, streamingFlags);
                             }
                             else
                             {

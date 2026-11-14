@@ -102,10 +102,10 @@ public:
     int16_t GetVirtualModelId(int32_t networkId);
     int32_t GetNetworkModelId(int16_t virtualId);
 
-    // Custom model registration (0.3.DL PR #3): packs downloaded DFF/TXD
-    // into a custom IMG, registers it with the streaming system, and
-    // allocates CModelInfo slots. Called once on the game thread after
-    // all downloads settle. Returns true if at least one model registered.
+    // Custom model registration (0.3.DL PR #3): loads CRC-addressed TXDs into
+    // TxdDef slots, packs DFFs into a custom IMG, and allocates CModelInfo
+    // slots. Called once on the game thread after all downloads settle.
+    // Returns true if at least one model registered.
     bool RegisterCustomModels();
     // True if virtualId was successfully registered via RegisterCustomModels.
     // Used by the fallback guard so unregistered models fall back to base.
@@ -164,6 +164,7 @@ private:
     // Custom models successfully registered with the game engine
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
+    std::vector<int32> m_customTxdSlots;
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.
