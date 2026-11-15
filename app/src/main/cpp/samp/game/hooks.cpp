@@ -3,6 +3,7 @@
 #include "../vendor/shadowhook/patch.h"
 #include "game.h"
 #include "../net/netgame.h"
+#include "../net/dl/dlmanager.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
 #include "Textures/TextureDatabaseEntry.h"
@@ -376,6 +377,11 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
 	if (pGame->IsGamePaused())
 		return AND_TouchEvent(type, num, posX, posY);
+
+	// Keep download-panel touches inside the overlay so they can drag, hide,
+	// restore it, and never trigger game-world input underneath.
+	if (DLManager::Instance().HandleTouchEvent(type, num, posX, posY))
+		return;
 
 	if (pUI != nullptr)
 	{

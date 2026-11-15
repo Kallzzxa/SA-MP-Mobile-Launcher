@@ -16,6 +16,7 @@
 #include "../../vendor/raknet/BitStream.h"
 #include "../../vendor/raknet/RakClientInterface.h"
 #include "../../vendor/raknet/NetworkTypes.h"
+#include "../../game/Collision/ColModel.h"
 
 // Model types in SA-MP 0.3.DL wire format
 enum class DLModelType : uint8_t {
@@ -85,6 +86,7 @@ public:
     void Reset();
     void ProcessTick();
     void RenderImGui();
+    bool HandleTouchEvent(int type, int pointerId, int x, int y);
 
     // RPC Handlers (invoked on the RakNet UpdateNetworkLoop thread - never block)
     void OnModelRequest(RPCParameters* rpcParams);
@@ -118,6 +120,10 @@ public:
     int GetDownloadedModels() const { return m_downloadedModels.load(); }
     int GetActiveWorkers() const { return m_activeWorkers.load(); }
     float GetCurrentSpeedKBps() const { return m_speedKBps.load(); }
+    void ReportReceivedBytes(uint64_t bytes) {
+        if (bytes > 0)
+            m_totalBytesRx.fetch_add(bytes, std::memory_order_relaxed);
+    }
     void GetProgressStats(size_t& queued, size_t& active, size_t& done, size_t& failed) const;
     void GetModelProgressStats(size_t& ready, size_t& failed, size_t& pending) const;
 
@@ -166,6 +172,7 @@ private:
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
     std::vector<int32_t> m_customTxdSlots;
+    std::vector<CColModel*> m_customColModels;
     size_t m_atomicStoreStartCount{0};
     size_t m_pedStoreStartCount{0};
     bool m_modelStoreStartCaptured{false};
@@ -210,6 +217,17 @@ private:
     uint32_t m_lastModelRequestTick{0};
     uint32_t m_finishTime{0};
     bool m_bForceShowOverlay{false};
+    bool m_bOverlayHidden{false};
+    bool m_bOverlayPositionInitialized{false};
+    bool m_bOverlayTouchCaptured{false};
+    bool m_bOverlayDragging{false};
+    int m_overlayTouchPointerId{-1};
+    float m_overlayX{0.0f};
+    float m_overlayY{0.0f};
+    float m_overlayWidth{0.0f};
+    float m_overlayHeight{0.0f};
+    float m_overlayLastTouchX{0.0f};
+    float m_overlayLastTouchY{0.0f};
     bool m_bReportedNoManifest{false};
     std::atomic<int> m_rpc183DumpCount{0};
     std::string m_lastActivity;

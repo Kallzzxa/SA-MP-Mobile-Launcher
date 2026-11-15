@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <chrono>
 #include <mutex>
+#include <new>
 
 #include <cstdint>
 #include <string>
@@ -37,11 +38,57 @@
 
 extern UI* pUI;
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_hopepride_samp_game_DLHttpClient_reportProgress(JNIEnv*, jclass, jlong bytes)
+{
+    if (bytes > 0)
+        DLManager::Instance().ReportReceivedBytes(static_cast<uint64_t>(bytes));
+}
+
 struct DLCustomImgEntry {
     uint32_t sectorOffset;
     uint32_t sectorCount;
     std::string name;
 };
+
+static void DestroyCustomColModel(CColModel* colModel)
+{
+    if (!colModel)
+        return;
+    colModel->~CColModel();
+    CMemoryMgr::Free(colModel);
+}
+
+static CColModel* CloneCustomColModel(const CColModel* source)
+{
+    if (!source)
+        return nullptr;
+
+    // A custom model can outlive the COL sector that supplied its base model.
+    // Copy the collision data so its physics never follows a streamed pointer.
+    if (source->m_pColData && source->m_pColData->bHasFaceGroups)
+        return nullptr;
+
+    void* memory = CMemoryMgr::Malloc(sizeof(CColModel));
+    if (!memory)
+        return nullptr;
+
+    auto* clone = ::new (memory) CColModel();
+    clone->m_boundBox = source->m_boundBox;
+    clone->m_boundSphere = source->m_boundSphere;
+    clone->m_nColSlot = source->m_nColSlot;
+    clone->m_bHasCollisionVolumes = source->m_bHasCollisionVolumes;
+    clone->m_bIsSingleColDataAlloc = false;
+    clone->m_bIsActive = true;
+
+    if (source->m_pColData) {
+        clone->AllocateData();
+        clone->m_pColData->Copy(*source->m_pColData);
+        if (clone->m_pColData->m_nNumTriangles > 0)
+            clone->m_pColData->CalculateTrianglePlanes();
+    }
+    return clone;
+}
 
 static uint32_t ReadImgU32(const uint8_t* p)
 {
@@ -421,18 +468,28 @@ void DLManager::Reset() {
     // belong to this server.
     std::vector<int16_t> registeredModels;
     std::vector<int32> customTxdSlots;
+    std::vector<CColModel*> customColModels;
     std::unordered_set<CBaseModelInfo*> customAtomicInfos;
     std::unordered_set<CBaseModelInfo*> customPedInfos;
     {
         std::lock_guard<std::mutex> stateLock(m_mutex);
         registeredModels.assign(m_registeredModels.begin(), m_registeredModels.end());
         customTxdSlots = m_customTxdSlots;
+        customColModels = m_customColModels;
     }
     for (const int16_t virtualId : registeredModels) {
         CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(virtualId);
         if (modelInfo) {
+            if (std::find(customColModels.begin(), customColModels.end(), modelInfo->m_pColModel) != customColModels.end())
+                modelInfo->m_pColModel = nullptr;
             if (modelInfo->GetModelType() == MODEL_INFO_PED)
+            {
+                auto* pedInfo = static_cast<CPedModelInfo*>(modelInfo);
+                CColModel* hitColModel = reinterpret_cast<CColModel*>(pedInfo->m_pHitColModel);
+                if (std::find(customColModels.begin(), customColModels.end(), hitColModel) != customColModels.end())
+                    pedInfo->m_pHitColModel = nullptr;
                 customPedInfos.insert(modelInfo);
+            }
             else
                 customAtomicInfos.insert(modelInfo);
         }
@@ -447,6 +504,8 @@ void DLManager::Reset() {
         }
         CModelInfo::SetModelInfo(virtualId, nullptr);
     }
+    for (CColModel* colModel : customColModels)
+        DestroyCustomColModel(colModel);
 
     // CModelInfo stores are append-only in this port. Reclaim the custom
     // suffix on reconnect only if every entry in that suffix is ours; if some
@@ -518,6 +577,7 @@ void DLManager::Reset() {
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
     m_customTxdSlots.clear();
+    m_customColModels.clear();
     m_atomicStoreStartCount = 0;
     m_pedStoreStartCount = 0;
     m_modelStoreStartCaptured = false;
@@ -539,6 +599,11 @@ void DLManager::Reset() {
     m_connectTime = 0;
     m_lastModelRequestTick = 0;
     m_finishTime = 0;
+    m_bOverlayHidden = false;
+    m_bOverlayPositionInitialized = false;
+    m_bOverlayTouchCaptured = false;
+    m_bOverlayDragging = false;
+    m_overlayTouchPointerId = -1;
     m_bReportedNoManifest = false;
     m_rpc183DumpCount = 0;
     m_lastActivity.clear();
@@ -907,6 +972,15 @@ bool DLManager::RegisterCustomModels() {
                 continue;
             }
 
+            CColModel* customColModel = CloneCustomColModel(baseInfo->m_pColModel);
+            CColModel* customHitColModel = nullptr;
+            if (!customColModel) {
+                FLog("DLManager: custom model %d skipped: could not copy base collision %d",
+                     mf.virtualId, mf.baseId);
+                ++skippedOccupied;
+                continue;
+            }
+
             if (mf.type == 1) {
                 if (baseInfo->GetModelType() != MODEL_INFO_PED) {
                     FLog(
@@ -914,8 +988,21 @@ bool DLManager::RegisterCustomModels() {
                         mf.virtualId,
                         mf.baseId
                     );
+                    DestroyCustomColModel(customColModel);
                     ++skippedOccupied;
                     continue;
+                }
+                auto* basePedInfo = static_cast<CPedModelInfo*>(baseInfo);
+                if (basePedInfo->m_pHitColModel) {
+                    customHitColModel = CloneCustomColModel(
+                        reinterpret_cast<CColModel*>(basePedInfo->m_pHitColModel));
+                    if (!customHitColModel) {
+                        FLog("DLManager: custom skin %d skipped: could not copy hit collision %d",
+                             mf.virtualId, mf.baseId);
+                        DestroyCustomColModel(customColModel);
+                        ++skippedOccupied;
+                        continue;
+                    }
                 }
                 // Skin -> ped model
                 pInfo = CModelInfo::AddPedModel(mf.virtualId);
@@ -932,14 +1019,16 @@ bool DLManager::RegisterCustomModels() {
             }
 
             if (!pInfo) {
+                DestroyCustomColModel(customColModel);
+                DestroyCustomColModel(customHitColModel);
                 ++skippedFull;
                 continue;
             }
 
             // Both simple objects and peds need the base model's collision
-            // data. The custom DFF supplies render geometry only and must not
-            // take ownership of the shared COL model.
-            pInfo->m_pColModel = baseInfo->m_pColModel;
+            // data. Keep an owned copy because the base model's COL can be
+            // unloaded as its collision sector streams out.
+            pInfo->m_pColModel = customColModel;
             pInfo->bDoWeOwnTheColModel = false;
             if (mf.type == 1) {
                 auto* pedInfo = static_cast<CPedModelInfo*>(pInfo);
@@ -950,7 +1039,7 @@ bool DLManager::RegisterCustomModels() {
                 pedInfo->m_nStatType = basePedInfo->m_nStatType;
                 pedInfo->m_nCarsCanDriveMask = basePedInfo->m_nCarsCanDriveMask;
                 pedInfo->m_nPedFlags = basePedInfo->m_nPedFlags;
-                pedInfo->m_pHitColModel = basePedInfo->m_pHitColModel;
+                pedInfo->m_pHitColModel = reinterpret_cast<uintptr_t*>(customHitColModel);
                 pedInfo->m_nRadio1 = basePedInfo->m_nRadio1;
                 pedInfo->m_nRadio2 = basePedInfo->m_nRadio2;
                 pedInfo->m_nRace = basePedInfo->m_nRace;
@@ -1004,6 +1093,9 @@ bool DLManager::RegisterCustomModels() {
             imgModelIds[mf.dffArcName].push_back(dffStreamId);
 
             m_registeredModels.insert(mf.virtualId);
+            m_customColModels.push_back(customColModel);
+            if (customHitColModel)
+                m_customColModels.push_back(customHitColModel);
             ++registered;
             registeredIds.push_back(mf.virtualId);
         }
@@ -1524,7 +1616,6 @@ void DLManager::WorkerLoop() {
 
                 ActiveWorkerGuard activeGuard(m_activeWorkers);
                 fetchOk = FetchToFile(local, bytes, fetchError);
-                m_totalBytesRx += bytes;
             }
         } catch (const std::exception& e) {
             fetchOk = false;
@@ -1905,6 +1996,7 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
                         outError = "disk write"; fatal = true; break;
                     }
                     totalWritten += bodyLen;
+                    ReportReceivedBytes(bodyLen);
                     if (totalWritten > hardCap) { outError = "size cap"; fatal = true; break; } // B3
                 }
             } else {
@@ -1912,6 +2004,7 @@ bool DLManager::FetchToFile(const DLFileTask& task, uint64_t& outBytes, std::str
                     outError = "disk write"; fatal = true; break;
                 }
                 totalWritten += static_cast<uint64_t>(n);
+                ReportReceivedBytes(static_cast<uint64_t>(n));
                 if (totalWritten > hardCap) { outError = "size cap"; fatal = true; break; }
             }
         }
@@ -2030,7 +2123,11 @@ void DLManager::ProcessTick() {
         m_lastSpeedSampleBytes = m_totalBytesRx.load();
     } else if (now - m_lastSpeedSampleTick >= 1000) {
         uint64_t cur = m_totalBytesRx.load();
-        m_speedKBps = static_cast<float>(cur - m_lastSpeedSampleBytes) / 1024.0f;
+        // Keep the last useful rate through idle sampling windows. Downloads
+        // often finish between ticks, and writing zero here made the HUD
+        // flicker from a real rate (for example 2000 KiB/s) to 0 every second.
+        if (cur > m_lastSpeedSampleBytes)
+            m_speedKBps = static_cast<float>(cur - m_lastSpeedSampleBytes) / 1024.0f;
         m_lastSpeedSampleTick = now;
         m_lastSpeedSampleBytes = cur;
     }
@@ -2184,17 +2281,77 @@ void DLManager::ToggleOverlay() {
     m_bForceShowOverlay = !m_bForceShowOverlay;
 }
 
-// ---------------------------------------------------------------------------
-// UI - a quiet HUD line, not a panel. Drawn on the same draw list the FPS label
-// uses (classic ImGui windows fight the game for frame ordering).
-//
-// House style (kept from the minimal-UI pass): bottom-left, one short lowercase
-// sentence, the stock outlined HUD font, a hairline progress bar, no card, no
-// border, no brand colour, no counters the player cannot act on.
-//
-// Hardening: sizes measured via calculateTextSize (not a 0.58 guess), laid out
-// bottom-left against the real screen size, and failures are actionable.
-// ---------------------------------------------------------------------------
+bool DLManager::HandleTouchEvent(int type, int pointerId, int x, int y) {
+    if (!m_bInitialized.load() || m_bDownloadFinished.load() || !ImGui::GetCurrentContext())
+        return false;
+
+    ImGuiIO& io = ImGui::GetIO();
+    constexpr int TOUCH_POP = 1;
+    constexpr int TOUCH_PUSH = 2;
+    constexpr int TOUCH_MOVE = 3;
+
+    if (type == TOUCH_PUSH) {
+        if (m_bOverlayHidden) {
+            const bool onRestoreChip =
+                x >= io.DisplaySize.x - 220.0f && x <= io.DisplaySize.x - 12.0f &&
+                y >= io.DisplaySize.y - 72.0f && y <= io.DisplaySize.y - 12.0f;
+            if (!onRestoreChip)
+                return false;
+
+            m_bOverlayHidden = false;
+            m_bOverlayTouchCaptured = true;
+            m_bOverlayDragging = false;
+            m_overlayTouchPointerId = pointerId;
+            return true;
+        }
+
+        const bool insidePanel =
+            x >= m_overlayX && x <= m_overlayX + m_overlayWidth &&
+            y >= m_overlayY && y <= m_overlayY + m_overlayHeight;
+        if (!insidePanel)
+            return false;
+
+        m_bOverlayTouchCaptured = true;
+        m_overlayTouchPointerId = pointerId;
+        m_overlayLastTouchX = static_cast<float>(x);
+        m_overlayLastTouchY = static_cast<float>(y);
+        const bool onHeader = y <= m_overlayY + 58.0f;
+        const bool onHideButton = x >= m_overlayX + m_overlayWidth - 76.0f;
+        m_bOverlayDragging = onHeader && !onHideButton;
+
+        io.MousePos = ImVec2(static_cast<float>(x), static_cast<float>(y));
+        io.MouseDown[0] = true;
+        return true;
+    }
+
+    if (!m_bOverlayTouchCaptured || pointerId != m_overlayTouchPointerId)
+        return false;
+
+    if (type == TOUCH_MOVE) {
+        io.MousePos = ImVec2(static_cast<float>(x), static_cast<float>(y));
+        if (m_bOverlayDragging) {
+            m_overlayX += static_cast<float>(x) - m_overlayLastTouchX;
+            m_overlayY += static_cast<float>(y) - m_overlayLastTouchY;
+            m_overlayX = std::clamp(m_overlayX, 0.0f,
+                std::max(0.0f, io.DisplaySize.x - m_overlayWidth));
+            m_overlayY = std::clamp(m_overlayY, 0.0f,
+                std::max(0.0f, io.DisplaySize.y - m_overlayHeight));
+            m_overlayLastTouchX = static_cast<float>(x);
+            m_overlayLastTouchY = static_cast<float>(y);
+        }
+        return true;
+    }
+
+    if (type == TOUCH_POP) {
+        io.MousePos = ImVec2(static_cast<float>(x), static_cast<float>(y));
+        io.MouseDown[0] = false;
+        m_bOverlayTouchCaptured = false;
+        m_bOverlayDragging = false;
+        m_overlayTouchPointerId = -1;
+        return true;
+    }
+    return true;
+}
 
 void DLManager::RenderImGui() {
     if (!m_bInitialized.load() ||
@@ -2260,183 +2417,127 @@ void DLManager::RenderImGui() {
 
     const ImGuiIO& io = ImGui::GetIO();
 
-    // Responsive panel size based on the actual game resolution.
-    const float panelWidth = ImClamp(
-        io.DisplaySize.x * 0.62f,
-        420.0f,
-        900.0f
-    );
-
-    const float panelHeight = ImClamp(
-        io.DisplaySize.y * 0.78f,
-        420.0f,
-        820.0f
-    );
-
-    // Center the panel when it first appears.
-    static bool firstPosition = true;
-
-    if (firstPosition)
-    {
-        ImGui::SetNextWindowPos(
-            ImVec2(
-                (io.DisplaySize.x - panelWidth) * 0.5f,
-                (io.DisplaySize.y - panelHeight) * 0.5f
-            ),
-            ImGuiCond_Always
-        );
-
-        ImGui::SetNextWindowSize(
-            ImVec2(panelWidth, panelHeight),
-            ImGuiCond_Always
-        );
-
-        firstPosition = false;
+    const float panelWidth = std::min(560.0f, std::max(260.0f, io.DisplaySize.x - 32.0f));
+    const float panelHeight = std::min(560.0f, std::max(300.0f, io.DisplaySize.y - 40.0f));
+    m_overlayWidth = panelWidth;
+    m_overlayHeight = panelHeight;
+    if (!m_bOverlayPositionInitialized) {
+        m_overlayX = (io.DisplaySize.x - panelWidth) * 0.5f;
+        m_overlayY = (io.DisplaySize.y - panelHeight) * 0.5f;
+        m_bOverlayPositionInitialized = true;
     }
+    m_overlayX = std::clamp(m_overlayX, 0.0f,
+        std::max(0.0f, io.DisplaySize.x - panelWidth));
+    m_overlayY = std::clamp(m_overlayY, 0.0f,
+        std::max(0.0f, io.DisplaySize.y - panelHeight));
 
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoResize;
-
-    // Jangan gunakan NoMove agar panel bisa di-drag.
-    if (ImGui::Begin("Custom Model Downloads", nullptr, flags))
-    {
-        ImGui::SetWindowFontScale(1.15f);
-
-        char progressText[96];
-
-        snprintf(
-            progressText,
-            sizeof(progressText),
-            "%zu / %zu processed",
-            processed,
-            totalFiles
-        );
-
-        ImGui::TextDisabled("%s", progressText);
-
-        ImGui::Spacing();
-
-        ImGui::ProgressBar(
-            progress,
-            ImVec2(-1.0f, 8.0f),
-            ""
-        );
-
-        ImGui::Spacing();
-
-        ImGui::Text(
-            "%zu downloaded    %zu cached    %zu failed",
-            done,
-            cached,
-            failed
-        );
-
-        ImGui::Separator();
-
-        const double receivedMiB =
-            static_cast<double>(receivedBytes) / (1024.0 * 1024.0);
-
-        const double expectedMiB =
-            static_cast<double>(expectedBytes) / (1024.0 * 1024.0);
-
-        ImGui::Text(
-            "%.1f MiB received - %.1f KiB/s",
-            receivedMiB,
-            speed
-        );
-
-        ImGui::Text(
-            "%zu / %zu known files - %.1f MiB expected",
-            processed,
-            totalFiles,
-            expectedMiB
-        );
-
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::Text("Files");
-
-        const float listHeight = ImMax(
-            160.0f,
-            ImGui::GetContentRegionAvail().y - 10.0f
-        );
-
-        ImGui::BeginChild(
-            "DownloadFileList",
-            ImVec2(0.0f, listHeight),
-            true
-        );
-
-        if (tasks.empty()) {
-            ImGui::TextDisabled("No pending files.");
-        }
-
-        for (size_t i = 0; i < tasks.size(); ++i) {
-            const auto& task = tasks[i];
-
-            const char* status = "Queued";
-
-            if (task.done)
-                status = "Downloaded";
-            else if (task.failed)
-                status = "Failed";
-            else if (task.started)
-                status = task.haveUrl()
-                    ? "Downloading"
-                    : "Waiting for URL";
-
-            const char* type = task.isDff ? "DFF" : "TXD";
-
-            const double currentSize = task.done
-                ? static_cast<double>(task.size)
-                : 0.0;
-
-            const double totalSize =
-                static_cast<double>(task.size);
-
-            ImGui::PushID(static_cast<int>(i));
-
-            ImGui::Text(
-                "%zu. %s %s",
-                i + 1,
-                type,
-                task.hexName.c_str()
-            );
-
+    if (m_bOverlayHidden) {
+        const float chipWidth = std::min(208.0f, std::max(160.0f, io.DisplaySize.x - 24.0f));
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - chipWidth - 12.0f,
+                                      io.DisplaySize.y - 66.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(chipWidth, 52.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.96f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.055f, 0.067f, 0.09f, 0.98f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.24f, 0.28f, 0.34f, 0.85f));
+        if (ImGui::Begin("##HopePrideDownloadRestore", nullptr,
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "DOWNLOADS");
             ImGui::SameLine();
-
-            ImGui::TextDisabled(
-                "%s - %.1f / %.1f KiB",
-                status,
-                currentSize / 1024.0,
-                totalSize / 1024.0
-            );
-
-            if (task.failed && !task.lastError.empty()) {
-                ImGui::TextColored(
-                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                    "%s",
-                    task.lastError.c_str()
-                );
-            }
-
-            ImGui::Separator();
-
-            ImGui::PopID();
+            ImGui::TextDisabled("%.0f%%  -  tap to open", progress * 100.0f);
         }
-
-        ImGui::EndChild();
-
-        ImGui::Spacing();
-
-        ImGui::TextDisabled(
-            "Active: %zu | Queued: %zu",
-            active,
-            queued
-        );
+        ImGui::End();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(2);
+        return;
     }
 
+    ImGui::SetNextWindowPos(ImVec2(m_overlayX, m_overlayY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(panelWidth, panelHeight), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.97f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0f, 16.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.055f, 0.067f, 0.09f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.24f, 0.28f, 0.34f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.095f, 0.12f, 0.92f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.14f, 0.16f, 0.19f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.91f, 0.18f, 0.22f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.23f, 0.26f, 0.31f, 0.8f));
+
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
+
+    if (ImGui::Begin("##HopePrideDownloadPanel", nullptr, flags)) {
+        ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "HOPEPRIDE");
+        ImGui::SameLine();
+        ImGui::TextDisabled("SERVER DOWNLOAD");
+        ImGui::SameLine(ImGui::GetWindowWidth() - 64.0f);
+        if (ImGui::Button("Hide", ImVec2(48.0f, 26.0f)))
+            m_bOverlayHidden = true;
+        ImGui::Spacing();
+        ImGui::Text("Preparing custom models");
+
+        ImGui::SameLine(ImGui::GetWindowWidth() - 68.0f);
+        ImGui::TextColored(ImVec4(0.98f, 0.98f, 1.0f, 1.0f), "%.0f%%", progress * 100.0f);
+        ImGui::ProgressBar(progress, ImVec2(-1.0f, 10.0f), "");
+        ImGui::TextDisabled("%zu of %zu files", processed, totalFiles);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("TRANSFER STATUS");
+        ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "%.0f KiB/s", speed);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%zu active  |  %zu queued", active, queued);
+
+        const double receivedMiB = static_cast<double>(receivedBytes) / (1024.0 * 1024.0);
+        const double expectedMiB = static_cast<double>(expectedBytes) / (1024.0 * 1024.0);
+        ImGui::TextDisabled("%.1f MiB transferred  |  %.1f MiB total", receivedMiB, expectedMiB);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::Text("FILES");
+
+        const float listHeight = std::max(80.0f, ImGui::GetContentRegionAvail().y - 4.0f);
+        ImGui::BeginChild("DownloadFileList", ImVec2(0.0f, listHeight), true);
+        if (tasks.empty()) {
+            ImGui::TextDisabled("Checking server files...");
+        } else {
+            for (size_t i = 0; i < tasks.size(); ++i) {
+                const auto& task = tasks[i];
+                const char* status = task.done ? "DONE" : task.failed ? "FAILED" :
+                    task.started ? (task.haveUrl() ? "DOWNLOADING" : "CONNECTING") : "WAITING";
+                const ImVec4 statusColor = task.done
+                    ? ImVec4(0.35f, 0.82f, 0.55f, 1.0f)
+                    : task.failed ? ImVec4(0.96f, 0.34f, 0.34f, 1.0f)
+                    : task.started ? ImVec4(0.98f, 0.69f, 0.25f, 1.0f)
+                    : ImVec4(0.58f, 0.62f, 0.69f, 1.0f);
+
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TextColored(statusColor, "%s", status);
+                ImGui::SameLine(105.0f);
+                ImGui::Text("%s", task.hexName.c_str());
+                ImGui::SameLine(ImGui::GetWindowWidth() - 90.0f);
+                ImGui::TextDisabled("%.1f KiB", static_cast<double>(task.size) / 1024.0);
+                if (task.failed && !task.lastError.empty())
+                    ImGui::TextColored(ImVec4(0.96f, 0.34f, 0.34f, 1.0f), "%s", task.lastError.c_str());
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndChild();
+    }
     ImGui::End();
+
+    ImGui::PopStyleColor(6);
+    ImGui::PopStyleVar(5);
 }
