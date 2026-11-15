@@ -178,15 +178,25 @@ static bool CopyFileForCustomTxd(const std::string& source, const std::string& t
 
 static RwTexDictionary* LoadCustomTxd(const std::string& path)
 {
-    if (!RwTexDictionaryGtaStreamRead)
+    if (!pRwStreamOpen || !pRwStreamClose || !RwTexDictionaryGtaStreamRead)
+    {
+        FLog("DLManager: RenderWare TXD stream functions unavailable (open=%d close=%d read=%d)",
+             pRwStreamOpen != nullptr, pRwStreamClose != nullptr,
+             RwTexDictionaryGtaStreamRead != nullptr);
         return nullptr;
+    }
 
-    RwStream* stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, path.c_str());
+    RwStream* stream = pRwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, path.c_str());
     if (!stream)
+    {
+        FLog("DLManager: RwStreamOpen failed for TXD: %s", path.c_str());
         return nullptr;
+    }
 
     RwTexDictionary* dictionary = RwTexDictionaryGtaStreamRead(stream);
-    RwStreamClose(stream, nullptr);
+    pRwStreamClose(stream, nullptr);
+    if (!dictionary)
+        FLog("DLManager: RwTexDictionaryGtaStreamRead failed for TXD: %s", path.c_str());
     return dictionary;
 }
 
@@ -831,22 +841,34 @@ bool DLManager::RegisterCustomModels() {
             char stagedName[40];
             snprintf(stagedName, sizeof(stagedName), "0x%08X.txd", mf.txdCrc);
             const std::string stagedPath = txdDirectory + stagedName;
-            const bool copied = CopyFileForCustomTxd(mf.txdPath, stagedPath) &&
-                CalculateFileCRC32(stagedPath) == mf.txdCrc;
+            const bool copied = CopyFileForCustomTxd(mf.txdPath, stagedPath);
+            const uint32_t stagedCrc = copied ? CalculateFileCRC32(stagedPath) : 0;
+            const bool crcValid = copied && stagedCrc == mf.txdCrc;
+            if (!copied)
+                FLog("DLManager: failed to copy TXD CRC %08X from %s to %s",
+                     mf.txdCrc, mf.txdPath.c_str(), stagedPath.c_str());
+            else if (!crcValid)
+                FLog("DLManager: staged TXD CRC mismatch: expected %08X got %08X (%s)",
+                     mf.txdCrc, stagedCrc, stagedPath.c_str());
             RwTexDictionary* dictionary = nullptr;
             bool dictionaryLoadedHere = false;
             if (slot && slot->m_pRwDictionary) {
                 dictionary = reinterpret_cast<RwTexDictionary*>(slot->m_pRwDictionary);
-            } else if (slot && copied) {
+                FLog("DLManager: reusing TXD dictionary CRC %08X in slot %d",
+                     mf.txdCrc, txdIndex);
+            } else if (slot && crcValid) {
                 dictionary = LoadCustomTxd(stagedPath);
                 if (dictionary) {
                     slot->m_pRwDictionary = reinterpret_cast<uintptr*>(dictionary);
                     dictionaryLoadedHere = true;
+                    FLog("DLManager: loaded TXD CRC %08X in slot %d",
+                         mf.txdCrc, txdIndex);
                 }
             }
 
             if (!slot || !dictionary) {
-                FLog("DLManager: failed to load custom TXD CRC %08X", mf.txdCrc);
+                FLog("DLManager: failed to load custom TXD CRC %08X (slot=%d slotPtr=%p dict=%p)",
+                     mf.txdCrc, txdIndex, slot, dictionary);
                 failedTxds.insert(mf.txdCrc);
             } else {
                 txdSlots.emplace(mf.txdCrc, txdIndex);
@@ -2408,6 +2430,10 @@ void DLManager::RenderImGui() {
 
     const uint64_t receivedBytes = m_totalBytesRx.load();
     const float speed = m_speedKBps.load();
+    const ImVec4 accentBlue(0.0f, 119.0f / 255.0f, 1.0f, 1.0f);       // #0077FF
+    const ImVec4 accentBlueSoft(0.0f, 128.0f / 255.0f, 1.0f,
+                                153.0f / 255.0f);                    // #0080FF99
+    const ImVec4 borderBlue(0.08f, 0.25f, 0.42f, 0.9f);
 
     const float progress = totalFiles > 0
         ? std::clamp(
@@ -2418,7 +2444,7 @@ void DLManager::RenderImGui() {
 
     const ImGuiIO& io = ImGui::GetIO();
 
-    const float panelWidth = std::min(560.0f, std::max(260.0f, io.DisplaySize.x - 32.0f));
+    const float panelWidth = std::min(760.0f, std::max(260.0f, io.DisplaySize.x - 24.0f));
     const float panelHeight = std::min(560.0f, std::max(300.0f, io.DisplaySize.y - 40.0f));
     m_overlayWidth = panelWidth;
     m_overlayHeight = panelHeight;
@@ -2441,11 +2467,11 @@ void DLManager::RenderImGui() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.055f, 0.067f, 0.09f, 0.98f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.24f, 0.28f, 0.34f, 0.85f));
+        ImGui::PushStyleColor(ImGuiCol_Border, borderBlue);
         if (ImGui::Begin("##HopePrideDownloadRestore", nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
-            ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "DOWNLOADS");
+            ImGui::TextColored(accentBlue, "DOWNLOADS");
             ImGui::SameLine();
             ImGui::TextDisabled("%.0f%%  -  tap to open", progress * 100.0f);
         }
@@ -2465,18 +2491,18 @@ void DLManager::RenderImGui() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0f, 16.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.055f, 0.067f, 0.09f, 0.98f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.24f, 0.28f, 0.34f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_Border, borderBlue);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.095f, 0.12f, 0.92f));
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.14f, 0.16f, 0.19f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.91f, 0.18f, 0.22f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.23f, 0.26f, 0.31f, 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, accentBlueSoft);
+    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.08f, 0.22f, 0.36f, 0.85f));
 
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
     if (ImGui::Begin("##HopePrideDownloadPanel", nullptr, flags)) {
-        ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "HOPEPRIDE");
+        ImGui::TextColored(accentBlue, "HOPEPRIDE");
         ImGui::SameLine();
         ImGui::TextDisabled("SERVER DOWNLOAD");
         ImGui::SameLine(ImGui::GetWindowWidth() - 64.0f);
@@ -2495,7 +2521,7 @@ void DLManager::RenderImGui() {
         ImGui::Spacing();
 
         ImGui::Text("TRANSFER STATUS");
-        ImGui::TextColored(ImVec4(0.95f, 0.22f, 0.25f, 1.0f), "%.0f KiB/s", speed);
+        ImGui::TextColored(accentBlue, "%.0f KiB/s", speed);
         ImGui::SameLine();
         ImGui::TextDisabled("%zu active  |  %zu queued", active, queued);
 
@@ -2530,7 +2556,8 @@ void DLManager::RenderImGui() {
                 ImGui::SameLine(ImGui::GetWindowWidth() - 90.0f);
                 ImGui::TextDisabled("%.1f KiB", static_cast<double>(task.size) / 1024.0);
                 if (task.failed && !task.lastError.empty())
-                    ImGui::TextColored(ImVec4(0.96f, 0.34f, 0.34f, 1.0f), "%s", task.lastError.c_str());
+                    ImGui::TextColored(ImVec4(0.96f, 0.34f, 0.34f, 1.0f),
+                                       "%s", task.lastError.c_str());
                 ImGui::Separator();
                 ImGui::PopID();
             }
