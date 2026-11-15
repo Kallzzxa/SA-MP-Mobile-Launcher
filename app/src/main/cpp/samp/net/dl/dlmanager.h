@@ -164,7 +164,7 @@ private:
     // Custom models successfully registered with the game engine
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
-    std::vector<int32> m_customTxdSlots;
+    std::vector<int32_t> m_customTxdSlots;
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.
