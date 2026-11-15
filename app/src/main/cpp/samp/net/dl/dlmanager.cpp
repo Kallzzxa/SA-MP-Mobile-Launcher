@@ -805,7 +805,6 @@ void DLManager::Reset() {
     m_bOverlayDragging = false;
     m_overlayTouchPointerId = -1;
     m_bReportedNoManifest = false;
-    m_rpc183DumpCount = 0;
     m_lastActivity.clear();
 
     {
@@ -839,8 +838,12 @@ bool DLManager::IsModelCached(uint32_t crc, uint32_t expectedSize, bool isDff) c
     if (stat(path.c_str(), &st) != 0) return false;
     // CRC is the source of truth (audit A1). A size mismatch never deletes a
     // CRC-correct file and never forces a re-download; only a CRC mismatch does.
-    if (CalculateFileCRC32(path) != crc) {
-        unlink(path.c_str());
+    const uint32_t actualCrc = CalculateFileCRC32(path);
+    if (actualCrc != crc) {
+        const int unlinkResult = unlink(path.c_str());
+        FLog("DLManager: purged bad cache %s expectedCRC=%08X actualCRC=%08X bytes=%lld expectedBytes=%u unlink=%d errno=%d",
+             path.c_str(), crc, actualCrc, static_cast<long long>(st.st_size),
+             expectedSize, unlinkResult, unlinkResult == 0 ? 0 : errno);
         return false;
     }
     return true;
@@ -853,7 +856,9 @@ bool DLManager::ValidateOrPurge(const std::string& path, uint32_t crc, uint32_t 
     if (actualCrc != crc) {
         FLog("DLManager: invalid cached asset: %s expectedCRC=%08X actualCRC=%08X size=%lld expectedSize=%u",
              path.c_str(), crc, actualCrc, static_cast<long long>(st.st_size), expectedSize);
-        unlink(path.c_str());
+        const int unlinkResult = unlink(path.c_str());
+        FLog("DLManager: purged invalid cache %s unlink=%d errno=%d",
+             path.c_str(), unlinkResult, unlinkResult == 0 ? 0 : errno);
         return false;
     }
     return true;
@@ -1415,14 +1420,6 @@ void DLManager::FlushChatQueue() {
     }
 }
 
-int DLManager::Next183DumpIndex() {
-    int c = m_rpc183DumpCount.load();
-    if (c < 3) {
-        return m_rpc183DumpCount.fetch_add(1);
-    }
-    return -1;
-}
-
 // ---------------------------------------------------------------------------
 // RPC inbound: 179 ModelRequest (S->C) - one packet per registered model
 // ---------------------------------------------------------------------------
@@ -1538,8 +1535,11 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     if (!bs.Read(fileType)) return;
     if (!bs.Read(fileChecksum)) return;
 
-    if (fileChecksum == 0 || (fileType != 1 && fileType != 2))
+    if (fileChecksum == 0 || (fileType != 1 && fileType != 2)) {
+        FLog("DLManager: rejected RPC 183 header (arg=%u type=%u crc=%08X bytes=%d)",
+             arg, fileType, fileChecksum, byteLength);
         return;
+    }
 
     const bool isDff = (fileType == 1);
 
@@ -1565,8 +1565,12 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
         const uint8_t* payload = data + payloadOffset;
 
         // Pastikan CRC sesuai dengan checksum dari server.
-        if (CalculateCRC32(payload, fileLength) != fileChecksum)
+        const uint32_t payloadCrc = CalculateCRC32(payload, fileLength);
+        if (payloadCrc != fileChecksum) {
+            FLog("DLManager: rejected in-band RPC 183 CRC (expected=%08X got=%08X bytes=%u)",
+                 fileChecksum, payloadCrc, fileLength);
             return;
+        }
 
         uint32_t expectedSize = 0;
         bool foundTask = false;
@@ -1583,11 +1587,17 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
             }
         }
 
-        if (!foundTask)
+        if (!foundTask) {
+            FLog("DLManager: ignored in-band RPC 183 without task (type=%u crc=%08X)",
+                 fileType, fileChecksum);
             return;
+        }
 
-        if (expectedSize > 0 && fileLength != expectedSize)
+        if (expectedSize > 0 && fileLength != expectedSize) {
+            FLog("DLManager: rejected in-band RPC 183 size (crc=%08X got=%u expected=%u)",
+                 fileChecksum, fileLength, expectedSize);
             return;
+        }
 
         const std::string finalPath = GetModelPath(fileChecksum, isDff);
 
@@ -1644,11 +1654,19 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
                 if (t.crc != fileChecksum || t.isDff != isDff)
                     continue;
 
+                const bool wasFailed = t.failed;
                 t.done = true;
                 t.failed = false;
                 t.started = false;
                 t.url.clear();
                 t.lastError.clear();
+                if (wasFailed) {
+                    m_failedModels.fetch_sub(1);
+                    m_bFinishRequested = false;
+                    m_bDownloadFinished = false;
+                    m_bFinishSent = false;
+                    m_bModelsRegistered = false;
+                }
                 break;
             }
         }
@@ -1667,35 +1685,66 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
         if (!bs.Read(urlLen))
             return;
 
-        if (urlLen == 0 || urlLen > DL_MAX_URL_BYTES)
+        if (urlLen == 0 || urlLen > DL_MAX_URL_BYTES) {
+            FLog("DLManager: rejected HTTP RPC 183 URL length (crc=%08X len=%u)",
+                 fileChecksum, urlLen);
             return;
+        }
 
         const size_t available =
             (byteLength > 7) ? static_cast<size_t>(byteLength - 7) : 0u;
 
-        if (urlLen > available)
+        if (urlLen > available) {
+            FLog("DLManager: rejected truncated HTTP RPC 183 (crc=%08X len=%u payload=%zu)",
+                 fileChecksum, urlLen, available);
             return;
+        }
 
         char urlBuffer[512] = {0};
 
-        if (!bs.Read(urlBuffer, urlLen))
+        if (!bs.Read(urlBuffer, urlLen)) {
+            FLog("DLManager: failed to read HTTP RPC 183 URL (crc=%08X len=%u)",
+                 fileChecksum, urlLen);
             return;
+        }
 
         urlBuffer[urlLen] = '\0';
 
         std::string url(urlBuffer);
 
+        bool matchedTask = false;
+        bool recoveredLateTask = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
 
             for (auto& t : m_tasks) {
                 if (t.crc == fileChecksum && t.isDff == isDff) {
-                    if (!t.done && !t.failed)
+                    matchedTask = true;
+                    if (t.failed && !t.done) {
+                        t.failed = false;
+                        t.started = false;
+                        t.attempts = 0;
+                        t.lastError.clear();
+                        m_failedModels.fetch_sub(1);
+                        m_bFinishRequested = false;
+                        m_bDownloadFinished = false;
+                        m_bFinishSent = false;
+                        m_bModelsRegistered = false;
+                        recoveredLateTask = true;
+                    }
+                    if (!t.done) {
                         t.url = url;
+                        t.started = false;
+                    }
                     break;
                 }
             }
         }
+
+        FLog("DLManager: RPC 183 HTTP URL %s%s (type=%s crc=%08X len=%u)",
+             matchedTask ? "matched" : "unmatched",
+             recoveredLateTask ? "; recovered timed-out task" : "",
+             isDff ? "DFF" : "TXD", fileChecksum, urlLen);
 
         m_workCv.notify_all();
     }
@@ -2326,6 +2375,9 @@ void DLManager::ProcessRpcOutbox() {
         int rpcId = item.second ? RPC_RequestDff : RPC_RequestTxd;
         client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                     UNASSIGNED_NETWORK_ID, nullptr);
+
+        FLog("DLManager: requested %s CRC %08X from server",
+             item.second ? "DFF" : "TXD", item.first);
 
         // Diagnostic per-RPC chat log removed (was commit b978e39): with 325+
         // models it spams hundreds of "-> 181/182" lines that look like a retry

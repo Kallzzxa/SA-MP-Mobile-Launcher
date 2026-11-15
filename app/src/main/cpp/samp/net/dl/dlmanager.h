@@ -35,7 +35,7 @@ static const size_t DL_MAX_HTTP_HEADER     = 8192u; // cap on response header bu
 static const size_t DL_MAX_REDIRECTS       = 3;
 static const uint32_t DL_HTTP_STALL_MS     = 15000; // no bytes for this long => fail
 static const uint32_t DL_CONNECT_TIMEOUT_MS= 8000;
-static const uint32_t DL_URL_WAIT_MS       = 10000; // wait for RPC 183 after request
+static const uint32_t DL_URL_WAIT_MS       = 30000; // server callback / RPC delivery can be delayed
 static const int      DL_MAX_ATTEMPTS      = 4;
 // Internal CModelInfo/DFF indices must stay inside [0, 19999].
 // Allocate only slots whose CModelInfo pointer is currently null.
@@ -141,7 +141,6 @@ public:
     void RequestRetryFailed();  // user action: re-arm all failed tasks for one more pass
     bool IsOverlayForced() const { return m_bForceShowOverlay; }
     void PushChat(const std::string& line) const;  // thread-safe: queues for game thread
-    int Next183DumpIndex();
 
 private:
     DLManager();
@@ -240,7 +239,6 @@ private:
     float m_overlayLastTouchX{0.0f};
     float m_overlayLastTouchY{0.0f};
     bool m_bReportedNoManifest{false};
-    std::atomic<int> m_rpc183DumpCount{0};
     std::string m_lastActivity;
 };
 
