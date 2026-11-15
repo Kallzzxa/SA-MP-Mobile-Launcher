@@ -16,6 +16,7 @@
 #include "../../vendor/raknet/BitStream.h"
 #include "../../vendor/raknet/RakClientInterface.h"
 #include "../../vendor/raknet/NetworkTypes.h"
+#include "../../game/Collision/ColModel.h"
 
 // Model types in SA-MP 0.3.DL wire format
 enum class DLModelType : uint8_t {
@@ -36,7 +37,9 @@ static const uint32_t DL_HTTP_STALL_MS     = 15000; // no bytes for this long =>
 static const uint32_t DL_CONNECT_TIMEOUT_MS= 8000;
 static const uint32_t DL_URL_WAIT_MS       = 10000; // wait for RPC 183 after request
 static const int      DL_MAX_ATTEMPTS      = 4;
-static const int16_t  DL_VIRT_MIN          = 18631; // safe internal CModelInfo range
+// Internal CModelInfo/DFF indices must stay inside [0, 19999].
+// Allocate only slots whose CModelInfo pointer is currently null.
+static const int16_t  DL_VIRT_MIN          = 1;
 static const int16_t  DL_VIRT_MAX          = 19999;
 
 struct DLModelInfo {
@@ -75,6 +78,15 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
+struct DLLocalMod {
+    int32_t serverModelId{0};
+    int16_t virtualModelId{-1};
+    int32_t baseId{0};
+    std::string dffPath;
+    std::string archiveName;
+    std::vector<std::string> pngPaths;
+};
+
 class DLManager {
 public:
     static DLManager& Instance();
@@ -83,6 +95,7 @@ public:
     void Reset();
     void ProcessTick();
     void RenderImGui();
+    bool HandleTouchEvent(int type, int pointerId, int x, int y);
 
     // RPC Handlers (invoked on the RakNet UpdateNetworkLoop thread - never block)
     void OnModelRequest(RPCParameters* rpcParams);
@@ -99,11 +112,12 @@ public:
     // Virtual Model Mapping (Part 4 solution)
     int16_t GetVirtualModelId(int32_t networkId);
     int32_t GetNetworkModelId(int16_t virtualId);
+    int32_t GetBaseModelId(int32_t networkId) const;
 
-    // Custom model registration (0.3.DL PR #3): packs downloaded DFF/TXD
-    // into a custom IMG, registers it with the streaming system, and
-    // allocates CModelInfo slots. Called once on the game thread after
-    // all downloads settle. Returns true if at least one model registered.
+    // Custom model registration (0.3.DL PR #3): loads CRC-addressed TXDs into
+    // TxdDef slots, packs DFFs into a custom IMG, and allocates CModelInfo
+    // slots. Called once on the game thread after all downloads settle.
+    // Returns true if at least one model registered.
     bool RegisterCustomModels();
     // True if virtualId was successfully registered via RegisterCustomModels.
     // Used by the fallback guard so unregistered models fall back to base.
@@ -115,7 +129,12 @@ public:
     int GetDownloadedModels() const { return m_downloadedModels.load(); }
     int GetActiveWorkers() const { return m_activeWorkers.load(); }
     float GetCurrentSpeedKBps() const { return m_speedKBps.load(); }
+    void ReportReceivedBytes(uint64_t bytes) {
+        if (bytes > 0)
+            m_totalBytesRx.fetch_add(bytes, std::memory_order_relaxed);
+    }
     void GetProgressStats(size_t& queued, size_t& active, size_t& done, size_t& failed) const;
+    void GetModelProgressStats(size_t& ready, size_t& failed, size_t& pending) const;
 
     void SendFinishDownload();
     void ToggleOverlay();
@@ -144,7 +163,8 @@ private:
 
     std::string m_serverIp;
     int m_serverPort;
-    std::string m_cachePath;
+   std::string m_cachePath;
+    std::string m_storagePath;
     mutable std::mutex m_cachePathMutex;   // guards m_cachePath string read by workers
     RakClientInterface* m_pRakClient;      // game-thread owned; nulled on Reset
 
@@ -152,14 +172,21 @@ private:
 
     // Model registry
     std::vector<DLModelInfo> m_models;
+    std::vector<DLLocalMod> m_localMods;
+    std::unordered_set<int32_t> m_localServerModelIds;
     std::unordered_map<int32_t, int16_t> m_networkToVirtual;
     std::unordered_map<int16_t, int32_t> m_virtualToNetwork;
-    int16_t m_nextVirtualId{DL_VIRT_MIN};
+    int16_t m_nextVirtualId{DL_VIRT_MAX};
     bool    m_bVirtualIdExhausted{false};
 
     // Custom models successfully registered with the game engine
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
+    std::vector<int32_t> m_customTxdSlots;
+    std::vector<CColModel*> m_customColModels;
+    size_t m_atomicStoreStartCount{0};
+    size_t m_pedStoreStartCount{0};
+    bool m_modelStoreStartCaptured{false};
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.
@@ -201,6 +228,17 @@ private:
     uint32_t m_lastModelRequestTick{0};
     uint32_t m_finishTime{0};
     bool m_bForceShowOverlay{false};
+    bool m_bOverlayHidden{false};
+    bool m_bOverlayPositionInitialized{false};
+    bool m_bOverlayTouchCaptured{false};
+    bool m_bOverlayDragging{false};
+    int m_overlayTouchPointerId{-1};
+    float m_overlayX{0.0f};
+    float m_overlayY{0.0f};
+    float m_overlayWidth{0.0f};
+    float m_overlayHeight{0.0f};
+    float m_overlayLastTouchX{0.0f};
+    float m_overlayLastTouchY{0.0f};
     bool m_bReportedNoManifest{false};
     std::atomic<int> m_rpc183DumpCount{0};
     std::string m_lastActivity;

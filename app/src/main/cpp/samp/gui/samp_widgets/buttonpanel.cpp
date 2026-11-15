@@ -12,7 +12,6 @@ extern CGame *pGame;
 
 
 bool OpenButton = false;
-int Tab = 0;
 
 ButtonPanel::ButtonPanel()
 	: Layout(Orientation::HORIZONTAL)
@@ -35,15 +34,10 @@ ButtonPanel::ButtonPanel()
 	CButton* m_bUSE = new CButton("USE", UISettings::fontSize() / 2);
 	CButton* m_b2 = new CButton("2", UISettings::fontSize() / 2);
 	
-	m_bTab->setCallback([]() 
-	{ 
-		if (Tab == 0) {
-			if (pUI) { pUI->playertablist()->show(); Tab = 1; }
-		}
-		else {
-			Tab = 0;
-		}
-		//pNetGame->SendChatCommand("/tab"); 
+	m_bTab->setCallback([]() {
+		if (!pUI || !pUI->playertablist()) return;
+		if (pUI->playertablist()->visible()) pUI->playertablist()->hide();
+		else pUI->playertablist()->show();
 	});
 	m_bOpen->setCallback([]() { OpenButton = true; });
 	m_bClose->setCallback([]() { OpenButton = false; });

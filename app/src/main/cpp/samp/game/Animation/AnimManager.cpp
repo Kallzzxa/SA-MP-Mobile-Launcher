@@ -532,10 +532,10 @@ CAnimBlendAssociation* CAnimManager::BlendAnimation(RpClump* clump, AssocGroupId
 
 // 0x4D5620
 void CAnimManager::LoadAnimFiles() {
-    RwStream* stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, "ANIM\\PED.IFP");
+    RwStream* stream = pRwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, "ANIM\\PED.IFP");
     assert(stream);
     LoadAnimFile(stream, true);
-    RwStreamClose(stream, nullptr);
+    pRwStreamClose(stream, nullptr);
 
     ms_aAnimAssocGroups = new CAnimBlendAssocGroup[ms_numAnimAssocDefinitions];
     CreateAnimAssocGroups();

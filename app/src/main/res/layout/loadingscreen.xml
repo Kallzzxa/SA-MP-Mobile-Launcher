@@ -3,33 +3,61 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#090D16">
 
     <ImageView
-        android:id="@+id/imageView3"
-        android:layout_width="270dp"
-        android:layout_height="178dp"
-        android:scaleType="fitCenter"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:alpha="0.18"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.496"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.499"
-        app:srcCompat="@drawable/samp_logo" />
+        app:srcCompat="@drawable/hopepride_banner" />
 
-    <ProgressBar
-        android:id="@+id/progressBar2"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="120dp"
+    <LinearLayout
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginBottom="40dp"
-        android:indeterminate="false"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="#0284C7"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+        <ImageView
+            android:id="@+id/imageView3"
+            android:layout_width="92dp"
+            android:layout_height="92dp"
+            android:contentDescription="@string/hopepride_logo_description"
+            android:scaleType="fitCenter"
+            app:srcCompat="@drawable/hopepride_logo" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:letterSpacing="0.08"
+            android:text="HOPEPRIDE"
+            android:textColor="#F8FAFC"
+            android:textSize="20sp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="@font/montserrat_medium"
+            android:text="Menyiapkan game dan server..."
+            android:textColor="#94A3B8"
+            android:textSize="12sp" />
+        <ProgressBar
+            android:id="@+id/progressBar2"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="180dp"
+            android:layout_height="6dp"
+            android:layout_marginTop="20dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#38BDF8" />
+    </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

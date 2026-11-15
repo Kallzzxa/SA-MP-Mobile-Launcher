@@ -54,6 +54,7 @@ Keyboard::Keyboard()
 	m_activeLayout->setVisible(true);
 
 	m_history = new KeyboardHistory();
+	m_caller = nullptr;
 }
 
 void Keyboard::performLayout()
@@ -190,6 +191,7 @@ void Keyboard::sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	memcpy(buffer, elements, v8);
 	buffer[v8] = 0;
 	std::string input = std::string(buffer);
+	free(buffer);
 	if (m_caller) m_caller->keyboardEvent(input);
 	hide();
 	pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);
@@ -804,44 +806,36 @@ void KeyboardLayoutNUM::performLayout()
 
 KeyboardHistory::KeyboardHistory()
 {
-	m_index = 0;
+	m_index = -1;
 	m_count = 0;
 	m_vMessages.resize(KEYBOARD_MAX_HISTORY_MESSAGES);
 }
 
 void KeyboardHistory::add(const std::string& input)
 {
-	for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 2; i > 0; i--)
-	{
-		std::string str = m_vMessages[i];
+	if (input.empty()) return;
+	for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 1; i > 0; --i)
 		m_vMessages[i] = m_vMessages[i - 1];
-		m_vMessages[i - 1] = str;
-	}
-
 	m_vMessages[0] = input;
-	if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) m_count++;
+	if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) ++m_count;
+	reset();
 }
 
 void KeyboardHistory::reset()
 {
-	m_index = 0;
+	m_index = -1;
 }
 
 const std::string KeyboardHistory::next()
 {
-	if (m_count == 0) return "";
-
-	std::string str = m_vMessages[m_index];
-
-	if (m_index < m_count - 1) m_index++;
-	return str;
+	if (m_index < 0) return "";
+	--m_index;
+	return m_index < 0 ? "" : m_vMessages[m_index];
 }
 
 const std::string KeyboardHistory::prev()
 {
 	if (m_count == 0) return "";
-
-	std::string str = m_vMessages[m_index];
-	if (m_index > 0) m_index--;
-	return str;
+	if (m_index < m_count - 1) ++m_index;
+	return m_vMessages[m_index];
 }

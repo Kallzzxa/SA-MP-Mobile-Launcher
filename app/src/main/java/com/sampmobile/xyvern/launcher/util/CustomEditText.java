@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -7,7 +7,7 @@ import android.view.KeyEvent;
 import android.widget.EditText;
 
 import com.nvidia.devtech.NvEventQueueActivity;
-import com.sampmobile.xyvern.game.SAMP;
+import com.hopepride.samp.game.SAMP;
 
 @SuppressLint("AppCompatCustomView")
 public class CustomEditText extends EditText {

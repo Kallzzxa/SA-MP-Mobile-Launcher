@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.data;
+package com.hopepride.samp.launcher.data;
 
 public class FavoriteServerData {
 

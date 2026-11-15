@@ -51,6 +51,10 @@ typedef struct ATTACHED_OBJECT_INFO
 #pragma pack(pop)
 VALIDATE_SIZE(ATTACHED_OBJECT_INFO, 52);
 
+// SA-MP supports 10 attached object slots per player. Slots outside this
+// range are not part of the protocol and must never reach the attach map.
+static const int MAX_ATTACHED_OBJECTS = 10;
+
 class CPlayerPed
 {
 public:

@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui;
+package com.hopepride.samp.game.ui;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -12,8 +12,8 @@ import android.widget.TextView;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.util.Util;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.Util;
 @Obfuscate
 public class AttachEdit {
     // Native button types (must match C++ AttachClick handler)

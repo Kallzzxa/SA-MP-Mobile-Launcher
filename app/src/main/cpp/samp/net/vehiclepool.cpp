@@ -31,6 +31,7 @@ CVehiclePool::~CVehiclePool()
 
 bool CVehiclePool::New(NEW_VEHICLE* new_veh)
 {
+    if (!new_veh || new_veh->VehicleID >= MAX_VEHICLES) return false;
     if (m_pVehicles[new_veh->VehicleID]) {
         //if (pUI) gui->chat()->addDebugMessage("Warning: vehicle %u was not deleted", new_veh->VehicleID);
         Delete(new_veh->VehicleID);

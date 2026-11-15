@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 import android.content.Context;
 import android.util.AttributeSet;
@@ -6,7 +6,7 @@ import android.view.MotionEvent;
 
 import androidx.viewpager.widget.ViewPager;
 
-import com.sampmobile.xyvern.launcher.MainActivity;
+import com.hopepride.samp.launcher.MainActivity;
 
 public final class ViewPagerWithoutSwipe extends ViewPager {
     @Override

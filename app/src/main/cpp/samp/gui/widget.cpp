@@ -52,7 +52,7 @@ void Widget::setWidth(float width)
 void Widget::setHeight(float height)
 {
 	/* min */
-	if (height < m_minSize.y) height = m_maxSize.y;
+	if (height < m_minSize.y) height = m_minSize.y;
 	/* max */
 	if (height > m_maxSize.y) height = m_maxSize.y;
 

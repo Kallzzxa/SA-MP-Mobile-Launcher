@@ -78,12 +78,13 @@ public:
 
 	VEHICLEID FindIDFromGtaPtr(CVehicleGTA* pGtaVehicle)
 	{
+		if (!pGtaVehicle) return INVALID_VEHICLE_ID;
 		for (int i = 0; i < MAX_VEHICLES; i++)
 		{
-			if (m_pGTAVehicles[i] == pGtaVehicle) {
+			if (m_bVehicleSlotState[i] && m_pGTAVehicles[i] == pGtaVehicle)
 				return i;
-			}
 		}
+		return INVALID_VEHICLE_ID;
 	}
 
 	

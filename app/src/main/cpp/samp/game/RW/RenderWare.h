@@ -10,6 +10,34 @@
 #include "rpworld.h"
 #include "RwHelper.h"
 
+#include "stream.h"
+
+struct RwTexDictionary;
+
+extern RwStream* (*pRwStreamOpen)(
+    RwStreamType type,
+    RwStreamAccessType accessType,
+    const void* data
+);
+
+extern RwBool (*RwStreamFindChunk)(
+    RwStream* stream,
+    RwUInt32 type,
+    RwUInt32* lengthOut,
+    RwUInt32* versionOut
+);
+
+extern RwBool (*pRwStreamClose)(RwStream* stream, void* data);
+
+extern RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
+    RwStream* stream
+);
+extern RwTexDictionary* (*RwTexDictionaryCreate)(void);
+extern RwBool (*RwTexDictionaryDestroy)(RwTexDictionary* dictionary);
+extern RwTexture* (*RwTexDictionaryAddTexture)(RwTexDictionary* dictionary, RwTexture* texture);
+
+extern RpClump* (*RpClumpStreamRead)(RwStream* stream);
+
 /* skeleton.h */
 typedef struct RsGlobalType RsGlobalType;
 struct RsGlobalType

@@ -55,7 +55,7 @@ void CObjectEditor::showGui() {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_ui_AttachEdit_Exit(JNIEnv *env, jobject thiz) {
+Java_com_hopepride_samp_game_ui_AttachEdit_Exit(JNIEnv *env, jobject thiz) {
     CPlayerPed* pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     int slot = CObjectEditor::iEditedId;
 
@@ -124,7 +124,7 @@ void CObjectEditor::SendOnEditAttach(int response, int index, int modelid, int b
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject thiz, jint button_type,
+Java_com_hopepride_samp_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject thiz, jint button_type,
                                                   jboolean button_id) {
 
     auto pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
@@ -296,7 +296,7 @@ Java_com_sampmobile_xyvern_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject t
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
+Java_com_hopepride_samp_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
     CPlayerPed* pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     int slot = CObjectEditor::iEditedId;
     auto attach = pPlayer->GetAttachedObject(slot);
@@ -363,6 +363,6 @@ void CObjectEditor::ProcessGizmo() {
 // JNI: set gizmo active axis dari Java (0=X, 1=Y, 2=Z, -1=none)
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_sampmobile_xyvern_game_ui_AttachEdit_SetGizmoAxis(JNIEnv *env, jobject thiz, jint axis) {
+Java_com_hopepride_samp_game_ui_AttachEdit_SetGizmoAxis(JNIEnv *env, jobject thiz, jint axis) {
     CGizmo::SetActiveAxis((CGizmo::eAxis)axis);
 }

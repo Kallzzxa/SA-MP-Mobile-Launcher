@@ -49,18 +49,33 @@ void PlayerTabList::hide()
 
 	if (m_tabList != nullptr) {
 		this->removeChild(m_tabList);
+		m_tabList = nullptr;
 	}
 
 	if (m_lServerName != nullptr) {
 		this->removeChild(m_lServerName);
+		m_lServerName = nullptr;
 	}
 
 	if (m_lTotalPlayers != nullptr) {
 		this->removeChild(m_lTotalPlayers);
+		m_lTotalPlayers = nullptr;
 	}
 
 	pGame->EnableGameInput(true);
 	setVisible(false);
+}
+
+// The server returns scores asynchronously. Rebuild after its reply instead of
+// leaving the values captured before the request on screen.
+void PlayerTabList::refresh()
+{
+	if (!visible() || !pNetGame || !m_tabList || !m_lServerName || !m_lTotalPlayers) return;
+	removeChild(m_tabList);
+	m_tabList = new TabListWidget();
+	addChild(m_tabList);
+	assemble();
+	performLayout();
 }
 
 std::string int_to_hex(int val)
@@ -76,7 +91,10 @@ void PlayerTabList::assemble()
 	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
 
 	// PC SA-MP: "Players: X-Y of Z" abu-abu (150,150,150), rata kanan
-	int totalPlayers = pPlayerPool->GetTotalPlayers();
+	int totalPlayers = 1;
+	for (int i = 0; i < MAX_PLAYERS; ++i) {
+		if (pPlayerPool->GetAt(i) && !pPlayerPool->IsPlayerNPC(i)) ++totalPlayers;
+	}
 	std::stringstream ss;
 	ss << "Players: 1-" << totalPlayers << " of " << totalPlayers;
 
@@ -162,6 +180,7 @@ void PlayerTabList::performLayout()
 
 void PlayerTabList::draw(ImGuiRenderer* renderer)
 {
+	if (pNetGame) pNetGame->UpdatePlayerScoresAndPings();
 	renderer->pushClipRect(absolutePosition(), absolutePosition() + size(), true);
 	renderer->drawRect(absolutePosition(), absolutePosition() + size(), UISettings::dialogBackgroundColor(), true);
 	// PC SA-MP: area header (hostname) hitam solid, body semi-transparan

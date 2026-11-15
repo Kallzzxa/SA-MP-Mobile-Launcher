@@ -7,5 +7,5 @@
     android:textColor="#FFFFFF"
     android:fontFamily="@font/montserrat_bold"
     android:textSize="14sp"
-    android:gravity="center"
-    android:background="#000000" />
+    android:gravity="center_vertical"
+    android:background="@android:color/transparent" />

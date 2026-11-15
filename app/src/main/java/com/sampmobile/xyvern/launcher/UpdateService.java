@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher;
+package com.hopepride.samp.launcher;
 
 import android.app.Service;
 import android.content.Intent;
@@ -23,8 +23,8 @@ import com.downloader.PRDownloader;
 import com.downloader.PRDownloaderConfig;
 import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.launcher.data.FilesData;
-import com.sampmobile.xyvern.launcher.util.Util;
+import com.hopepride.samp.launcher.data.FilesData;
+import com.hopepride.samp.launcher.util.Util;
 
 import org.json.JSONArray;
 import org.json.JSONException;

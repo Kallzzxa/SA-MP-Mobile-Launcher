@@ -26,7 +26,7 @@ extern char* g_pszStorage;
 
 #define SAMP_VERSION	"0.3.DL-R1"
 
-#define SAMP_ARCHIVE_PATH "/Android/data/com.sampmobile.xyvern/samp.data"
+#define SAMP_ARCHIVE_PATH "/Android/data/com.hopepride.samp/samp.data"
 #define FONT_NAME "arial_bold.ttf"
 
 #define RAKSAMP_CLIENT

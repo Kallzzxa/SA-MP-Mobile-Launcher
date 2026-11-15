@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.cef.omp;
+package com.hopepride.samp.cef.omp;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;

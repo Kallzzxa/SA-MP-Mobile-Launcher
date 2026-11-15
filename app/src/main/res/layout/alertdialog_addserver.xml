@@ -1,90 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_dialog_round"
-    android:paddingStart="24dp"
-    android:paddingEnd="24dp"
-    android:paddingTop="24dp"
-    android:paddingBottom="20dp">
-
-    <TextView
-        android:id="@+id/dialogTitleAdd"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_bold"
-        android:letterSpacing="0.02"
-        android:text="ADD NEW SERVER"
-        android:textColor="#0284C7"
-        android:textSize="17sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <View
-        android:id="@+id/dialogDividerAdd"
-        android:layout_width="80dp"
-        android:layout_height="3dp"
-        android:layout_marginTop="10dp"
-        android:background="@drawable/divider_gradient"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/dialogTitleAdd" />
-
-    <EditText
-        android:id="@+id/server_host"
-        android:layout_width="0dp"
-        android:layout_height="50dp"
-        android:layout_marginTop="20dp"
-        android:background="@drawable/ic_nickname_bg"
-        android:fontFamily="@font/montserrat_regular"
-        android:gravity="center"
-        android:hint="IP:Port (e.g. 127.0.0.1:7777)"
-        android:imeOptions="actionDone"
-        android:inputType="text"
-        android:textColor="@color/white"
-        android:textColorHint="@color/gray"
-        android:textSize="14sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/dialogDividerAdd" />
-
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:orientation="horizontal"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/server_host">
-
-        <Button
-            android:id="@+id/server_close"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_button_close"
-            android:fontFamily="@font/montserrat_bold"
-            android:text="CANCEL"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/server_add"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/ic_buttoncolor"
-            android:fontFamily="@font/montserrat_bold"
-            android:text="ADD"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_round" android:orientation="vertical" android:padding="22dp">
+    <TextView android:id="@+id/dialogTitleAdd" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_bold" android:letterSpacing="0.1" android:text="SERVER  /  FAVORIT"
+        android:textColor="#64CCFF" android:textSize="10sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"
+        android:fontFamily="@font/montserrat_bold" android:text="Tambah server" android:textColor="#F8FAFC" android:textSize="21sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+        android:fontFamily="@font/montserrat_regular" android:text="Masukkan alamat server untuk menyimpannya ke daftar favorit."
+        android:textColor="#9AADC1" android:textSize="12sp" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp"
+        android:fontFamily="@font/montserrat_bold" android:text="Alamat server" android:textColor="#E7F1FA" android:textSize="12sp" />
+    <EditText android:id="@+id/server_host" android:layout_width="match_parent" android:layout_height="52dp"
+        android:layout_marginTop="8dp" android:background="@drawable/bg_hope_field" android:fontFamily="@font/montserrat_regular"
+        android:hint="IP atau domain:port" android:imeOptions="actionDone" android:inputType="textUri"
+        android:paddingStart="14dp" android:paddingEnd="14dp" android:singleLine="true" android:textColor="#FFFFFF"
+        android:textColorHint="#7990A5" android:textSize="13sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="horizontal">
+        <Button android:id="@+id/server_close" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1"
+            android:layout_marginEnd="5dp" android:backgroundTint="#263B50" android:fontFamily="@font/montserrat_bold"
+            android:text="Batal" android:textAllCaps="false" android:textColor="#FFFFFF" android:textSize="13sp" />
+        <Button android:id="@+id/server_add" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1"
+            android:layout_marginStart="5dp" android:backgroundTint="#129FE4" android:fontFamily="@font/montserrat_bold"
+            android:text="Simpan" android:textAllCaps="false" android:textColor="#FFFFFF" android:textSize="13sp" />
     </LinearLayout>
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

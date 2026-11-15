@@ -11,6 +11,7 @@ public:
 	void addInfoMessage(const std::string& format, ...);
 	void addDebugMessage(const std::string& format, ...);
 	void addClientMessage(const std::string& message, const ImColor& color);
+	bool toggleTimestamps() { return m_showTimestamps = !m_showTimestamps; }
 
 	virtual void draw(ImGuiRenderer* renderer) override;
 
@@ -19,6 +20,8 @@ public:
 	virtual void keyboardEvent(const std::string& input) override;
 
 private:
+	bool m_showTimestamps = false;
+	std::string timestampPrefix() const;
 	void addMessage(const std::string& messsage, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f));
 	void addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
 

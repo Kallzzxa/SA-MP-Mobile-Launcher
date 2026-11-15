@@ -206,6 +206,7 @@ public:
 
     static CLink<CEntityGTA*>* AddEntity(CEntityGTA* entity);
     static int AddImageToList(const char *name, bool b);
+    static void RemoveImageFromList(int imageIndex);
     static void AddLodsToRequestList(const CVector* point, int32 flags);
     static void AddModelsToRequestList(const CVector* point, int32 flags);
     static bool AreAnimsUsedByRequestedModels(int32 animModelId);

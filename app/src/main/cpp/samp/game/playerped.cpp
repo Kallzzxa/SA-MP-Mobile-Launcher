@@ -2283,6 +2283,18 @@ void CPlayerPed::AttachObject(struct ATTACHED_OBJECT_INFO* pInfo, int iSlot)
 {
     FLog("===== AttachObject =====");
 
+    if (!pInfo || !m_pPed) return;
+
+    if (iSlot < 0 || iSlot >= MAX_ATTACHED_OBJECTS) return;
+
+    if (!std::isfinite(pInfo->vecOffset.x) || !std::isfinite(pInfo->vecOffset.y) || !std::isfinite(pInfo->vecOffset.z) ||
+        !std::isfinite(pInfo->vecRotation.x) || !std::isfinite(pInfo->vecRotation.y) || !std::isfinite(pInfo->vecRotation.z) ||
+        !std::isfinite(pInfo->vecScale.x) || !std::isfinite(pInfo->vecScale.y) || !std::isfinite(pInfo->vecScale.z))
+    {
+        FLog("AttachObject: rejected non-finite offset/rotation/scale (slot %d)", iSlot);
+        return;
+    }
+
     if (GetAttachedObject(iSlot))
     {
         FLog("Slot %d already occupied, detaching...", iSlot);

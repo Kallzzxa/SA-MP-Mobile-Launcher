@@ -19,7 +19,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <com.sampmobile.xyvern.launcher.util.CustomEditText
+        <com.hopepride.samp.launcher.util.CustomEditText
             android:id="@+id/main_et_input"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -28,6 +28,7 @@
             android:ems="10"
             android:imeOptions="actionUnspecified|actionGo|actionSend|actionDone|flagNoFullscreen|flagNoExtractUi"
             android:inputType="text"
+            android:maxLength="255"
             android:singleLine="true"
             android:textColor="#000000"
             android:textSize="14sp" />

@@ -1,10 +1,10 @@
-package com.sampmobile.xyvern.game.ui;
+package com.hopepride.samp.game.ui;
 
 import android.app.Activity;
 import android.view.View;
 import android.widget.ProgressBar;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 
 public class LoadingScreen {
 

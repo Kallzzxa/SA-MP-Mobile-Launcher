@@ -13,6 +13,14 @@ int32 CdStreamOpen(const char* lpFileName) {
     return CHook::CallFunction<int32_t>(g_libGTASA + (VER_x32 ? 0x002C9D38 + 1 : 0x38AF9C), lpFileName);
 }
 
+void CdStreamClose(int32 streamId) {
+    if (streamId < 0)
+        return;
+    auto closeStream = reinterpret_cast<void(*)(int32)>(CHook::getSym("_Z13CdStreamClosei"));
+    if (closeStream)
+        closeStream(streamId);
+}
+
 // This function halts the caller thread if CdStreamThread is still reading the file to "sync" it.
 // CdStreamSync is always called from the main thread. It's called when entering or exiting
 // interiors. It's used when the game wants a model to be loaded immediately,

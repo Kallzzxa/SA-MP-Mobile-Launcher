@@ -3,6 +3,7 @@
 #include "../../game/game.h"
 #include "../../net/netgame.h"
 #include <algorithm>
+#include <ctime>
 #include "../settings.h"
 #include "java/jniutil.h"
 
@@ -29,7 +30,7 @@ void Chat::addInfoMessage(const std::string& format, ...)
 
 	va_list args;
 	va_start(args, format);
-	vsprintf(tmp_buf, format.c_str(), args);
+	vsnprintf(tmp_buf, sizeof(tmp_buf), format.c_str(), args);
 	va_end(args);
 
 	addMessage(std::string(tmp_buf), ImColor(0x00, 0xc8, 0xc8));
@@ -41,7 +42,7 @@ void Chat::addDebugMessage(const std::string& format, ...)
 
 	va_list args;
 	va_start(args, format);
-	vsprintf(tmp_buf, format.c_str(), args);
+	vsnprintf(tmp_buf, sizeof(tmp_buf), format.c_str(), args);
 	va_end(args);
 
 	addMessage(std::string(tmp_buf), ImColor(0xbe, 0xbe, 0xbe));
@@ -52,26 +53,37 @@ void Chat::addClientMessage(const std::string& message, const ImColor& color)
 	addMessage(message, color);
 }
 
+std::string Chat::timestampPrefix() const
+{
+	if (!m_showTimestamps) return "";
+	std::time_t now = std::time(nullptr);
+	std::tm localTime{};
+	if (!localtime_r(&now, &localTime)) return "";
+	char timeBuffer[16];
+	if (std::strftime(timeBuffer, sizeof(timeBuffer), "[%H:%M:%S] ", &localTime) == 0) return "";
+	return timeBuffer;
+}
+
 void Chat::addMessage(const std::string& message, const ImColor& color)
 {
-	if (this->itemsCount() > UISettings::chatMaxMessages())
+	if (this->itemsCount() >= UISettings::chatMaxMessages() && this->itemsCount() > 0)
 	{
 		this->removeItem(0);
 	}
 
-	MessageItem* item = new MessageItem(message, color);
+	MessageItem* item = new MessageItem(timestampPrefix() + message, color);
 	this->addItem(item);
 	/*if(!active())*/ this->setScrollY(1.0f);
 }
 
 void Chat::addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
 {
-	if (this->itemsCount() > UISettings::chatMaxMessages())
+	if (this->itemsCount() >= UISettings::chatMaxMessages() && this->itemsCount() > 0)
 	{
 		this->removeItem(0);
 	}
 
-	PlayerMessageItem* item = new PlayerMessageItem(message, nick, nick_color);
+	PlayerMessageItem* item = new PlayerMessageItem(message, timestampPrefix() + nick, nick_color);
 	this->addItem(item);
 	/*if(!active())*/ this->setScrollY(1.0f);
 }

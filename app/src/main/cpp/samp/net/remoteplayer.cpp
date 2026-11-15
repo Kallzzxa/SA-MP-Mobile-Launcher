@@ -2,6 +2,8 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "remoteplayer.h"
+#include "trailer_sync_validation.h"
+#include "passenger_sync_fields.h"
 #include "../gui/gui.h"
 #include "../game/Timer.h"
 #include "../vendor/encoding/encoding.h"
@@ -145,11 +147,13 @@ void CRemotePlayer::Process()
 			//m_pCurrentVehicle->SetLandingGearState(m_InCarData.byteLandingGearState);
 			m_pCurrentVehicle->SetHealth(m_InCarData.fCarHealth);
 
-			PLAYERID TrailerID = m_InCarData.TrailerID;
-			if((TrailerID == 0 || TrailerID >= MAX_VEHICLES) && m_pCurrentVehicle->GetTrailer())
+			VEHICLEID TrailerID = m_InCarData.TrailerID;
+			CVehicle* attachedTrailer = m_pCurrentVehicle->GetTrailer();
+			if ((TrailerID == 0 || TrailerID >= MAX_VEHICLES) && attachedTrailer)
 			{
+				m_pCurrentVehicle->SetTrailer(attachedTrailer);
 				m_pCurrentVehicle->DetachTrailer();
-				m_pCurrentVehicle->SetTrailer(0);
+				m_pCurrentVehicle->SetTrailer(nullptr);
 			}
 
 			uint8_t byteCurWeapon = m_InCarData.byteCurrentWeapon & 0x3F;
@@ -173,7 +177,7 @@ void CRemotePlayer::Process()
 				return;
 			}
 
-			uint8_t byteCurrentWeapon = m_PassengerData.byteCurrentWeapon & 0x3F;
+			uint8_t byteCurrentWeapon = PassengerWeapon(m_PassengerData.DriveBySeatAdditionalKeyWeapon);
 			if(m_pPlayerPed->m_pPed->IsAdded() && m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon)
 			{
 				m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, 0);
@@ -325,7 +329,7 @@ void CRemotePlayer::Process()
 			if((CTimer::m_snTimeInMillisecondsNonClipped - m_dwLastRecvTick) > 3000)
 				m_bIsAFK = true;
 
-			m_pPlayerPed->SetKeys(m_PassengerData.wKeys,0,0);
+			ApplyPassengerKeys(*m_pPlayerPed, m_PassengerData);
 		}
 		else
 		{
@@ -613,6 +617,7 @@ void CRemotePlayer::StoreOnFootFullSyncData(ONFOOT_SYNC_DATA *ofSync, uint32_t d
 
 void CRemotePlayer::StoreInCarFullSyncData(INCAR_SYNC_DATA* picSync, uint32_t dwTime)
 {
+	if (!picSync || !pNetGame || !m_pPlayerPed || !m_pPlayerPed->m_pPed) return;
 	if (!dwTime || dwTime - m_dwLastStoredSyncDataTime >= 0) {
 		m_dwLastStoredSyncDataTime = dwTime;
 		memcpy(&m_InCarData, picSync, sizeof(INCAR_SYNC_DATA));
@@ -658,7 +663,10 @@ float DecompressAspectRatio(char v)
 
 void CRemotePlayer::StoreAimFullSyncData(AIM_SYNC_DATA* paimSync)
 {
-	if (!m_pPlayerPed) return;
+	if (!paimSync || !m_pPlayerPed || !m_pPlayerPed->m_pPed) return;
+	if (!IsFiniteTrailerVector(paimSync->vecAimf.x, paimSync->vecAimf.y, paimSync->vecAimf.z) ||
+		!IsFiniteTrailerVector(paimSync->vecAimPos.x, paimSync->vecAimPos.y, paimSync->vecAimPos.z) ||
+		!std::isfinite(paimSync->fAimZ)) return;
 	m_pPlayerPed->SetCameraMode(paimSync->byteCamMode);
 
 	CAMERA_AIM Aim;
@@ -694,6 +702,7 @@ void CRemotePlayer::StoreAimFullSyncData(AIM_SYNC_DATA* paimSync)
 	m_pPlayerPed->SetCameraZoomAndAspect(fExtZoom, fAspect);
 
     CWeapon* pwstWeapon = m_pPlayerPed->GetCurrentWeaponSlot();
+	if (!pwstWeapon) return;
 	if (paimSync->byteWeaponState == WEAPONSTATE_RELOADING)
 		pwstWeapon->dwState = (eWeaponState)2;		// Reloading
 	else
@@ -706,11 +715,14 @@ void CRemotePlayer::StoreAimFullSyncData(AIM_SYNC_DATA* paimSync)
 
 void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
 {
+	if (!psSync || !pNetGame || !m_pPlayerPed || !m_pPlayerPed->m_pPed) return;
+	const uint8_t seat = PassengerSeat(psSync->DriveBySeatAdditionalKeyWeapon);
+	if (seat < 1 || seat > 7 || !IsFiniteTrailerVector(psSync->vecPos.x, psSync->vecPos.y, psSync->vecPos.z)) return;
 	memcpy(&m_PassengerData, psSync, sizeof(PASSENGER_SYNC_DATA));
 	m_VehicleID = psSync->VehicleID;
 
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-	if (!pVehiclePool->GetSlotState(m_VehicleID))
+	if (!pVehiclePool || !pVehiclePool->GetSlotState(m_VehicleID))
 		return;
 
 	CVehicle* pVehicle = pVehiclePool->GetAt(m_VehicleID);
@@ -719,7 +731,7 @@ void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
 
 	if(!m_pCurrentVehicle)return;
 
-	m_byteSeatID = psSync->byteSeatFlags & 0x3F;
+	m_byteSeatID = seat;
 	m_fReportedHealth = psSync->bytePlayerHealth;
 	m_fReportedArmour = psSync->bytePlayerArmour;
 	m_byteUpdateFromNetwork = UPDATE_TYPE_PASSENGER;
@@ -731,8 +743,7 @@ void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
     }
 
     if(!m_pPlayerPed->m_pPed->IsInVehicle()){
-        m_byteSeatID--;
-        ScriptCommand(&put_actor_in_car2, m_pPlayerPed->m_dwGTAId, m_pCurrentVehicle->m_dwGTAId, m_byteSeatID);
+        ScriptCommand(&put_actor_in_car2, m_pPlayerPed->m_dwGTAId, m_pCurrentVehicle->m_dwGTAId, m_byteSeatID - 1);
 //		m_byteSeatID = CCarEnterExit::ComputeTargetDoorToEnterAsPassenger(m_pCurrentVehicle->m_pVehicle, m_byteSeatID);
 //		CCarEnterExit::SetPedInCarDirect(m_pPlayerPed->m_pPed, m_pCurrentVehicle->m_pVehicle, m_byteSeatID);
     }
@@ -742,7 +753,10 @@ void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
 
 void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 {
-	if (!m_pPlayerPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+	if (!btSync || !pNetGame || !m_pPlayerPed || !m_pPlayerPed->m_pPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+	if (!IsFiniteTrailerVector(btSync->vecOrigin.x, btSync->vecOrigin.y, btSync->vecOrigin.z) ||
+		!IsFiniteTrailerVector(btSync->vecPos.x, btSync->vecPos.y, btSync->vecPos.z) ||
+		!IsFiniteTrailerVector(btSync->vecOffset.x, btSync->vecOffset.y, btSync->vecOffset.z)) return;
 
 	BULLET_DATA btData;
 	memset(&btData, 0, sizeof(BULLET_DATA));
@@ -780,7 +794,8 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 			{
 				if (btSync->PlayerID == pPlayerPool->GetLocalPlayerID())
 				{
-					pEntity = reinterpret_cast<CEntityGTA *>(&pGame->FindPlayerPed()->m_pPed);
+					CPlayerPed* localPed = pGame ? pGame->FindPlayerPed() : nullptr;
+					if (localPed) pEntity = reinterpret_cast<CEntityGTA *>(localPed->m_pPed);
 				}
 				else if (btSync->PlayerID == m_PlayerID)
 				{
@@ -788,10 +803,9 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 				}
 				else if (pPlayerPool->GetSlotState(btSync->PlayerID))
 				{
-					CPlayerPed* pPlayerPed = pPlayerPool->GetAt(btSync->PlayerID)->GetPlayerPed();
-					if (pPlayerPed) {
-						pEntity = reinterpret_cast<CEntityGTA *>(&pPlayerPed->m_pPed);
-					}
+					CRemotePlayer* target = pPlayerPool->GetAt(btSync->PlayerID);
+					CPlayerPed* targetPed = target ? target->GetPlayerPed() : nullptr;
+					if (targetPed) pEntity = reinterpret_cast<CEntityGTA *>(targetPed->m_pPed);
 				}
 			}
 		}
@@ -802,8 +816,8 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 			{
 				if (pVehiclePool->GetSlotState(btSync->PlayerID))
 				{
-					pEntity = reinterpret_cast<CEntityGTA *>(&pVehiclePool->GetAt(
-                            btSync->PlayerID)->m_pVehicle);
+					CVehicle* targetVehicle = pVehiclePool->GetAt(btSync->PlayerID);
+					if (targetVehicle) pEntity = reinterpret_cast<CEntityGTA *>(targetVehicle->m_pVehicle);
 				}
 			}
 		}
@@ -974,7 +988,7 @@ void CRemotePlayer::PutInCurrentVehicle()
 		{
 			uint8_t byteCurWeapon;
 			if (m_byteSeatID != 0) {
-				byteCurWeapon = m_PassengerData.byteCurrentWeapon;
+				byteCurWeapon = PassengerWeapon(m_PassengerData.DriveBySeatAdditionalKeyWeapon);
 			}
 			else {
 				byteCurWeapon = m_InCarData.byteCurrentWeapon;
@@ -1182,62 +1196,50 @@ void CRemotePlayer::ProcessSurfing()
 
 void CRemotePlayer::StoreTrailerFullSyncData(TRAILER_SYNC_DATA *trSync)
 {
-	CVector 	m_vecPosOffset;
+	if (!trSync || !pNetGame || GetState() != PLAYER_STATE_DRIVER) return;
+	CVehiclePool *pool = pNetGame->GetVehiclePool();
+	if (!pool || !IsMatchingTrailerSync(trSync->trailerID, m_InCarData.TrailerID,
+			m_InCarData.VehicleID, MAX_VEHICLES)) return;
+	// Resolve the current vehicle again before dereferencing an old stored pointer.
+	CVehicle *tractor = pool->GetAt(m_InCarData.VehicleID);
+	CVehicle *trailer = pool->GetAt(trSync->trailerID);
+	if (!tractor || tractor != m_pCurrentVehicle || !tractor->m_pVehicle || !tractor->VerifyInstance() ||
+		!trailer || !trailer->m_pVehicle || !trailer->VerifyInstance()) return;
+	if (!trailer->IsATrailer() && !trailer->IsATowTruck() && !tractor->IsATowTruck()) return;
+	if (!IsFiniteTrailerVector(trSync->vecPos.x, trSync->vecPos.y, trSync->vecPos.z) ||
+		!IsFiniteTrailerVector(trSync->vecMoveSpeed.x, trSync->vecMoveSpeed.y, trSync->vecMoveSpeed.z) ||
+		!IsFiniteTrailerVector(trSync->vecTurnSpeed.x, trSync->vecTurnSpeed.y, trSync->vecTurnSpeed.z) ||
+		!IsValidTrailerQuaternion(trSync->quat.w, trSync->quat.x, trSync->quat.y, trSync->quat.z)) return;
 
-	VEHICLEID trailerId = m_InCarData.TrailerID;
-	if(trailerId < 0 || trailerId >= MAX_VEHICLES) 
-		return;
-
-	CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
-	if(pVehiclePool) 
-	{
-		CVehicle *pTrailer = pVehiclePool->GetAt(trailerId);
-		if(pTrailer && (pTrailer->IsATrailer() || pTrailer->IsATowTruck()))
-		{
-			if(m_pCurrentVehicle->GetTrailer() != pTrailer)
-			{
-				m_pCurrentVehicle->SetTrailer(pTrailer);
-				m_pCurrentVehicle->AttachTrailer();
-			}
-
-			RwMatrix matTrailer = pTrailer->m_pVehicle->GetMatrix().ToRwMatrix();
-			trSync->quat.GetMatrix(&matTrailer);
-
-			m_vecPosOffset.x = FloatOffset(trSync->vecPos.x, matTrailer.pos.x);
-			m_vecPosOffset.y = FloatOffset(trSync->vecPos.y, matTrailer.pos.y);
-			m_vecPosOffset.z = FloatOffset(trSync->vecPos.z, matTrailer.pos.z);
-
-			if(m_vecPosOffset.x > 0.5f || m_vecPosOffset.y > 0.5f || m_vecPosOffset.z > 0.5f)
-			{
-				if(m_vecPosOffset.x > 6.0f || m_vecPosOffset.y > 6.0f || m_vecPosOffset.z > 3.0f)
-				{
-					matTrailer.pos.x = trSync->vecPos.x;
-					matTrailer.pos.y = trSync->vecPos.y;
-					matTrailer.pos.z = trSync->vecPos.z;
-
-					pTrailer->m_pVehicle->SetMatrix((CMatrix&)matTrailer);
-					pTrailer->m_pVehicle->SetVelocity(trSync->vecMoveSpeed);
-					pTrailer->m_pVehicle->SetTurnSpeed(trSync->vecTurnSpeed);
-				}
-				else
-				{
-					pTrailer->m_pVehicle->SetMatrix((CMatrix&)matTrailer);
-					pTrailer->m_pVehicle->SetTurnSpeed(trSync->vecTurnSpeed);
-
-					CVector vecMoveSpeed = pTrailer->m_pVehicle->GetMoveSpeed();
-
-					if(m_vecPosOffset.x > 0.050000001f)
-						vecMoveSpeed.x += (trSync->vecPos.x - matTrailer.pos.x) * 0.025f;
-					if(m_vecPosOffset.y > 0.050000001f)
-						vecMoveSpeed.y += (trSync->vecPos.y - matTrailer.pos.y) * 0.025f;
-					if(m_vecPosOffset.z > 0.050000001f)
-						vecMoveSpeed.z += (trSync->vecPos.z - matTrailer.pos.z) * 0.025f;
-
-					pTrailer->m_pVehicle->SetVelocity(vecMoveSpeed);
-				}
-			}
+	if (tractor->GetTrailer() != trailer) {
+		// Detach the previous trailer before assigning another one.
+		if (tractor->GetTrailer()) {
+			tractor->SetTrailer(tractor->GetTrailer());
+			tractor->DetachTrailer();
 		}
+		tractor->SetTrailer(trailer);
+		tractor->AttachTrailer();
 	}
+
+	RwMatrix matrix = trailer->m_pVehicle->GetMatrix().ToRwMatrix();
+	CQuaternion orientation = trSync->quat;
+	orientation.Normalize();
+	orientation.GetMatrix(&matrix);
+	const float dx = trSync->vecPos.x - matrix.pos.x;
+	const float dy = trSync->vecPos.y - matrix.pos.y;
+	const float dz = trSync->vecPos.z - matrix.pos.z;
+	CVector speed = trSync->vecMoveSpeed;
+	if (std::fabs(dx) > 6.0f || std::fabs(dy) > 6.0f || std::fabs(dz) > 3.0f) {
+		matrix.pos = trSync->vecPos;
+	} else if (std::fabs(dx) > 0.5f || std::fabs(dy) > 0.5f || std::fabs(dz) > 0.5f) {
+		speed.x += dx * 0.025f;
+		speed.y += dy * 0.025f;
+		speed.z += dz * 0.025f;
+	}
+	// Orientation and speed must also update when the position error is small.
+	trailer->m_pVehicle->SetMatrix((CMatrix&)matrix);
+	trailer->m_pVehicle->SetVelocity(speed);
+	trailer->m_pVehicle->SetTurnSpeed(trSync->vecTurnSpeed);
 }
 
 static void CompressNormalVector(CVector *vecOut, CVector vecIn)

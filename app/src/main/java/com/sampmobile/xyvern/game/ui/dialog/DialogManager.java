@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game.ui.dialog;
+package com.hopepride.samp.game.ui.dialog;
 
 import android.app.Activity;
 import android.content.Context;
@@ -20,9 +20,9 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import com.joom.paranoid.Obfuscate;
 import com.nvidia.devtech.NvEventQueueActivity;
-import com.sampmobile.xyvern.R;
-import com.sampmobile.xyvern.launcher.util.CustomRecyclerView;
-import com.sampmobile.xyvern.launcher.util.Util;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.CustomRecyclerView;
+import com.hopepride.samp.launcher.util.Util;
 
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
@@ -129,6 +129,18 @@ public class DialogManager {
         this.mAnimBtn = AnimationUtils.loadAnimation(this.activity, R.anim.scale);
         this.mAnimShow = AnimationUtils.loadAnimation(this.activity, R.anim.button_show_alpha);
         this.mAnimHide = AnimationUtils.loadAnimation(this.activity, R.anim.button_hide_alpha);
+
+        this.mDialogInput.addTextChangedListener(new TextWatcher() {
+            public void afterTextChanged(Editable editable) {
+            }
+
+            public void beforeTextChanged(CharSequence charSequence, int i, int i2, int i3) {
+            }
+
+            public void onTextChanged(CharSequence charSequence, int i, int i2, int i3) {
+                String unused = DialogManager.this.mCurrentInputtext = charSequence.toString();
+            }
+        });
 
         isShow = false;
         Util.HideLayout(this.mMainLayout, false);
@@ -248,26 +260,11 @@ public class DialogManager {
             this.mDialogText.setText(Util.getColoredString(this.mText));
             return;
         }
-        if (i != 2) {
-            StringBuilder sb = new StringBuilder(this.mText);
-            for (int i2 = 0; i2 < sb.length(); i2++) {
-                if (sb.charAt(i2) == 9 && i2 < sb.length() - 1) {
-                    while (true) {
-                        int i3 = i2 + 1;
-                        if (sb.charAt(i3) != 9) {
-                            break;
-                        }
-                        sb.deleteCharAt(i3);
-                    }
-                }
-            }
-            this.mText = sb.toString();
-        }
         this.mCurrentListitem = 0;
         String[] split = this.mText.split("\n");
         for (int i4 = 0; i4 < split.length; i4++) {
             if (i4 == 0 && this.mDialogStyle == 5) {
-                String[] split2 = split[i4].split("\t");
+                String[] split2 = DialogColumns.split(split[i4]);
                 int length = split2.length;
                 if (length > 4) {
                     length = 4;
@@ -286,7 +283,7 @@ public class DialogManager {
                     String stringWithoutColors = Util.getStringWithoutColors(split[i4]);
                     int i6 = this.mDialogStyle;
                     if (i6 == 5 || i6 == 4) {
-                        stringWithoutColors = stringWithoutColors.split("\n")[0];
+                        stringWithoutColors = DialogColumns.split(stringWithoutColors)[0];
                     }
                     this.mCurrentInputtext = stringWithoutColors;
                 }
@@ -359,17 +356,7 @@ public class DialogManager {
                 }
             });
         }
-        this.mDialogInput.addTextChangedListener(new TextWatcher() {
-            public void afterTextChanged(Editable editable) {
-            }
 
-            public void beforeTextChanged(CharSequence charSequence, int i, int i2, int i3) {
-            }
-
-            public void onTextChanged(CharSequence charSequence, int i, int i2, int i3) {
-                String unused = DialogManager.this.mCurrentInputtext = charSequence.toString();
-            }
-        });
     }
 
     public void setDialogStyle(int i) {

@@ -30,31 +30,32 @@ public:
 
 	void exitGame();
 
-    jbyteArray as_byte_array(unsigned char* buf, int len) {
-        JNIEnv* p;
-        javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+    jbyteArray as_byte_array(JNIEnv* p, unsigned char* buf, int len) {
 		jbyteArray array = p->NewByteArray (len);
+        if (!array) return nullptr;
 		p->SetByteArrayRegion (array, 0, len, reinterpret_cast<jbyte*>(buf));
 		return array;
 	}
 
     void ShowDialog(int dialogStyle, int dialogID, char* title, char* text, char* button1, char* button2);
+    void HideDialog();
 
 	void ShowEditObject();
 	void HideEditObject();
 
-    jobject activity;
-    jmethodID s_setPauseState;
-    jmethodID s_showLoadingScreen;
-    jmethodID s_hideLoadingScreen;
-    jmethodID s_ShowDialog;
-    jmethodID s_showTab;
-    jmethodID s_setTab;
-    jmethodID s_clearTab;
-    jmethodID s_hideTab;
-    jmethodID s_showInputLayout;
-    jmethodID s_hideInputLayout;
-	jmethodID s_exitGame;
-	jmethodID s_showEditObject;
-	jmethodID s_hideEditObject;
+    jobject activity = nullptr;
+    jmethodID s_setPauseState = nullptr;
+    jmethodID s_showLoadingScreen = nullptr;
+    jmethodID s_hideLoadingScreen = nullptr;
+    jmethodID s_ShowDialog = nullptr;
+    jmethodID s_HideDialog = nullptr;
+    jmethodID s_showTab = nullptr;
+    jmethodID s_setTab = nullptr;
+    jmethodID s_clearTab = nullptr;
+    jmethodID s_hideTab = nullptr;
+    jmethodID s_showInputLayout = nullptr;
+    jmethodID s_hideInputLayout = nullptr;
+	jmethodID s_exitGame = nullptr;
+	jmethodID s_showEditObject = nullptr;
+	jmethodID s_hideEditObject = nullptr;
 };

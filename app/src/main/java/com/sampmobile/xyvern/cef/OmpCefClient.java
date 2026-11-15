@@ -1,13 +1,13 @@
-package com.sampmobile.xyvern.cef;
+package com.hopepride.samp.cef;
 
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import com.sampmobile.xyvern.cef.omp.OmpApp;
-import com.sampmobile.xyvern.cef.omp.OmpClient;
-import com.sampmobile.xyvern.cef.omp.OmpPacket;
-import com.sampmobile.xyvern.cef.omp.OmpResourceManager;
+import com.hopepride.samp.cef.omp.OmpApp;
+import com.hopepride.samp.cef.omp.OmpClient;
+import com.hopepride.samp.cef.omp.OmpPacket;
+import com.hopepride.samp.cef.omp.OmpResourceManager;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Glue between the omp-cef transport (com.sampmobile.xyvern.cef.omp) and
+ * Glue between the omp-cef transport (com.hopepride.samp.cef.omp) and
  * the Android WebView UI (CefJavaManager). Owned by CefJavaManager: created
  * in startOmpCef(), destroyed in stopOmpCef().
  *

@@ -26,6 +26,9 @@ CVehicleModelInfo* CModelInfo::AddVehicleModel(int index)
 
 CPedModelInfo* CModelInfo::AddPedModel(int index)
 {
+    if (index < 0 || index >= NUM_MODEL_INFOS)
+        return nullptr;
+
     // Bounds check: game fills 315 slots during init; custom DL skins use the +2000 headroom.
     // Return nullptr instead of corrupting the heap if full.
     if (CModelInfo::ms_pedModelInfoStore.IsFull()) {
@@ -50,6 +53,9 @@ CDamageAtomicModelInfo* CModelInfo::AddDamageAtomicModel(int32 index)
 
 CAtomicModelInfo* CModelInfo::AddAtomicModel(int index)
 {
+    if (index < 0 || index >= NUM_MODEL_INFOS)
+        return nullptr;
+
     // Bounds check: game uses ~19000 of 22000; custom DL objects use the headroom.
     // Return nullptr instead of corrupting the heap if full.
     if (ms_atomicModelInfoStore.IsFull()) {

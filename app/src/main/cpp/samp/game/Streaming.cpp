@@ -1,3 +1,4 @@
+#include "streaming_budget.h"
 //
 // Created by x1y2z on 11.01.2023.
 //
@@ -18,6 +19,8 @@
 #include <functional>
 #include <vector>
 #include <iostream>
+#include <cstring>
+#include <cstdio>
 
 extern UI *pUI;
 
@@ -246,10 +249,52 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     }
 
     // free slot found, load the IMG file
-    strcpy(ms_files[fileIndex].m_szName, pFileName);
+    // Prevent overflow of the fixed 40-byte IMG archive name.
+    const char* fileName = strrchr(pFileName, '/');
+    const char* winFileName = strrchr(pFileName, '\\');
+
+    if (!fileName || (winFileName && winFileName > fileName))
+        fileName = winFileName;
+
+    fileName = fileName ? fileName + 1 : pFileName;
+
+    if (strlen(fileName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        return -1;
+    }
+
+    snprintf(
+        ms_files[fileIndex].m_szName,
+        sizeof(ms_files[fileIndex].m_szName),
+        "%s",
+        fileName
+    );
+
+    // Keep the original full path for opening the archive.
+    FLog("AddImageToList: pFileName=%s | fileName=%s",
+        pFileName, fileName);
+
     ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
+
+    FLog("AddImageToList: streamHandle=%d",
+        ms_files[fileIndex].m_StreamHandle);
+
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
     return fileIndex;
+}
+
+void CStreaming::RemoveImageFromList(int imageIndex) {
+    if (imageIndex < 0 || imageIndex >= static_cast<int>(TOTAL_IMG_ARCHIVES))
+        return;
+
+    tStreamingFileDesc& image = ms_files[imageIndex];
+    if (!image.m_szName[0])
+        return;
+
+    // Custom model teardown runs on the game thread. Finish any outstanding
+    // reads before closing this archive's CdStream handle and freeing its slot.
+    FlushChannels();
+    CdStreamClose(image.m_StreamHandle);
+    image = tStreamingFileDesc{};
 }
 
 void CStreaming::InitImageList() {
@@ -325,17 +370,55 @@ void CStreaming::RequestModel(int32 modelId, int32 streamingFlags) {
 
         case eStreamingLoadState::LOADSTATE_NOT_LOADED: {
             switch (GetModelType(modelId)) {
-                case eModelType::TXD: { // Request parent (if any) TXD
-                    info.m_nLoadState = LOADSTATE_LOADED;
-                    return;
-                }
-                case eModelType::DFF: { // Request TXD and (if any) IFP
-                    CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(modelId);
-                  //  RequestTxdModel(modelInfo->m_nTxdIndex, streamingFlags);
+                case eModelType::DFF:
+                {
+                    CBaseModelInfo* modelInfo =
+                        CModelInfo::GetModelInfo(modelId);
 
-                    const int32 animFileIndex = modelInfo->GetAnimFileIndex();
-                    if (animFileIndex != -1)
-                        RequestModel(IFPToModelId(animFileIndex), STREAMING_KEEP_IN_MEMORY);
+                    if (modelInfo)
+                    {
+                        // Request the texture dictionary first.
+                        if (modelInfo->m_nTxdIndex >= 0)
+                        {
+                            const int32 txdModelId =
+                                TXDToModelId(modelInfo->m_nTxdIndex);
+
+                            if (txdModelId >= RESOURCE_ID_TXD &&
+                                txdModelId < RESOURCE_ID_COL)
+                            {
+                                // Custom DL TXDs are read directly by
+                                // DLManager into their TxdDef slot. Do not
+                                // enqueue the same dictionary through IMG
+                                // streaming when that slot is already ready.
+                                TxdDef* txdDef = CTxdStore::ms_pTxdPool
+                                    ? CTxdStore::ms_pTxdPool->GetAt(modelInfo->m_nTxdIndex)
+                                    : nullptr;
+                                if (!txdDef || !txdDef->m_pRwDictionary)
+                                    RequestModel(txdModelId, streamingFlags);
+                            }
+                            else
+                            {
+                                FLog(
+                                    "Streaming: Invalid TXD index %d for model %d",
+                                    modelInfo->m_nTxdIndex,
+                                    modelId
+                                );
+                            }
+                        }
+
+                        // Request animation if this model uses one.
+                        const int32 animFileIndex =
+                            modelInfo->GetAnimFileIndex();
+
+                        if (animFileIndex != -1)
+                        {
+                            RequestModel(
+                                IFPToModelId(animFileIndex),
+                                STREAMING_KEEP_IN_MEMORY
+                            );
+                        }
+                    }
+
                     break;
                 }
             }
@@ -837,15 +920,23 @@ bool CStreaming::ProcessLoadingChannel(int32 chIdx) {
                 auto* fileBuffer = reinterpret_cast <uint8*> (&ms_pStreamingBuffer[chIdx][STREAMING_SECTOR_SIZE * bufferOffsetInSectors]);
 
                 // Actually load the model into memory
-                ConvertBufferToObject(fileBuffer, modelId);
+                const bool loaded = ConvertBufferToObject(fileBuffer, modelId);
 
                 if (info.IsLoadingFinishing()) {
                     ch.LoadStatus = eChannelState::STARTED;
                     ch.modelStreamingBufferOffsets[i] = bufferOffsetInSectors;
                     ch.modelIds[i] = modelId;
+
                     if (i == 0)
                         continue;
                 }
+                else if (!loaded) {
+                    // Conversion failed: do not leave the model marked as loaded.
+                    info.m_nLoadState = LOADSTATE_NOT_LOADED;
+
+                    FLog("Streaming: ConvertBufferToObject failed for model %d", modelId);
+                }
+
                 ch.modelIds[i] = MODEL_INVALID;
             } else {
                 // I think at this point it's guaranteed to be a vehicle (thus its a DFF),
@@ -893,7 +984,8 @@ void CStreaming::RetryLoadFile(int32 chIdx) {
 
 void CStreaming::MakeSpaceFor(size_t memoryToCleanInBytes) {
     auto lastmemused = ms_memoryUsed;
-    while (ms_memoryUsed >= ms_memoryAvailable - memoryToCleanInBytes) {
+    const size_t target = StreamingRemainingBudget(ms_memoryAvailable, memoryToCleanInBytes);
+    while (ms_memoryUsed > target) {
         lastmemused = ms_memoryUsed;
         if (!RemoveLeastUsedModel(0) || lastmemused == ms_memoryUsed) {
           //  DeleteRwObjectsBehindCamera(ms_memoryAvailable - memoryToCleanInBytes);

@@ -23,6 +23,8 @@ CActorPool::~CActorPool()
 
 void CActorPool::New(NEW_ACTOR* pNewActor)
 {
+	if (!pNewActor || pNewActor->ActorID >= MAX_ACTORS) return;
+
 	if (m_pActors[pNewActor->ActorID])
 	{
 		//if (gui) gui->chat()->addDebugMessage("Warning: actor %u was not deleted", pNewActor->ActorID);

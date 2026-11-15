@@ -3,6 +3,7 @@
 #include "../vendor/shadowhook/patch.h"
 #include "game.h"
 #include "../net/netgame.h"
+#include "../net/dl/dlmanager.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
 #include "Textures/TextureDatabaseEntry.h"
@@ -376,6 +377,11 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
 	if (pGame->IsGamePaused())
 		return AND_TouchEvent(type, num, posX, posY);
+
+	// Keep download-panel touches inside the overlay so they can drag, hide,
+	// restore it, and never trigger game-world input underneath.
+	if (DLManager::Instance().HandleTouchEvent(type, num, posX, posY))
+		return;
 
 	if (pUI != nullptr)
 	{
@@ -1177,19 +1183,22 @@ char lastFile[123];
 
 stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
 {
-    strcpy(lastFile, r1);
+    if (!r1) return nullptr;
+    FLog("NvFOpen input: r0=%s | r1=%s", r0 ? r0 : "(null)", r1);
+    snprintf(lastFile, sizeof(lastFile), "%s", r1);
+    const size_t pathLength = strlen(r1);
 
     char rel[255]{};
     memset(rel, 0, sizeof(rel));
     const char* useRel = r1;
 
-    if(!strncmp(r1+12, "mainV1.scm", 10))
+    if(pathLength >= 12 && !strncmp(r1+12, "mainV1.scm", 10))
     {
         sprintf(rel, "SAMP/main.scm");
         useRel = rel;
         FLog("Loading %s", rel);
     }
-    else if(!strncmp(r1+12, "SCRIPTV1.IMG", 12))
+    else if(pathLength >= 12 && !strncmp(r1+12, "SCRIPTV1.IMG", 12))
     {
         sprintf(rel, "SAMP/script.img");
         useRel = rel;
@@ -1245,12 +1254,23 @@ stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
         sprintf(rel, "data/popcycle.dat");
         useRel = rel;
     }
+    // Restore TEXDB path for IMG archives.
+    else if (!strcmp(r1, "GTA3.IMG") ||
+             !strcmp(r1, "GTA_INT.IMG") ||
+             !strcmp(r1, "SAMP.IMG") ||
+             !strcmp(r1, "SAMPCOL.IMG"))
+    {
+        snprintf(rel, sizeof(rel), "TEXDB/%s", r1);
+        useRel = rel;
+        FLog("Loading IMG archive: %s", rel);
+    }
 
 #if VER_x32
     auto *st = (stFile*)malloc(8);
 #else
     auto *st = (stFile*)malloc(0x10);
 #endif
+    if (!st) return nullptr;
     st->isFileExist = false;
 
     FILE *f  = CFileMgr::OpenFile(useRel, "rb");
@@ -1264,7 +1284,7 @@ stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
     else
     {
         char absPath[512]{};
-        sprintf(absPath, "%s%s", g_pszStorage, useRel);
+        snprintf(absPath, sizeof(absPath), "%s%s", g_pszStorage ? g_pszStorage : "", useRel);
         if (!strstr(absPath, ".idx") && !strstr(absPath, "gta_sa.set") && !strstr(absPath, "gtasatelem.set") && !strstr(absPath, "gta3.ini") && !strstr(absPath, "CINFO.BIN") && !strstr(absPath, "MINFO.BIN") && !strstr(absPath, "GTASAsf") && !strstr(absPath, "Adjustable.cfg")) {
             FLog("NVFOpen hook | Error: file not found (%s)", absPath);
         }

@@ -53,7 +53,7 @@ import android.widget.FrameLayout;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.joom.paranoid.Obfuscate;
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 
 import java.io.FileInputStream;
 import java.io.IOException;

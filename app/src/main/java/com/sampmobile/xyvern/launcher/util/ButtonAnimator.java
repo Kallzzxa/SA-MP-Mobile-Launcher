@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.launcher.util;
+package com.hopepride.samp.launcher.util;
 
 import android.animation.AnimatorInflater;
 import android.animation.AnimatorSet;
@@ -6,7 +6,7 @@ import android.content.Context;
 import android.view.MotionEvent;
 import android.view.View;
 
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
 
 public class ButtonAnimator implements View.OnTouchListener {
     private final Context mContext;

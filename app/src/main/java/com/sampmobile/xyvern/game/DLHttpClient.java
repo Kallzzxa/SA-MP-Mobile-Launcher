@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -17,6 +17,8 @@ import java.net.URL;
  */
 public class DLHttpClient {
 
+    private static native void reportProgress(long bytes);
+
     /**
      * Downloads urlStr to destPath.
      *
@@ -31,6 +33,7 @@ public class DLHttpClient {
         HttpURLConnection conn = null;
         InputStream in = null;
         FileOutputStream out = null;
+        long pendingProgress = 0;
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
@@ -57,12 +60,18 @@ public class DLHttpClient {
                     return -100;
                 }
                 out.write(buf, 0, n);
+                pendingProgress += n;
+                if (pendingProgress >= 256 * 1024) {
+                    reportProgress(pendingProgress);
+                    pendingProgress = 0;
+                }
             }
             out.flush();
             return 0;
         } catch (Exception e) {
             return -1;
         } finally {
+            if (pendingProgress > 0) reportProgress(pendingProgress);
             try { if (in != null) in.close(); } catch (Exception ignored) {}
             try { if (out != null) out.close(); } catch (Exception ignored) {}
             if (conn != null) conn.disconnect();

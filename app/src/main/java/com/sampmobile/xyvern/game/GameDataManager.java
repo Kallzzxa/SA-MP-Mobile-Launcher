@@ -1,4 +1,4 @@
-package com.sampmobile.xyvern.game;
+package com.hopepride.samp.game;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -18,7 +18,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.sampmobile.xyvern.R;
+import com.hopepride.samp.R;
+import com.hopepride.samp.launcher.util.GameDataVerifier;
 
 import org.json.JSONObject;
 
@@ -76,6 +77,7 @@ public final class GameDataManager {
     private GameDataManager() {}
 
     public static void checkAndPrepare(Activity activity, ReadyCallback callback) {
+        com.hopepride.samp.diagnostics.Diagnostics.event("DATA_CONFIG_CHECK_START");
         showLoading(activity, "Memeriksa Launcher", "Menghubungkan ke server konfigurasi...");
         IO.execute(() -> {
             try {
@@ -84,6 +86,7 @@ public final class GameDataManager {
                         && config.optBoolean("app_status", true)
                         && config.optBoolean("app_server_status", true);
                 if (!status) {
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_MAINTENANCE");
                     MAIN.post(() -> showMaintenance(activity));
                     return;
                 }
@@ -95,15 +98,37 @@ public final class GameDataManager {
                 info.size = config.optLong("data_size", 0);
                 info.sentinel = config.optString("data_sentinel", "SAMP/SAMP.ide");
 
-                String installed = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
-                        .getString(KEY_DATA_VERSION, "");
-                if (info.version.equals(installed) && isInstalled(activity, info)) {
-                    MAIN.post(() -> { dismissLoading(); if (!activity.isFinishing()) callback.onReady(); });
+                // Verify essential game data before showing download offer.
+                GameDataVerifier.VerificationResult verification =
+                        GameDataVerifier.verifyGameData(activity);
+
+                if (verification.isValid) {
+                    com.hopepride.samp.diagnostics.Diagnostics.event(
+                            "DATA_INSTALL_VERIFIED"
+                    );
+
+                    MAIN.post(() -> {
+                        dismissLoading();
+
+                        if (!activity.isFinishing() && !activity.isDestroyed()) {
+                            callback.onReady();
+                        }
+                    });
+
                     return;
                 }
+
+                // Essential files are missing or incomplete.
+                com.hopepride.samp.diagnostics.Diagnostics.event(
+                        "DATA_INSTALL_REQUIRED"
+                );
+
                 final DataInfo fi = info;
+
                 MAIN.post(() -> showDownloadOffer(activity, fi, callback));
+                return;
             } catch (Exception e) {
+                com.hopepride.samp.diagnostics.Diagnostics.error("DATA_CONFIG_FAILED", e);
                 android.util.Log.e("GameDataManager", "Config check failed", e);
                 MAIN.post(() -> showNetworkError(activity, e.getMessage(), callback));
             }
@@ -129,10 +154,10 @@ public final class GameDataManager {
         }
     }
 
-    private static void markInstalled(Context a, DataInfo info) {
+    private static void markInstalled(Context a, DataInfo info) throws Exception {
         try {
             File root = a.getExternalFilesDir(null);
-            if (root == null) return;
+            if (root == null) throw new Exception("Penyimpanan tidak tersedia.");
             File marker = new File(root, MARKER);
             File parent = marker.getParentFile();
             if (parent != null && !parent.exists()) parent.mkdirs();
@@ -142,7 +167,7 @@ public final class GameDataManager {
             a.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
                     .edit().putString(KEY_DATA_VERSION, info.version).apply();
         } catch (Exception e) {
-            android.util.Log.e("GameDataManager", "markInstalled failed", e);
+            throw new Exception("Gagal menyimpan status instalasi data game.", e);
         }
     }
 
@@ -175,7 +200,7 @@ public final class GameDataManager {
         if (a.isFinishing()) return; dismissLoading(); setImmersive(a, false);
         LinearLayout root = panel(a); root.setPadding(dp(a,24),dp(a,24),dp(a,24),dp(a,22));
         ImageView icon=iconView(a,R.drawable.ic_gear,56);
-        TextView title=text(a,"M-SAMP Maintenance",22,true); title.setGravity(Gravity.CENTER);
+        TextView title=text(a,"HopePride Maintenance",22,true); title.setGravity(Gravity.CENTER);
         TextView msg=text(a,"Client SAMP sedang maintenance untuk update.",14,false); msg.setTextColor(Color.LTGRAY); msg.setGravity(Gravity.CENTER);
         Button exit=button(a,"KELUAR"); exit.setOnClickListener(v -> { a.finishAffinity(); android.os.Process.killProcess(android.os.Process.myPid()); });
         root.addView(icon); addGap(a,root,8); root.addView(title); addGap(a,root,10); root.addView(msg); addGap(a,root,22); root.addView(exit);
@@ -183,11 +208,24 @@ public final class GameDataManager {
     }
 
     private static void showNetworkError(Activity a, String detail, ReadyCallback cb) {
-        if (a.isFinishing()) return; dismissLoading(); setImmersive(a, false);
-        new AlertDialog.Builder(a).setTitle("Gagal memuat data game")
-                .setMessage("Tidak bisa membaca app.json. Periksa internet lalu coba lagi.\n\n" + (detail == null ? "" : detail))
+        if (a.isFinishing() || a.isDestroyed()) return;
+        dismissLoading(); setImmersive(a, false);
+        AlertDialog.Builder builder = new AlertDialog.Builder(a).setTitle("Gagal memuat konfigurasi")
+                .setMessage("Tidak bisa memeriksa konfigurasi atau maintenance. Periksa internet lalu coba lagi.\n\n"
+                        + (detail == null ? "" : detail))
                 .setCancelable(false).setPositiveButton("COBA LAGI", (d,w) -> checkAndPrepare(a,cb))
-                .setNegativeButton("KELUAR", (d,w) -> a.finishAffinity()).show();
+                .setNegativeButton("KELUAR", (d,w) -> a.finishAffinity());
+        Button shareLogs = new Button(a);
+        shareLogs.setText("BAGIKAN LOG DIAGNOSTIK");
+        shareLogs.setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a));
+        builder.setView(shareLogs);
+        if (GameDataVerifier.verifyGameData(a).isValid) {
+            builder.setNeutralButton("LANJUT OFFLINE", (d,w) -> {
+                Toast.makeText(a, "Status maintenance dan update tidak dapat diperiksa.", Toast.LENGTH_LONG).show();
+                if (!a.isFinishing() && !a.isDestroyed()) cb.onReady();
+            });
+        }
+        builder.show();
     }
 
     private static void showDownloadOffer(Activity a, DataInfo info, ReadyCallback cb) {
@@ -201,8 +239,23 @@ public final class GameDataManager {
         Button dl=button(a,"DOWNLOAD SEKARANG");
         root.addView(icon); addGap(a,root,6); root.addView(title); addGap(a,root,8);
         root.addView(sub); addGap(a,root,18); root.addView(dl);
+        // Do not force another download when the user has supplied the required files manually.
+        Button local = null;
+        if (GameDataVerifier.verifyGameData(a).isValid) {
+            addGap(a, root, 8);
+            local = button(a, "GUNAKAN DATA LOKAL");
+            root.addView(local);
+        }
+        addGap(a, root, 8);
+        Button logs = button(a, "BAGIKAN LOG DIAGNOSTIK");
+        root.addView(logs);
+        logs.setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a));
         AlertDialog d=new AlertDialog.Builder(a).setView(root).setCancelable(false).create(); d.show(); styleWindow(a,d);
         dl.setOnClickListener(v -> { d.dismiss(); startInstall(a, info, cb); });
+        if (local != null) local.setOnClickListener(v -> {
+            d.dismiss(); setImmersive(a, false);
+            if (!a.isFinishing() && !a.isDestroyed()) cb.onReady();
+        });
     }
 
     // ---------------------------------------------------------- UI: progress
@@ -264,21 +317,32 @@ public final class GameDataManager {
                 } catch (Exception ignored) {}
                 if (s.phase == GameDataDownloadService.PHASE_DONE) {
                     unregisterProgressUi();
+                    ui.dialog.dismiss();
                     dismissLoading();
                     setImmersive(a, false);
-                    Toast.makeText(a, "Game data siap dimainkan", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(a, s.detail == null || s.detail.isEmpty()
+                            ? "Download selesai. Periksa data di Home." : s.detail, Toast.LENGTH_LONG).show();
                     ReadyCallback cb = readyCallback;
-                    if (cb != null && !a.isFinishing()) cb.onReady();
+                    readyCallback = null;
+                    if (cb != null && !a.isFinishing() && !a.isDestroyed()) cb.onReady();
                 } else if (s.phase == GameDataDownloadService.PHASE_FAILED) {
                     unregisterProgressUi();
-                    if (!a.isFinishing()) {
-                        new AlertDialog.Builder(a).setTitle("Download gagal")
+                    ui.dialog.dismiss();
+                    setImmersive(a, false);
+                    if (!a.isFinishing() && !a.isDestroyed()) {
+                        AlertDialog failure = new AlertDialog.Builder(a).setTitle("Download gagal")
                                 .setMessage(s.error == null ? "Silakan coba lagi." : s.error)
                                 .setCancelable(false)
-                                .setPositiveButton("COBA LAGI", (x, w) ->
-                                        GameDataDownloadService.autoResume(a))
+                                .setPositiveButton("COBA LAGI", (x, w) -> {
+                                    registerProgressUi(a);
+                                    GameDataDownloadService.autoResume(a);
+                                })
+                                .setNeutralButton("LOG", null)
                                 .setNegativeButton("KELUAR", (x, w) -> a.finishAffinity())
-                                .show();
+                                .create();
+                        failure.setOnShowListener(ignored -> failure.getButton(AlertDialog.BUTTON_NEUTRAL)
+                                .setOnClickListener(v -> com.hopepride.samp.diagnostics.DiagnosticShare.confirm(a)));
+                        failure.show();
                     }
                 }
             });
@@ -309,7 +373,10 @@ public final class GameDataManager {
     public static void finalizeGameDataInstall(Context c, File zipFile, String version, String sentinel) throws Exception {
         try (ZipFile zip = new ZipFile(zipFile)) {
             int totalEntries = zip.size();
-            if (totalEntries <= 0) throw new Exception("File zip kosong / rusak.");
+            if (totalEntries <= 0) {
+                com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_EMPTY");
+                throw new Exception("File zip kosong / rusak.");
+            }
             java.util.ArrayList<String> names = new java.util.ArrayList<>(totalEntries);
             java.util.Enumeration<? extends ZipEntry> scan = zip.entries();
             while (scan.hasMoreElements()) names.add(scan.nextElement().getName());
@@ -331,8 +398,10 @@ public final class GameDataManager {
                 if (name.isEmpty()) continue;
                 File target = new File(root, name);
                 String canon = target.getCanonicalPath();
-                if (!canon.startsWith(rootCanon) && !canon.equals(root.getCanonicalPath()))
+                if (!canon.startsWith(rootCanon) && !canon.equals(root.getCanonicalPath())) {
+                    com.hopepride.samp.diagnostics.Diagnostics.event("DATA_ZIP_UNSAFE_ENTRY");
                     throw new Exception("Entri zip tidak valid: " + name);
+                }
                 if (e.isDirectory()) {
                     target.mkdirs();
                 } else {
@@ -348,8 +417,10 @@ public final class GameDataManager {
         }
 
         if (sentinel != null && !sentinel.isEmpty()
-                && !new File(c.getExternalFilesDir(null), sentinel).exists())
+                && !new File(c.getExternalFilesDir(null), sentinel).exists()) {
+            com.hopepride.samp.diagnostics.Diagnostics.event("DATA_SENTINEL_MISSING");
             throw new Exception("Data tidak lengkap setelah ekstrak (sentinel hilang).");
+        }
 
         DataInfo done = new DataInfo();
         done.version = version;
