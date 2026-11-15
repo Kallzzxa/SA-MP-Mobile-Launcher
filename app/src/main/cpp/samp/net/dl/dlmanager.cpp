@@ -3,6 +3,7 @@
 #include "../../main.h"
 #include "../../gui/gui.h"
 #include "../../game/Streaming.h"
+#include "../../game/MemoryMgr.h"
 #include "../../game/Models/ModelInfo.h"
 #include "../../game/TxdStore.h"
 #include "../../game/RW/RenderWare.h"
