@@ -184,7 +184,6 @@ private:
     std::unordered_set<int16_t> m_registeredModels;
     std::vector<int32_t> m_customTxdSlots;
     std::vector<CColModel*> m_customColModels;
-    std::vector<int32_t> m_customImgIndexes;
     size_t m_atomicStoreStartCount{0};
     size_t m_pedStoreStartCount{0};
     bool m_modelStoreStartCaptured{false};

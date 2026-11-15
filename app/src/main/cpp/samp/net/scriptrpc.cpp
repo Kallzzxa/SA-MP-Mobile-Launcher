@@ -304,10 +304,12 @@ void ScrCreateObject(RPCParameters* rpcParams)
 			!data.Read(attachRot.x) || !data.Read(attachRot.y) || !data.Read(attachRot.z) ||
 			!data.Read(syncRotation)) return;
 	}
-	if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
+	if (!IsSafeObjectPosition(pos.x, pos.y, pos.z) ||
 		!std::isfinite(rot.x) || !std::isfinite(rot.y) || !std::isfinite(rot.z) ||
 		!std::isfinite(drawDistance) || !std::isfinite(attachOffset.x) ||
 		!std::isfinite(attachOffset.y) || !std::isfinite(attachOffset.z) ||
+		std::fabs(attachOffset.x) > 10000.0f || std::fabs(attachOffset.y) > 10000.0f ||
+		std::fabs(attachOffset.z) > 10000.0f ||
 		!std::isfinite(attachRot.x) || !std::isfinite(attachRot.y) || !std::isfinite(attachRot.z)) return;
 	uint8_t materialCount;
 	if (!data.Read(materialCount)) return;
@@ -893,7 +895,7 @@ void ScrSetObjectPos(RPCParameters* rpcParams)
 	RakNet::BitStream bsData(Data, (iBitLength + 7) / 8, false);
 	bsData.SetWriteOffset(iBitLength);
 	if (!bsData.Read(ObjectID) || !bsData.Read(fX) || !bsData.Read(fY) || !bsData.Read(fZ) || !bsData.Read(fUnused)) return;
-	if (!std::isfinite(fX) || !std::isfinite(fY) || !std::isfinite(fZ)) return;
+	if (!IsSafeObjectPosition(fX, fY, fZ)) return;
 
 	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
 	if (!pObjectPool) return;

@@ -430,6 +430,7 @@ void CObject::MoveTo(float fX, float fY, float fZ, float fSpeed, float fRotX, fl
 {
 	if (!m_pEntity || GamePool_Object_GetAt(m_dwGTAId) != m_pEntity ||
 		!std::isfinite(fX) || !std::isfinite(fY) || !std::isfinite(fZ) ||
+		std::fabs(fX) > 10000.0f || std::fabs(fY) > 10000.0f || std::fabs(fZ) > 10000.0f ||
 		!std::isfinite(fSpeed) || fSpeed <= 0.0f || !std::isfinite(fRotX) ||
 		!std::isfinite(fRotY) || !std::isfinite(fRotZ)) return;
 	if (fRotX > -999.0f && fRotY > -999.0f && fRotZ > -999.0f && !m_pEntity->m_matrix) return;
@@ -627,7 +628,9 @@ bool CObject::AttachedToMovingEntity()
 
 void CObject::SetPos(float x, float y, float z)
 {
-    if (GamePool_Object_GetAt(m_dwGTAId))
+	if (GamePool_Object_GetAt(m_dwGTAId) && std::isfinite(x) && std::isfinite(y) &&
+		std::isfinite(z) && std::fabs(x) <= 10000.0f && std::fabs(y) <= 10000.0f &&
+		std::fabs(z) <= 10000.0f)
     {
         ScriptCommand(&put_object_at, m_dwGTAId, x, y, z);
     }

@@ -13,6 +13,7 @@
 #include "Pickups.h"
 #include "game/Models/ModelInfo.h"
 #include "game/Collision/Collision.h"
+#include <cmath>
 
 void ApplyInGamePatches();
 void InitScripting();
@@ -413,6 +414,14 @@ void CGame::RemoveModel(int iModel, bool bFromStreaming)
 
 CObject* CGame::NewObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance)
 {
+	// Keep untrusted server objects inside GTA's supported world range. Extreme
+	// finite values can still overflow CPhysical sector bookkeeping.
+	constexpr float kMaxWorldCoordinate = 10000.0f;
+	if (!std::isfinite(vecPos.x) || !std::isfinite(vecPos.y) || !std::isfinite(vecPos.z) ||
+		std::fabs(vecPos.x) > kMaxWorldCoordinate || std::fabs(vecPos.y) > kMaxWorldCoordinate ||
+		std::fabs(vecPos.z) > kMaxWorldCoordinate || !std::isfinite(vecRot.x) ||
+		!std::isfinite(vecRot.y) || !std::isfinite(vecRot.z) || !std::isfinite(fDrawDistance))
+		return nullptr;
 	CObject *pObjectNew = new CObject(iModel, vecPos, vecRot, fDrawDistance, 0);
 	return pObjectNew;
 }

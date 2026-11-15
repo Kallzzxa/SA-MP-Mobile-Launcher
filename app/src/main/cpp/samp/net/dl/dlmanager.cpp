@@ -1,5 +1,4 @@
 #include "dlmanager.h"
-#include "dl_imgpack.h"
 #include "../../main.h"
 #include "../../gui/gui.h"
 #include "../../game/Streaming.h"
@@ -49,11 +48,58 @@ Java_com_hopepride_samp_game_DLHttpClient_reportProgress(JNIEnv*, jclass, jlong 
         DLManager::Instance().ReportReceivedBytes(static_cast<uint64_t>(bytes));
 }
 
-struct DLCustomImgEntry {
-    uint32_t sectorOffset;
-    uint32_t sectorCount;
-    std::string name;
-};
+static bool LoadCustomDffFromFile(const std::string& path, int32 modelId)
+{
+    constexpr uint64_t kMaxDffBytes = 64ull * 1024ull * 1024ull;
+    if (modelId < RESOURCE_ID_DFF || modelId >= RESOURCE_ID_TXD)
+        return false;
+
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input)
+        return false;
+    const std::streamoff fileSize = input.tellg();
+    if (fileSize <= 0 || static_cast<uint64_t>(fileSize) > kMaxDffBytes)
+        return false;
+    input.seekg(0, std::ios::beg);
+
+    const size_t byteCount = static_cast<size_t>(fileSize);
+    const size_t paddedSize = ((byteCount + STREAMING_SECTOR_SIZE - 1) /
+                               STREAMING_SECTOR_SIZE) * STREAMING_SECTOR_SIZE;
+    std::vector<uint8> fileBuffer(paddedSize, 0);
+    if (!input.read(reinterpret_cast<char*>(fileBuffer.data()), fileSize))
+        return false;
+
+    CStreamingInfo& info = CStreaming::GetInfo(modelId);
+    if (info.IsLoaded() || info.IsBeingRead() || info.IsRequested())
+        return false;
+
+    const uint32 sectorCount = static_cast<uint32>(paddedSize / STREAMING_SECTOR_SIZE);
+    info.ClearAllFlags();
+    info.SetFlags(STREAMING_GAME_REQUIRED | STREAMING_KEEP_IN_MEMORY);
+    info.m_nImgId = 0;
+    info.SetCdPosnAndSize(0, sectorCount);
+    info.m_nNextIndexOnCd = -1;
+    info.m_nLoadState = LOADSTATE_READING;
+
+    CStreaming::MakeSpaceFor(paddedSize);
+    const bool converted = CStreaming::ConvertBufferToObject(fileBuffer.data(), modelId);
+    if (!converted || !info.IsLoaded()) {
+        FLog("DLManager: direct DFF conversion failed (model=%d path=%s converted=%d state=%d)",
+             modelId, path.c_str(), converted, static_cast<int>(info.m_nLoadState));
+        if (info.IsLoaded())
+            CStreaming::RemoveModel(modelId);
+        info.ClearAllFlags();
+        info.m_nImgId = 0;
+        info.SetCdPosnAndSize(0, 0);
+        info.m_nNextIndexOnCd = -1;
+        info.m_nLoadState = LOADSTATE_NOT_LOADED;
+        return false;
+    }
+
+    FLog("DLManager: loaded DFF directly (model=%d path=%s bytes=%zu)",
+         modelId, path.c_str(), byteCount);
+    return true;
+}
 
 static void DestroyCustomColModel(CColModel* colModel)
 {
@@ -109,91 +155,6 @@ static CColModel* CloneCustomColModel(const CColModel* source)
         }
     }
     return clone;
-}
-
-static uint32_t ReadImgU32(const uint8_t* p)
-{
-    return (uint32_t)p[0]
-        | ((uint32_t)p[1] << 8)
-        | ((uint32_t)p[2] << 16)
-        | ((uint32_t)p[3] << 24);
-}
-
-static bool ReadCustomImgDirectory(
-    const std::string& path,
-    std::vector<DLCustomImgEntry>& entries)
-{
-    FILE* fp = fopen(path.c_str(), "rb");
-    if (!fp)
-        return false;
-
-    uint8_t header[8]{};
-
-    if (fread(header, 1, sizeof(header), fp) != sizeof(header) ||
-        memcmp(header, "VER2", 4) != 0)
-    {
-        fclose(fp);
-        return false;
-    }
-
-    const uint32_t count = ReadImgU32(header + 4);
-
-    if (count == 0 || count > DLImgPack::IMG_MAX_ENTRIES)
-    {
-        fclose(fp);
-        return false;
-    }
-
-    entries.clear();
-    entries.reserve(count);
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        uint8_t raw[32]{};
-
-        if (fread(raw, 1, sizeof(raw), fp) != sizeof(raw))
-        {
-            fclose(fp);
-            entries.clear();
-            return false;
-        }
-
-        DLCustomImgEntry entry{};
-        entry.sectorOffset = ReadImgU32(raw);
-        entry.sectorCount = ReadImgU32(raw + 4);
-
-        const char* name =
-            reinterpret_cast<const char*>(raw + 8);
-
-        const size_t len = strnlen(name, 24);
-
-        if (len == 0 || len >= 24 || entry.sectorCount == 0)
-        {
-            fclose(fp);
-            entries.clear();
-            return false;
-        }
-
-        entry.name.assign(name, len);
-        entries.push_back(std::move(entry));
-    }
-
-    fclose(fp);
-    return true;
-}
-
-static bool CopyFileForCustomTxd(const std::string& source, const std::string& target)
-{
-    std::ifstream in(source, std::ios::binary);
-    if (!in)
-        return false;
-
-    std::ofstream out(target, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return false;
-
-    out << in.rdbuf();
-    return out.good();
 }
 
 static RwTexDictionary* LoadCustomTxd(const std::string& path)
@@ -706,7 +667,6 @@ void DLManager::Reset() {
     std::vector<int16_t> registeredModels;
     std::vector<int32> customTxdSlots;
     std::vector<CColModel*> customColModels;
-    std::vector<int32> customImgIndexes;
     std::unordered_set<CBaseModelInfo*> customAtomicInfos;
     std::unordered_set<CBaseModelInfo*> customPedInfos;
     {
@@ -714,7 +674,6 @@ void DLManager::Reset() {
         registeredModels.assign(m_registeredModels.begin(), m_registeredModels.end());
         customTxdSlots = m_customTxdSlots;
         customColModels = m_customColModels;
-        customImgIndexes = m_customImgIndexes;
     }
     for (const int16_t virtualId : registeredModels) {
         CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(virtualId);
@@ -743,8 +702,6 @@ void DLManager::Reset() {
         }
         CModelInfo::SetModelInfo(virtualId, nullptr);
     }
-    for (const int32 imageIndex : customImgIndexes)
-        CStreaming::RemoveImageFromList(imageIndex);
     for (CColModel* colModel : customColModels)
         DestroyCustomColModel(colModel);
 
@@ -821,7 +778,6 @@ void DLManager::Reset() {
     m_localServerModelIds.clear();
     m_customTxdSlots.clear();
     m_customColModels.clear();
-    m_customImgIndexes.clear();
     m_atomicStoreStartCount = 0;
     m_pedStoreStartCount = 0;
     m_modelStoreStartCaptured = false;
@@ -990,7 +946,6 @@ bool DLManager::RegisterCustomModels() {
         std::string dffPath;
         std::string txdPath;
         std::string dffArcName;
-        std::string txdArcName;
         bool local{false};
         std::vector<std::string> pngPaths;
     };
@@ -1067,12 +1022,11 @@ bool DLManager::RegisterCustomModels() {
                 continue;
             }
 
-            char dffName[32], txdName[32];
+            char dffName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
-            snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
             toRegister.push_back({m.virtualModelId, m.type, m.baseId, m.dffChecksum,
                                   m.txdChecksum, dffPath, txdPath,
-                                  dffName, txdName});
+                                  dffName});
         }
 
         for (const auto& mod : m_localMods) {
@@ -1103,7 +1057,7 @@ bool DLManager::RegisterCustomModels() {
             local.baseId = mod.baseId;
             local.dffCrc = CalculateFileCRC32(mod.dffPath);
             local.dffPath = mod.dffPath;
-            local.dffArcName = mod.archiveName + ".dff";
+            local.dffArcName = mod.archiveName;
             local.local = true;
             local.pngPaths = mod.pngPaths;
             toRegister.push_back(std::move(local));
@@ -1129,24 +1083,9 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
-    // Materialize each validated TXD under a CRC-addressed TEXDB/SAMP path,
-    // then read it directly into its TXD store slot before any DFF is exposed
-    // to CStreaming. This avoids archive-name collisions and makes the DFF's
-    // texture dependency ready synchronously.
-    std::string storageBase;
-    {
-        std::lock_guard<std::mutex> lock(m_cachePathMutex);
-        storageBase = m_storagePath;
-    }
-    const std::string txdDirectory = storageBase + "TEXDB/SAMP/";
-    const bool hasRemoteModels = std::any_of(toRegister.begin(), toRegister.end(),
-        [](const ModelFiles& model) { return !model.local; });
-    if (hasRemoteModels && !MakeDirectoryTree(txdDirectory)) {
-        PushChat("Custom DL: failed to create TEXDB/SAMP directory.");
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_bModelsRegistered = true;
-        return false;
-    }
+    // TXDs are already CRC-validated in the server cache. Read them directly
+    // from SAMP/cache/<server>/; only their TXD store slot is named by CRC.
+    // Do this before any dependent DFF is exposed to CStreaming.
 
     std::unordered_map<uint32_t, int32> txdSlots;
     std::unordered_map<int16_t, int32> localTxdSlots;
@@ -1197,26 +1136,14 @@ bool DLManager::RegisterCustomModels() {
                 ? CTxdStore::ms_pTxdPool->GetAt(txdIndex)
                 : nullptr;
 
-            char stagedName[40];
-            snprintf(stagedName, sizeof(stagedName), "0x%08X.txd", mf.txdCrc);
-            const std::string stagedPath = txdDirectory + stagedName;
-            const bool copied = CopyFileForCustomTxd(mf.txdPath, stagedPath);
-            const uint32_t stagedCrc = copied ? CalculateFileCRC32(stagedPath) : 0;
-            const bool crcValid = copied && stagedCrc == mf.txdCrc;
-            if (!copied)
-                FLog("DLManager: failed to copy TXD CRC %08X from %s to %s",
-                     mf.txdCrc, mf.txdPath.c_str(), stagedPath.c_str());
-            else if (!crcValid)
-                FLog("DLManager: staged TXD CRC mismatch: expected %08X got %08X (%s)",
-                     mf.txdCrc, stagedCrc, stagedPath.c_str());
             RwTexDictionary* dictionary = nullptr;
             bool dictionaryLoadedHere = false;
             if (slot && slot->m_pRwDictionary) {
                 dictionary = reinterpret_cast<RwTexDictionary*>(slot->m_pRwDictionary);
                 FLog("DLManager: reusing TXD dictionary CRC %08X in slot %d",
                      mf.txdCrc, txdIndex);
-            } else if (slot && crcValid) {
-                dictionary = LoadCustomTxd(stagedPath);
+            } else if (slot) {
+                dictionary = LoadCustomTxd(mf.txdPath);
                 if (dictionary) {
                     slot->m_pRwDictionary = reinterpret_cast<uintptr*>(dictionary);
                     dictionaryLoadedHere = true;
@@ -1245,75 +1172,6 @@ bool DLManager::RegisterCustomModels() {
         m_bModelsRegistered = true;
         return false;
     }
-
-    // Pack into IMG.
-    std::string cacheBase;
-    {
-        std::lock_guard<std::mutex> lock(m_cachePathMutex);
-        cacheBase = m_cachePath;
-    }
-    std::string imgPath = cacheBase + "custom_dl.img";
-
-    std::vector<DLImgPack::ImgEntry> entries;
-    entries.reserve(toRegister.size());
-    // TXDs are loaded directly; only DFFs enter the streaming IMG.
-    std::unordered_set<std::string> archiveNames;
-    for (const auto& mf : toRegister) {
-        if (archiveNames.insert(mf.dffArcName).second)
-            entries.push_back({mf.dffPath, mf.dffArcName});
-    }
-
-    std::string packError;
-    if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
-                 packError.c_str());
-        PushChat(msg);
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_bModelsRegistered = true;
-        return false;
-    }
-
-    // Register IMG with the streaming system.
-    // Note: path format follows the game's CdStreamOpen expectations.
-    int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
-    if (imgIndex < 0) {
-        PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_bModelsRegistered = true;
-        return false;
-    }
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_customImgIndexes.push_back(imgIndex);
-    }
-    // Verify the IMG was actually registered in the returned slot.
-    // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
-    //  not a stale entry or an out-of-bounds index.)
-    if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, "custom_dl.img") != 0) {
-        PushChat("Custom IMG registration verification failed.");
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_bModelsRegistered = true;
-        return false;
-    }
-
-    // Read custom IMG directory.
-    std::vector<DLCustomImgEntry> imgEntries;
-
-    if (!ReadCustomImgDirectory(imgPath, imgEntries)) {
-        PushChat("Custom DL: failed to read IMG directory.");
-
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_bModelsRegistered = true;
-        return false;
-    }
-
-    // Maps IMG archive entries to their streaming resource IDs.
-    std::unordered_map<std::string, std::vector<int32>> imgModelIds;
-
-    std::vector<int16_t> registeredIds;
-    registeredIds.reserve(toRegister.size());
 
     // Register each model slot.
     int registered = 0;
@@ -1486,101 +1344,45 @@ bool DLManager::RegisterCustomModels() {
 
             pInfo->m_nTxdIndex = static_cast<int16>(txdIndex);
 
-            const int32 dffStreamId =
-                DFFToModelId(mf.virtualId);
-
-            imgModelIds[mf.dffArcName].push_back(dffStreamId);
+            const int32 dffStreamId = DFFToModelId(mf.virtualId);
+            if (!LoadCustomDffFromFile(mf.dffPath, dffStreamId)) {
+                FLog("DLManager: custom DFF rejected (model=%d base=%d path=%s)",
+                     dffStreamId, mf.baseId,
+                     mf.dffPath.c_str());
+                CModelInfo::SetModelInfo(mf.virtualId, nullptr);
+                pInfo->m_pColModel = nullptr;
+                if (mf.type == 1)
+                    static_cast<CPedModelInfo*>(pInfo)->m_pHitColModel = nullptr;
+                m_customColModels.erase(
+                    std::remove(m_customColModels.begin(), m_customColModels.end(), customColModel),
+                    m_customColModels.end());
+                DestroyCustomColModel(customColModel);
+                if (customHitColModel) {
+                    m_customColModels.erase(
+                        std::remove(m_customColModels.begin(), m_customColModels.end(), customHitColModel),
+                        m_customColModels.end());
+                    DestroyCustomColModel(customHitColModel);
+                }
+                auto& storeCount = mf.type == 1
+                    ? CModelInfo::ms_pedModelInfoStore.m_nCount
+                    : CModelInfo::ms_atomicModelInfoStore.m_nCount;
+                if (storeCount > 0)
+                    --storeCount;
+                ++skippedOccupied;
+                continue;
+            }
 
             m_registeredModels.insert(mf.virtualId);
             m_customColModels.push_back(customColModel);
             if (customHitColModel)
                 m_customColModels.push_back(customHitColModel);
             ++registered;
-            registeredIds.push_back(mf.virtualId);
         }
 
         m_bModelsRegistered = true;
     }
 
-    // Apply IMG directory metadata AFTER all model IDs are registered.
-    // imgModelIds is populated inside the model registration loop.
-    int mappedResources = 0;
-
-    for (const auto& entry : imgEntries)
-    {
-        auto it = imgModelIds.find(entry.name);
-
-        if (it == imgModelIds.end())
-            continue;
-
-        for (const int32 modelId : it->second)
-        {
-            if (modelId < 0 || modelId >= RESOURCE_ID_TOTAL)
-                continue;
-
-            CStreamingInfo& info = CStreaming::GetInfo(modelId);
-
-            info.m_nImgId = static_cast<uint8>(imgIndex);
-
-            info.SetCdPosnAndSize(
-                entry.sectorOffset,
-                entry.sectorCount
-            );
-
-            info.m_nNextIndexOnCd = -1;
-
-            ++mappedResources;
-
-            FLog(
-                "DLManager: IMG resource mapped: %s -> %d (offset=%u, size=%u)",
-                entry.name.c_str(),
-                modelId,
-                entry.sectorOffset,
-                entry.sectorCount
-            );
-        }
-    }
-
-    // Explicitly request every successfully registered custom DFF.
-    // RequestModel() also requests its TXD dependency.
-    for (const int16_t virtualId : registeredIds)
-    {
-        const int32 dffModelId = DFFToModelId(virtualId);
-
-        if (dffModelId < RESOURCE_ID_DFF ||
-            dffModelId >= RESOURCE_ID_TXD)
-        {
-            FLog(
-                "DLManager: invalid DFF streaming ID %d",
-                dffModelId
-            );
-            continue;
-        }
-
-        if (!CModelInfo::GetModelInfo(virtualId))
-        {
-            FLog(
-                "DLManager: missing CModelInfo for virtual ID %d",
-                virtualId
-            );
-            continue;
-        }
-
-        CStreaming::RequestModel(
-            dffModelId,
-            STREAMING_GAME_REQUIRED | STREAMING_KEEP_IN_MEMORY
-        );
-
-        FLog(
-            "DLManager: requested custom DFF model %d",
-            dffModelId
-        );
-    }
-
-    FLog(
-        "DLManager: custom IMG metadata applied: %d resources",
-        mappedResources
-    );
+    FLog("DLManager: custom DFFs loaded directly from cache; IMG not used");
 
     char msg[160];
     snprintf(msg, sizeof(msg),
@@ -2922,7 +2724,7 @@ void DLManager::RenderImGui() {
         ImGui::Spacing();
         ImGui::Text("Preparing custom models");
 
-        ImGui::SameLine(ImGui::GetWindowWidth() - 68.0f);
+        ImGui::SameLine(ImGui::GetWindowWidth() - 84.0f);
         ImGui::TextColored(ImVec4(0.98f, 0.98f, 1.0f, 1.0f), "%.0f%%", progress * 100.0f);
         ImGui::ProgressBar(progress, ImVec2(-1.0f, 10.0f), "");
         ImGui::TextDisabled("%zu of %zu files", processed, totalFiles);
@@ -2962,14 +2764,15 @@ void DLManager::RenderImGui() {
                     : ImVec4(0.58f, 0.62f, 0.69f, 1.0f);
 
                 ImGui::PushID(static_cast<int>(i));
-                const float rowStartX = ImGui::GetCursorPosX();
                 const float rowStartScreenX = ImGui::GetCursorScreenPos().x;
                 const float rowStartScreenY = ImGui::GetCursorScreenPos().y;
                 const float rowWidth = ImGui::GetContentRegionAvail().x;
-                const float statusWidth = std::min(104.0f, std::max(80.0f, rowWidth * 0.34f));
-                const float sizeWidth = std::min(64.0f, rowWidth * 0.24f);
-                const float fileStartX = rowStartX + statusWidth + 8.0f;
-                const float fileRightScreenX = rowStartScreenX + rowWidth - sizeWidth - 8.0f;
+                const float statusWidth = std::min(84.0f, std::max(54.0f, rowWidth * 0.28f));
+                const float sizeWidth = std::min(56.0f, std::max(44.0f, rowWidth * 0.18f));
+                const float fileStartOffset = statusWidth + 5.0f;
+                const float fileWidth = std::max(0.0f, rowWidth - statusWidth - sizeWidth - 14.0f);
+                const float fileStartScreenX = rowStartScreenX + fileStartOffset;
+                const float fileRightScreenX = fileStartScreenX + fileWidth;
                 const float lineBottom = rowStartScreenY + ImGui::GetTextLineHeight() + 2.0f;
 
                 ImGui::PushClipRect(ImVec2(rowStartScreenX, rowStartScreenY),
@@ -2977,17 +2780,24 @@ void DLManager::RenderImGui() {
                 ImGui::TextColored(statusColor, "%s", status);
                 ImGui::PopClipRect();
 
-                ImGui::SameLine(fileStartX);
-                ImGui::PushClipRect(ImVec2(rowStartScreenX + statusWidth + 4.0f, rowStartScreenY),
+                const float fileTextWidth = ImGui::CalcTextSize(task.hexName.c_str()).x;
+                const float centeredFileOffset = fileStartOffset +
+                    std::max(0.0f, (fileWidth - fileTextWidth) * 0.5f);
+                ImGui::SetCursorScreenPos(ImVec2(rowStartScreenX + centeredFileOffset, rowStartScreenY));
+                ImGui::PushClipRect(ImVec2(fileStartScreenX, rowStartScreenY),
                                     ImVec2(fileRightScreenX, lineBottom), true);
                 ImGui::Text("%s", task.hexName.c_str());
                 ImGui::PopClipRect();
 
-                ImGui::SameLine(rowStartX + rowWidth - sizeWidth);
-                ImGui::TextDisabled("%.1f KiB", static_cast<double>(task.size) / 1024.0);
-                if (task.failed && !task.lastError.empty())
+                ImGui::SetCursorScreenPos(ImVec2(rowStartScreenX + rowWidth - sizeWidth, rowStartScreenY));
+                ImGui::SetWindowFontScale(0.76f);
+                ImGui::TextDisabled("%.0fK", static_cast<double>(task.size) / 1024.0);
+                ImGui::SetWindowFontScale(0.9f);
+                if (task.failed && !task.lastError.empty()) {
+                    ImGui::SetCursorScreenPos(ImVec2(rowStartScreenX, lineBottom));
                     ImGui::TextColored(ImVec4(0.96f, 0.34f, 0.34f, 1.0f),
                                        "%s", task.lastError.c_str());
+                }
                 ImGui::Separator();
                 ImGui::PopID();
             }
