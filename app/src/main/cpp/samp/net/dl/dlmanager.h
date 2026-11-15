@@ -101,6 +101,7 @@ public:
     // Virtual Model Mapping (Part 4 solution)
     int16_t GetVirtualModelId(int32_t networkId);
     int32_t GetNetworkModelId(int16_t virtualId);
+    int32_t GetBaseModelId(int32_t networkId) const;
 
     // Custom model registration (0.3.DL PR #3): loads CRC-addressed TXDs into
     // TxdDef slots, packs DFFs into a custom IMG, and allocates CModelInfo
@@ -165,6 +166,9 @@ private:
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
     std::vector<int32_t> m_customTxdSlots;
+    size_t m_atomicStoreStartCount{0};
+    size_t m_pedStoreStartCount{0};
+    bool m_modelStoreStartCaptured{false};
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.

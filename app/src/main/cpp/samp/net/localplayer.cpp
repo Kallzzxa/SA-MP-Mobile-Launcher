@@ -527,9 +527,12 @@ void CLocalPlayer::ProcessClassSelection()
 {
     if (!m_bSpawnDialogShowed)
     {
+        // Mark the selection screen active before sending the RPC. HandleClassSelection
+        // can reach this path during InitGame, and Process() runs on the next game tick.
+        // Setting the flag first prevents that tick from sending a duplicate request.
+        m_bSpawnDialogShowed = true;
         if (pUI) pUI->spawn()->setVisible(true);
         RequestClass(m_iSelectedClass);
-        m_bSpawnDialogShowed = true;
     }
 }
 
@@ -704,6 +707,8 @@ bool CLocalPlayer::Spawn()
 
 void CLocalPlayer::HandleClassSelection()
 {
+    if (m_bSpawnDialogShowed) return;
+
     m_bClearedToSpawn = false;
 
     if(m_pPlayerPed)
@@ -713,7 +718,7 @@ void CLocalPlayer::HandleClassSelection()
         m_pPlayerPed->TogglePlayerControllable(false);
     }
 
-    RequestClass(m_iSelectedClass);
+    ProcessClassSelection();
 }
 
 void CLocalPlayer::SendWastedNotification()

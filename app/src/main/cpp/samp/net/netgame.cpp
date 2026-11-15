@@ -126,16 +126,19 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 CNetGame::~CNetGame()
 {
 	cef::ompStop();
-	DLManager::Instance().Reset();
 	// voice
 	Network::OnRaknetDisconnect();
 
-	m_pRakClient->Disconnect(0);
 	UnregisterRPCs(m_pRakClient);
 	UnregisterScriptRPCs(m_pRakClient);
-	RakNetworkFactory::DestroyRakClientInterface(m_pRakClient);
+	m_pRakClient->Disconnect(0);
 
+	// Destroy networked entities while their custom model metadata and
+	// collision dictionaries are still valid. DLManager::Reset unloads those
+	// resources, so it must run only after the pools release their entities.
 	UninitializePools();
+	DLManager::Instance().Reset();
+	RakNetworkFactory::DestroyRakClientInterface(m_pRakClient);
 
 	if (m_pNetSet) {
 		delete m_pNetSet;

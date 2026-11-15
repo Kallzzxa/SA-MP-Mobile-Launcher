@@ -1,5 +1,6 @@
 #include "../main.h"
 #include "../game/game.h"
+#include "../game/Models/ModelInfo.h"
 #include "netgame.h"
 #include "../audiostream.h"
 #include "game/BuildingRemoval.h"
@@ -313,7 +314,12 @@ void ScrCreateObject(RPCParameters* rpcParams)
 	CObjectPool* pool = pNetGame->GetObjectPool();
 	if (!pool || objectId >= MAX_OBJECTS) return;
 	const int actualModel = model < 0 ? DLManager::Instance().GetVirtualModelId(model) : model;
-	if (!pool->New(objectId, actualModel, pos, rot, drawDistance)) return;
+	int objectModel = actualModel;
+	if (model < 0 && !DLManager::Instance().IsModelRegistered(actualModel)) {
+		objectModel = DLManager::Instance().GetBaseModelId(model);
+		if (objectModel < 0 || !CModelInfo::GetModelInfo(objectModel)) return;
+	}
+	if (!pool->New(objectId, objectModel, pos, rot, drawDistance)) return;
 	CObject* object = pool->GetAt(objectId);
 	if (!object) return;
 	++iTotalObjects;

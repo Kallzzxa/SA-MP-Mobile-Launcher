@@ -421,12 +421,21 @@ void DLManager::Reset() {
     // belong to this server.
     std::vector<int16_t> registeredModels;
     std::vector<int32> customTxdSlots;
+    std::unordered_set<CBaseModelInfo*> customAtomicInfos;
+    std::unordered_set<CBaseModelInfo*> customPedInfos;
     {
         std::lock_guard<std::mutex> stateLock(m_mutex);
         registeredModels.assign(m_registeredModels.begin(), m_registeredModels.end());
         customTxdSlots = m_customTxdSlots;
     }
     for (const int16_t virtualId : registeredModels) {
+        CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(virtualId);
+        if (modelInfo) {
+            if (modelInfo->GetModelType() == MODEL_INFO_PED)
+                customPedInfos.insert(modelInfo);
+            else
+                customAtomicInfos.insert(modelInfo);
+        }
         const int32 modelId = DFFToModelId(virtualId);
         if (modelId >= RESOURCE_ID_DFF && modelId < RESOURCE_ID_TXD) {
             CStreaming::RemoveModel(modelId);
@@ -437,6 +446,39 @@ void DLManager::Reset() {
             info.m_nNextIndexOnCd = -1;
         }
         CModelInfo::SetModelInfo(virtualId, nullptr);
+    }
+
+    // CModelInfo stores are append-only in this port. Reclaim the custom
+    // suffix on reconnect only if every entry in that suffix is ours; if some
+    // other subsystem appended models afterward, leave the store untouched.
+    if (m_modelStoreStartCaptured) {
+        auto& atomicStore = CModelInfo::ms_atomicModelInfoStore;
+        if (atomicStore.m_nCount >= m_atomicStoreStartCount &&
+            atomicStore.m_nCount - m_atomicStoreStartCount == customAtomicInfos.size()) {
+            bool ownsSuffix = true;
+            for (size_t i = m_atomicStoreStartCount; i < atomicStore.m_nCount; ++i) {
+                if (customAtomicInfos.find(&atomicStore.m_aObjects[i]) == customAtomicInfos.end()) {
+                    ownsSuffix = false;
+                    break;
+                }
+            }
+            if (ownsSuffix)
+                atomicStore.m_nCount = m_atomicStoreStartCount;
+        }
+
+        auto& pedStore = CModelInfo::ms_pedModelInfoStore;
+        if (pedStore.m_nCount >= m_pedStoreStartCount &&
+            pedStore.m_nCount - m_pedStoreStartCount == customPedInfos.size()) {
+            bool ownsSuffix = true;
+            for (size_t i = m_pedStoreStartCount; i < pedStore.m_nCount; ++i) {
+                if (customPedInfos.find(&pedStore.m_aObjects[i]) == customPedInfos.end()) {
+                    ownsSuffix = false;
+                    break;
+                }
+            }
+            if (ownsSuffix)
+                pedStore.m_nCount = m_pedStoreStartCount;
+        }
     }
     if (CTxdStore::ms_pTxdPool) {
         for (const int32 txdIndex : customTxdSlots) {
@@ -476,6 +518,9 @@ void DLManager::Reset() {
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
     m_customTxdSlots.clear();
+    m_atomicStoreStartCount = 0;
+    m_pedStoreStartCount = 0;
+    m_modelStoreStartCaptured = false;
     m_bModelsRegistered = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
@@ -594,6 +639,15 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
     return -1; // sentinel: caller decides (audit A10)
 }
 
+int32_t DLManager::GetBaseModelId(int32_t networkId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (const auto& model : m_models) {
+        if (model.newId == networkId)
+            return model.baseId;
+    }
+    return -1;
+}
+
 bool DLManager::IsModelRegistered(int16_t virtualId) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_registeredModels.find(virtualId) != m_registeredModels.end();
@@ -615,6 +669,7 @@ bool DLManager::RegisterCustomModels() {
     struct ModelFiles {
         int16_t virtualId;
         uint8_t type; // 1=Skin, 2=Object
+        int32_t baseId;
         uint32_t dffCrc;
         uint32_t txdCrc;
         std::string dffPath;
@@ -662,7 +717,7 @@ bool DLManager::RegisterCustomModels() {
             char dffName[32], txdName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
             snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
-            toRegister.push_back({m.virtualModelId, m.type, m.dffChecksum,
+            toRegister.push_back({m.virtualModelId, m.type, m.baseId, m.dffChecksum,
                                   m.txdChecksum, dffPath, txdPath,
                                   dffName, txdName});
         }
@@ -815,6 +870,9 @@ bool DLManager::RegisterCustomModels() {
     int skippedOccupied = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+        m_atomicStoreStartCount = CModelInfo::ms_atomicModelInfoStore.GetCount();
+        m_pedStoreStartCount = CModelInfo::ms_pedModelInfoStore.GetCount();
+        m_modelStoreStartCaptured = true;
 
         for (const auto& mf : toRegister) {
 
@@ -838,19 +896,68 @@ bool DLManager::RegisterCustomModels() {
             }
 
             CBaseModelInfo* pInfo = nullptr;
+            CBaseModelInfo* baseInfo = CModelInfo::GetModelInfo(mf.baseId);
+            if (!baseInfo || !baseInfo->m_pColModel) {
+                FLog(
+                    "DLManager: custom model %d skipped: base model %d has no collision model",
+                    mf.virtualId,
+                    mf.baseId
+                );
+                ++skippedOccupied;
+                continue;
+            }
 
             if (mf.type == 1) {
+                if (baseInfo->GetModelType() != MODEL_INFO_PED) {
+                    FLog(
+                        "DLManager: custom skin %d skipped: base model %d is not a ped",
+                        mf.virtualId,
+                        mf.baseId
+                    );
+                    ++skippedOccupied;
+                    continue;
+                }
                 // Skin -> ped model
                 pInfo = CModelInfo::AddPedModel(mf.virtualId);
             }
             else {
+                // SA-MP DL simple objects carry no COL file. Their collision
+                // shape comes from the declared base model; sharing this
+                // pointer keeps world objects safe in CPhysical while the
+                // custom DFF supplies only render geometry.
                 // Object -> atomic model
                 pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+                if (pInfo)
+                    pInfo->m_nObjectInfoIndex = baseInfo->m_nObjectInfoIndex;
             }
 
             if (!pInfo) {
                 ++skippedFull;
                 continue;
+            }
+
+            // Both simple objects and peds need the base model's collision
+            // data. The custom DFF supplies render geometry only and must not
+            // take ownership of the shared COL model.
+            pInfo->m_pColModel = baseInfo->m_pColModel;
+            pInfo->bDoWeOwnTheColModel = false;
+            if (mf.type == 1) {
+                auto* pedInfo = static_cast<CPedModelInfo*>(pInfo);
+                auto* basePedInfo = static_cast<CPedModelInfo*>(baseInfo);
+                pedInfo->m_dwAnimFileIndex = basePedInfo->m_dwAnimFileIndex;
+                pedInfo->m_nAnimType = basePedInfo->m_nAnimType;
+                pedInfo->m_nPedType = basePedInfo->m_nPedType;
+                pedInfo->m_nStatType = basePedInfo->m_nStatType;
+                pedInfo->m_nCarsCanDriveMask = basePedInfo->m_nCarsCanDriveMask;
+                pedInfo->m_nPedFlags = basePedInfo->m_nPedFlags;
+                pedInfo->m_pHitColModel = basePedInfo->m_pHitColModel;
+                pedInfo->m_nRadio1 = basePedInfo->m_nRadio1;
+                pedInfo->m_nRadio2 = basePedInfo->m_nRadio2;
+                pedInfo->m_nRace = basePedInfo->m_nRace;
+                pedInfo->m_AudioPedType = basePedInfo->m_AudioPedType;
+                pedInfo->m_FirstVoice = basePedInfo->m_FirstVoice;
+                pedInfo->m_LastVoice = basePedInfo->m_LastVoice;
+                pedInfo->m_NextVoice = basePedInfo->m_NextVoice;
             }
 
             char dffBase[32];

@@ -61,7 +61,8 @@ public class MainActivity extends AppCompatActivity {
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
-        if (savedInstanceState == null) playWelcomeSound();
+        // Temporarily disabled; restore this call to enable the welcome sound.
+        // if (savedInstanceState == null) playWelcomeSound();
         Config.currentContext = this;
         checkFirstRun();
 
