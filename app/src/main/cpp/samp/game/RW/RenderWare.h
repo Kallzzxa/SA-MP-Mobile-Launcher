@@ -32,6 +32,9 @@ extern RwBool (*pRwStreamClose)(RwStream* stream, void* data);
 extern RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
     RwStream* stream
 );
+extern RwTexDictionary* (*RwTexDictionaryCreate)(void);
+extern RwBool (*RwTexDictionaryDestroy)(RwTexDictionary* dictionary);
+extern RwTexture* (*RwTexDictionaryAddTexture)(RwTexDictionary* dictionary, RwTexture* texture);
 
 extern RpClump* (*RpClumpStreamRead)(RwStream* stream);
 

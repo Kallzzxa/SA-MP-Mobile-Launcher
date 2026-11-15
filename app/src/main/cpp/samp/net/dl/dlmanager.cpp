@@ -4,6 +4,7 @@
 #include "../../gui/gui.h"
 #include "../../game/Streaming.h"
 #include "../../game/MemoryMgr.h"
+#include "../../game/Collision/Collision.h"
 #include "../../game/Models/ModelInfo.h"
 #include "../../game/TxdStore.h"
 #include "../../game/RW/RenderWare.h"
@@ -12,6 +13,7 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <dirent.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -24,6 +26,7 @@
 #include <csignal>
 
 #include <cstdio>
+#include <cctype>
 #include <fstream>
 #include <cstdlib>
 #include <cstring>
@@ -85,8 +88,25 @@ static CColModel* CloneCustomColModel(const CColModel* source)
     if (source->m_pColData) {
         clone->AllocateData();
         clone->m_pColData->Copy(*source->m_pColData);
-        if (clone->m_pColData->m_nNumTriangles > 0)
+        if (clone->m_pColData->m_nNumTriangles > 0) {
             clone->m_pColData->CalculateTrianglePlanes();
+            // Triangle planes are tracked in GTA's collision cache. The extra
+            // slot after the planes stores the cache link used by
+            // CCollision::RemoveTrianglePlanes() during model cleanup.
+            if (!clone->m_pColData->m_pTrianglePlanes ||
+                !CCollision::ms_colModelCache.links) {
+                clone->m_pColData->RemoveTrianglePlanes();
+                DestroyCustomColModel(clone);
+                return nullptr;
+            }
+            auto* cacheLink = CCollision::ms_colModelCache.Insert(clone->m_pColData);
+            if (!cacheLink) {
+                clone->m_pColData->RemoveTrianglePlanes();
+                DestroyCustomColModel(clone);
+                return nullptr;
+            }
+            clone->m_pColData->SetLinkPtr(cacheLink);
+        }
     }
     return clone;
 }
@@ -197,6 +217,78 @@ static RwTexDictionary* LoadCustomTxd(const std::string& path)
     pRwStreamClose(stream, nullptr);
     if (!dictionary)
         FLog("DLManager: RwTexDictionaryGtaStreamRead failed for TXD: %s", path.c_str());
+    return dictionary;
+}
+
+static RwTexDictionary* LoadLocalPngDictionary(const std::vector<std::string>& pngPaths)
+{
+    if (!RwTexDictionaryCreate || !RwTexDictionaryDestroy || !RwTexDictionaryAddTexture ||
+        !RtPNGImageRead || !RwImageDestroy || !RwImageFindRasterFormat ||
+        !RwRasterCreate || !RwRasterSetFromImage || !RwRasterDestroy ||
+        !RwTextureDestroy) {
+        FLog("ModLoader: PNG texture functions unavailable");
+        return nullptr;
+    }
+
+    RwTexDictionary* dictionary = RwTexDictionaryCreate();
+    if (!dictionary)
+        return nullptr;
+
+    size_t loadedTextures = 0;
+    for (const std::string& path : pngPaths) {
+        RwImage* image = RtPNGImageRead(path.c_str());
+        if (!image) {
+            FLog("ModLoader: failed to read PNG: %s", path.c_str());
+            continue;
+        }
+
+        RwInt32 width = 0, height = 0, depth = 0, format = 0;
+        if (!RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE,
+                                     &width, &height, &depth, &format)) {
+            RwImageDestroy(image);
+            FLog("ModLoader: unsupported PNG raster format: %s", path.c_str());
+            continue;
+        }
+
+        RwRaster* raster = RwRasterCreate(width, height, depth, format);
+        if (!raster || !RwRasterSetFromImage(raster, image)) {
+            if (raster)
+                RwRasterDestroy(raster);
+            RwImageDestroy(image);
+            FLog("ModLoader: failed to create PNG raster: %s", path.c_str());
+            continue;
+        }
+        RwImageDestroy(image);
+
+        RwTexture* texture = RwTextureCreate(raster);
+        if (!texture) {
+            RwRasterDestroy(raster);
+            FLog("ModLoader: failed to create PNG texture: %s", path.c_str());
+            continue;
+        }
+
+        const size_t slash = path.find_last_of('/');
+        const size_t dot = path.find_last_of('.');
+        std::string textureName = path.substr(
+            slash == std::string::npos ? 0 : slash + 1,
+            (dot == std::string::npos || dot <= slash) ? std::string::npos : dot - (slash + 1));
+        if (textureName.size() > 31)
+            textureName.resize(31);
+
+        if (!RwTextureSetName(texture, textureName.c_str()) ||
+            !RwTexDictionaryAddTexture(dictionary, texture)) {
+            RwTextureDestroy(texture);
+            FLog("ModLoader: failed to register PNG texture '%s' from %s",
+                 textureName.c_str(), path.c_str());
+            continue;
+        }
+        ++loadedTextures;
+    }
+
+    if (!pngPaths.empty() && loadedTextures == 0) {
+        RwTexDictionaryDestroy(dictionary);
+        return nullptr;
+    }
     return dictionary;
 }
 
@@ -314,6 +406,109 @@ static bool MakeDirectoryTree(const std::string& path)
     }
 
     return true;
+}
+
+static bool ParseLocalModelName(const std::string& filename, int32_t& serverModelId, int32_t& baseId)
+{
+    const size_t dot = filename.find_last_of('.');
+    if (dot == std::string::npos)
+        return false;
+    std::string stem = filename.substr(0, dot);
+    const size_t separator = stem.find('_');
+    if (separator == std::string::npos || stem.find('_', separator + 1) != std::string::npos)
+        return false;
+
+    const std::string modelText = stem.substr(0, separator);
+    const std::string baseText = stem.substr(separator + 1);
+    char* modelEnd = nullptr;
+    char* baseEnd = nullptr;
+    const long parsedModel = strtol(modelText.c_str(), &modelEnd, 10);
+    const long parsedBase = strtol(baseText.c_str(), &baseEnd, 10);
+    if (modelText.empty() || baseText.empty() || !modelEnd || *modelEnd || !baseEnd || *baseEnd ||
+        parsedModel == 0 || parsedModel < -65535 || parsedModel > 65535 ||
+        parsedBase < 0 || parsedBase > DL_VIRT_MAX)
+        return false;
+
+    serverModelId = static_cast<int32_t>(parsedModel);
+    baseId = static_cast<int32_t>(parsedBase);
+    return true;
+}
+
+static std::string LowercaseExtension(const std::string& name)
+{
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos)
+        return {};
+    std::string extension = name.substr(dot);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension;
+}
+
+static void ScanLocalModDirectory(const std::string& directory, int depth,
+                                  std::vector<DLLocalMod>& mods,
+                                  std::unordered_set<int32_t>& reservedIds)
+{
+    DIR* dir = opendir(directory.c_str());
+    if (!dir)
+        return;
+
+    std::vector<std::string> files;
+    std::vector<std::string> subdirectories;
+    while (dirent* entry = readdir(dir)) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+            continue;
+        const std::string path = directory + "/" + entry->d_name;
+        struct stat st{};
+        if (stat(path.c_str(), &st) != 0)
+            continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (depth < 2)
+                subdirectories.push_back(path);
+        } else if (S_ISREG(st.st_mode)) {
+            files.emplace_back(entry->d_name);
+        }
+    }
+    closedir(dir);
+    std::sort(files.begin(), files.end());
+    std::sort(subdirectories.begin(), subdirectories.end());
+
+    std::vector<std::string> pngPaths;
+    for (const auto& filename : files) {
+        if (LowercaseExtension(filename) == ".png")
+            pngPaths.push_back(directory + "/" + filename);
+    }
+
+    for (const auto& filename : files) {
+        if (LowercaseExtension(filename) != ".dff")
+            continue;
+
+        int32_t serverModelId = 0;
+        int32_t baseId = 0;
+        if (!ParseLocalModelName(filename, serverModelId, baseId)) {
+            FLog("ModLoader: ignored DFF with invalid name (expected <serverModelID>_<baseID>.dff): %s",
+                 (directory + "/" + filename).c_str());
+            continue;
+        }
+        if (!reservedIds.insert(serverModelId).second) {
+            FLog("ModLoader: duplicate local server model ID %d ignored: %s",
+                 serverModelId, (directory + "/" + filename).c_str());
+            continue;
+        }
+
+        DLLocalMod mod;
+        mod.serverModelId = serverModelId;
+        mod.baseId = baseId;
+        mod.dffPath = directory + "/" + filename;
+        mod.archiveName = filename.substr(0, filename.find_last_of('.'));
+        mod.pngPaths = pngPaths;
+        mods.push_back(std::move(mod));
+        FLog("ModLoader: found server model %d using base collision %d, textures=%zu: %s",
+             serverModelId, baseId, pngPaths.size(), (directory + "/" + filename).c_str());
+    }
+
+    for (const auto& child : subdirectories)
+        ScanLocalModDirectory(child, depth + 1, mods, reservedIds);
 }
 
 
@@ -441,6 +636,37 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
         m_storagePath = cleanStorage;
     }
 
+    const std::string modLoaderDirectory = cleanStorage + "SAMP/modloader";
+    if (MakeDirectoryTree(modLoaderDirectory)) {
+        ScanLocalModDirectory(modLoaderDirectory, 0, m_localMods, m_localServerModelIds);
+        for (auto mod = m_localMods.begin(); mod != m_localMods.end();) {
+            int16_t virtualId = -1;
+            while (m_nextVirtualId >= DL_VIRT_MIN) {
+                const int16_t candidate = m_nextVirtualId--;
+                if (CModelInfo::GetModelInfo(candidate))
+                    continue;
+                virtualId = candidate;
+                break;
+            }
+            if (virtualId < DL_VIRT_MIN) {
+                FLog("ModLoader: no free internal model slot for server ID %d",
+                     mod->serverModelId);
+                m_localServerModelIds.erase(mod->serverModelId);
+                mod = m_localMods.erase(mod);
+                continue;
+            }
+            mod->virtualModelId = virtualId;
+            m_networkToVirtual[mod->serverModelId] = virtualId;
+            m_virtualToNetwork[virtualId] = mod->serverModelId;
+            ++mod;
+        }
+        FLog("ModLoader: scanned %s, found %zu local model(s)",
+             modLoaderDirectory.c_str(), m_localMods.size());
+    } else {
+        FLog("ModLoader: could not create local mod directory: %s",
+             modLoaderDirectory.c_str());
+    }
+
     FLog(
         "DLManager: server cache initialized: %s",
         cacheDir.c_str()
@@ -480,6 +706,7 @@ void DLManager::Reset() {
     std::vector<int16_t> registeredModels;
     std::vector<int32> customTxdSlots;
     std::vector<CColModel*> customColModels;
+    std::vector<int32> customImgIndexes;
     std::unordered_set<CBaseModelInfo*> customAtomicInfos;
     std::unordered_set<CBaseModelInfo*> customPedInfos;
     {
@@ -487,6 +714,7 @@ void DLManager::Reset() {
         registeredModels.assign(m_registeredModels.begin(), m_registeredModels.end());
         customTxdSlots = m_customTxdSlots;
         customColModels = m_customColModels;
+        customImgIndexes = m_customImgIndexes;
     }
     for (const int16_t virtualId : registeredModels) {
         CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(virtualId);
@@ -515,6 +743,8 @@ void DLManager::Reset() {
         }
         CModelInfo::SetModelInfo(virtualId, nullptr);
     }
+    for (const int32 imageIndex : customImgIndexes)
+        CStreaming::RemoveImageFromList(imageIndex);
     for (CColModel* colModel : customColModels)
         DestroyCustomColModel(colModel);
 
@@ -587,8 +817,11 @@ void DLManager::Reset() {
     m_nextVirtualId = DL_VIRT_MIN;
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
+    m_localMods.clear();
+    m_localServerModelIds.clear();
     m_customTxdSlots.clear();
     m_customColModels.clear();
+    m_customImgIndexes.clear();
     m_atomicStoreStartCount = 0;
     m_pedStoreStartCount = 0;
     m_modelStoreStartCaptured = false;
@@ -658,10 +891,12 @@ bool DLManager::IsModelCached(uint32_t crc, uint32_t expectedSize, bool isDff) c
 }
 
 bool DLManager::ValidateOrPurge(const std::string& path, uint32_t crc, uint32_t expectedSize) {
-    (void)expectedSize;
     struct stat st;
     if (stat(path.c_str(), &st) != 0) return false;
-    if (CalculateFileCRC32(path) != crc) {
+    const uint32_t actualCrc = CalculateFileCRC32(path);
+    if (actualCrc != crc) {
+        FLog("DLManager: invalid cached asset: %s expectedCRC=%08X actualCRC=%08X size=%lld expectedSize=%u",
+             path.c_str(), crc, actualCrc, static_cast<long long>(st.st_size), expectedSize);
         unlink(path.c_str());
         return false;
     }
@@ -721,6 +956,10 @@ int32_t DLManager::GetBaseModelId(int32_t networkId) const {
         if (model.newId == networkId)
             return model.baseId;
     }
+    for (const auto& mod : m_localMods) {
+        if (mod.serverModelId == networkId)
+            return mod.baseId;
+    }
     return -1;
 }
 
@@ -752,10 +991,44 @@ bool DLManager::RegisterCustomModels() {
         std::string txdPath;
         std::string dffArcName;
         std::string txdArcName;
+        bool local{false};
+        std::vector<std::string> pngPaths;
     };
     std::vector<ModelFiles> toRegister;
+    std::vector<std::pair<uint32_t, bool>> retryAssets;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+        auto queueRetryIfNeeded = [&](uint32_t crc, uint32_t size, bool isDff) {
+            auto task = std::find_if(m_tasks.begin(), m_tasks.end(), [&](const DLFileTask& item) {
+                return item.crc == crc && item.isDff == isDff;
+            });
+            if (task != m_tasks.end()) {
+                // A failed task has already exhausted its retry budget. Do not
+                // loop forever trying to register an asset the server cannot
+                // provide; a completed task whose cache went bad gets one new
+                // download attempt cycle.
+                if (task->failed)
+                    return;
+                if (!task->done)
+                    return;
+                task->done = false;
+                task->failed = false;
+                task->started = false;
+                task->attempts = 0;
+                task->url.clear();
+                task->lastError.clear();
+            } else {
+                DLFileTask taskToRetry;
+                taskToRetry.crc = crc;
+                taskToRetry.size = size;
+                taskToRetry.isDff = isDff;
+                char name[32];
+                snprintf(name, sizeof(name), "0x%08X.%s", crc, isDff ? "dff" : "txd");
+                taskToRetry.hexName = name;
+                m_tasks.push_back(std::move(taskToRetry));
+            }
+            retryAssets.emplace_back(crc, isDff);
+        };
         for (const auto& m : m_models) {
             if (m.virtualModelId < DL_VIRT_MIN || m.virtualModelId > DL_VIRT_MAX)
                 continue;
@@ -773,6 +1046,8 @@ bool DLManager::RegisterCustomModels() {
                     dffPath.c_str()
                 );
 
+                queueRetryIfNeeded(m.dffChecksum, m.dffSize, true);
+
                 continue;
             }
 
@@ -787,6 +1062,8 @@ bool DLManager::RegisterCustomModels() {
                     txdPath.c_str()
                 );
 
+                queueRetryIfNeeded(m.txdChecksum, m.txdSize, false);
+
                 continue;
             }
 
@@ -797,6 +1074,52 @@ bool DLManager::RegisterCustomModels() {
                                   m.txdChecksum, dffPath, txdPath,
                                   dffName, txdName});
         }
+
+        for (const auto& mod : m_localMods) {
+            if (mod.virtualModelId < DL_VIRT_MIN || mod.virtualModelId > DL_VIRT_MAX)
+                continue;
+            if (m_registeredModels.find(mod.virtualModelId) != m_registeredModels.end())
+                continue;
+            if (CModelInfo::GetModelInfo(mod.virtualModelId)) {
+                FLog("ModLoader: model ID %d is already occupied; skipping %s",
+                     mod.serverModelId, mod.dffPath.c_str());
+                continue;
+            }
+            struct stat dffStat{};
+            if (stat(mod.dffPath.c_str(), &dffStat) != 0 || !S_ISREG(dffStat.st_mode) ||
+                dffStat.st_size <= 0 || dffStat.st_size > 64ll * 1024ll * 1024ll) {
+                FLog("ModLoader: DFF missing or outside 1..64 MiB: %s", mod.dffPath.c_str());
+                continue;
+            }
+            CBaseModelInfo* baseInfo = CModelInfo::GetModelInfo(mod.baseId);
+            if (!baseInfo || !baseInfo->m_pColModel) {
+                FLog("ModLoader: base model %d has no collision model; skipping %s",
+                     mod.baseId, mod.dffPath.c_str());
+                continue;
+            }
+            ModelFiles local{};
+            local.virtualId = mod.virtualModelId;
+            local.type = baseInfo->GetModelType() == MODEL_INFO_PED ? 1 : 2;
+            local.baseId = mod.baseId;
+            local.dffCrc = CalculateFileCRC32(mod.dffPath);
+            local.dffPath = mod.dffPath;
+            local.dffArcName = mod.archiveName + ".dff";
+            local.local = true;
+            local.pngPaths = mod.pngPaths;
+            toRegister.push_back(std::move(local));
+        }
+        if (!retryAssets.empty()) {
+            m_bFinishRequested = false;
+            m_bDownloadFinished = false;
+            m_bModelsRegistered = false;
+        }
+    }
+
+    if (!retryAssets.empty()) {
+        FLog("DLManager: re-fetching %zu cache-invalid model asset(s) before registration",
+             retryAssets.size());
+        m_workCv.notify_all();
+        return false;
     }
 
     if (toRegister.empty()) {
@@ -816,7 +1139,9 @@ bool DLManager::RegisterCustomModels() {
         storageBase = m_storagePath;
     }
     const std::string txdDirectory = storageBase + "TEXDB/SAMP/";
-    if (!MakeDirectoryTree(txdDirectory)) {
+    const bool hasRemoteModels = std::any_of(toRegister.begin(), toRegister.end(),
+        [](const ModelFiles& model) { return !model.local; });
+    if (hasRemoteModels && !MakeDirectoryTree(txdDirectory)) {
         PushChat("Custom DL: failed to create TEXDB/SAMP directory.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
@@ -824,10 +1149,44 @@ bool DLManager::RegisterCustomModels() {
     }
 
     std::unordered_map<uint32_t, int32> txdSlots;
+    std::unordered_map<int16_t, int32> localTxdSlots;
     std::unordered_set<uint32_t> failedTxds;
     std::vector<ModelFiles> txdReadyModels;
     txdReadyModels.reserve(toRegister.size());
     for (const auto& mf : toRegister) {
+        if (mf.local) {
+            char localTxdName[24];
+            snprintf(localTxdName, sizeof(localTxdName), "mod_%d", mf.virtualId);
+            const int32 txdIndex = CTxdStore::FindOrAddTxdSlot(localTxdName, "gta3");
+            TxdDef* slot = (txdIndex >= 0 && txdIndex < TOTAL_TXD_MODEL_IDS &&
+                            CTxdStore::ms_pTxdPool)
+                ? CTxdStore::ms_pTxdPool->GetAt(txdIndex)
+                : nullptr;
+            RwTexDictionary* dictionary = slot && slot->m_pRwDictionary
+                ? reinterpret_cast<RwTexDictionary*>(slot->m_pRwDictionary)
+                : nullptr;
+            bool loadedHere = false;
+            if (slot && !dictionary) {
+                dictionary = LoadLocalPngDictionary(mf.pngPaths);
+                if (dictionary) {
+                    slot->m_pRwDictionary = reinterpret_cast<uintptr*>(dictionary);
+                    loadedHere = true;
+                }
+            }
+            if (!slot || !dictionary) {
+                FLog("ModLoader: failed to load textures for model %d (slot=%d pngs=%zu)",
+                     mf.virtualId, txdIndex, mf.pngPaths.size());
+                continue;
+            }
+            localTxdSlots.emplace(mf.virtualId, txdIndex);
+            if (loadedHere)
+                m_customTxdSlots.push_back(txdIndex);
+            txdReadyModels.push_back(mf);
+            FLog("ModLoader: texture dictionary ready for model %d in slot %d",
+                 mf.virtualId, txdIndex);
+            continue;
+        }
+
         auto txd = txdSlots.find(mf.txdCrc);
         if (txd == txdSlots.end() && failedTxds.find(mf.txdCrc) == failedTxds.end()) {
             char txdName[32];
@@ -924,6 +1283,10 @@ bool DLManager::RegisterCustomModels() {
         m_bModelsRegistered = true;
         return false;
     }
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_customImgIndexes.push_back(imgIndex);
+    }
     // Verify the IMG was actually registered in the returned slot.
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
@@ -958,9 +1321,11 @@ bool DLManager::RegisterCustomModels() {
     int skippedOccupied = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_atomicStoreStartCount = CModelInfo::ms_atomicModelInfoStore.GetCount();
-        m_pedStoreStartCount = CModelInfo::ms_pedModelInfoStore.GetCount();
-        m_modelStoreStartCaptured = true;
+        if (!m_modelStoreStartCaptured) {
+            m_atomicStoreStartCount = CModelInfo::ms_atomicModelInfoStore.GetCount();
+            m_pedStoreStartCount = CModelInfo::ms_pedModelInfoStore.GetCount();
+            m_modelStoreStartCaptured = true;
+        }
 
         for (const auto& mf : toRegister) {
 
@@ -991,6 +1356,23 @@ bool DLManager::RegisterCustomModels() {
                     mf.virtualId,
                     mf.baseId
                 );
+                ++skippedOccupied;
+                continue;
+            }
+
+            int32 txdIndex = -1;
+            if (mf.local) {
+                const auto localTxd = localTxdSlots.find(mf.virtualId);
+                if (localTxd != localTxdSlots.end())
+                    txdIndex = localTxd->second;
+            } else {
+                const auto loadedTxd = txdSlots.find(mf.txdCrc);
+                if (loadedTxd != txdSlots.end())
+                    txdIndex = loadedTxd->second;
+            }
+            if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS) {
+                FLog("DLManager: model %d skipped because its TXD slot is invalid",
+                     mf.virtualId);
                 ++skippedOccupied;
                 continue;
             }
@@ -1075,8 +1457,13 @@ bool DLManager::RegisterCustomModels() {
             char dffBase[32];
             char txdBase[32];
 
-            snprintf(dffBase, sizeof(dffBase),
-                    "0x%08X", mf.dffCrc);
+            if (mf.local) {
+                const size_t extension = mf.dffArcName.find_last_of('.');
+                const std::string localName = mf.dffArcName.substr(0, extension);
+                snprintf(dffBase, sizeof(dffBase), "%s", localName.c_str());
+            } else {
+                snprintf(dffBase, sizeof(dffBase), "0x%08X", mf.dffCrc);
+            }
 
             snprintf(txdBase, sizeof(txdBase),
                     "0x%08X", mf.txdCrc);
@@ -1088,17 +1475,6 @@ bool DLManager::RegisterCustomModels() {
                 txdBase,
                 "gta3"
             );
-
-            const auto loadedTxd = txdSlots.find(mf.txdCrc);
-            const int32 txdIndex = loadedTxd != txdSlots.end()
-                ? loadedTxd->second
-                : -1;
-
-            if (txdIndex < 0 || txdIndex >= TOTAL_TXD_MODEL_IDS)
-            {
-                FLog("DLManager: invalid TXD slot");
-                continue;
-            }
 
             FLog(
                 "DL TXD DEBUG: name=%s db=%s slot=%d streamId=%d",
@@ -1276,6 +1652,29 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
     if (info.type != 1 && info.type != 2) return; // 0 = undefined type: drop
 
     info.virtualModelId = GetVirtualModelId(info.newId);
+    bool localOverride = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        localOverride = m_localServerModelIds.find(info.newId) != m_localServerModelIds.end();
+        if (localOverride) {
+            m_totalModels = info.count;
+            m_bSawAnyModel = true;
+            m_lastModelRequestTick = GetCurrentTick();
+            if (m_bFinishSent) {
+                m_bFinishSent = false;
+                m_bFinishRequested = false;
+                m_bDownloadFinished = false;
+                m_bModelsRegistered = false;
+            }
+        }
+    }
+    if (localOverride) {
+        FLog("ModLoader: using local DFF for server model %d (internal slot %d)",
+             info.newId, info.virtualModelId);
+        m_workCv.notify_all();
+        return;
+    }
+
     info.dffCached = IsModelCached(info.dffChecksum, info.dffSize, true);
     info.txdCached = IsModelCached(info.txdChecksum, info.txdSize, false);
 
@@ -1291,6 +1690,7 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
             m_bFinishSent = false;
             m_bFinishRequested = false;
             m_bDownloadFinished = false;
+            m_bModelsRegistered = false;
         }
 
         auto enqueue = [&](uint32_t crc, uint32_t size, bool isDff) {
@@ -2170,6 +2570,7 @@ void DLManager::ProcessTick() {
 
     const bool allSettled = (queued == 0 && active == 0);
     const bool haveManifest = (m_totalModels.load() > 0);
+    const bool haveLocalMods = !m_localMods.empty();
 
     if (haveManifest && allSettled && !m_bFinishRequested.load()) {
         // Every task settled: downloaded or skipped-after-failures. A failed
@@ -2190,7 +2591,11 @@ void DLManager::ProcessTick() {
         // server we're ready. Must run on the game thread (ProcessTick is
         // called from CNetGame::Process).
         RegisterCustomModels();
-        SendFinishDownload();
+        // Registration can discover a cache file that changed after the
+        // download completed. In that case it re-queues the asset and clears
+        // m_bFinishRequested; wait for the repaired cache before sending 184.
+        if (m_bFinishRequested.load())
+            SendFinishDownload();
     } else if (!haveManifest && !m_bSawAnyModel &&
                (now - m_connectTime > 6000) && !m_bFinishRequested.load()) {
         // No manifest at all: do not hold the player in class selection. Gated on
@@ -2198,7 +2603,10 @@ void DLManager::ProcessTick() {
         m_bFinishRequested = true;
         m_finishTime = now;
         m_bDownloadFinished = true;
-        SendFinishDownload();
+        if (haveLocalMods)
+            RegisterCustomModels();
+        if (m_bFinishRequested.load())
+            SendFinishDownload();
     }
 }
 
@@ -2471,9 +2879,11 @@ void DLManager::RenderImGui() {
         if (ImGui::Begin("##HopePrideDownloadRestore", nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::SetWindowFontScale(0.9f);
             ImGui::TextColored(accentBlue, "DOWNLOADS");
             ImGui::SameLine();
             ImGui::TextDisabled("%.0f%%  -  tap to open", progress * 100.0f);
+            ImGui::SetWindowFontScale(1.0f);
         }
         ImGui::End();
         ImGui::PopStyleColor(2);
@@ -2502,6 +2912,7 @@ void DLManager::RenderImGui() {
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
     if (ImGui::Begin("##HopePrideDownloadPanel", nullptr, flags)) {
+        ImGui::SetWindowFontScale(0.9f);
         ImGui::TextColored(accentBlue, "HOPEPRIDE");
         ImGui::SameLine();
         ImGui::TextDisabled("SERVER DOWNLOAD");
@@ -2536,6 +2947,7 @@ void DLManager::RenderImGui() {
 
         const float listHeight = std::max(80.0f, ImGui::GetContentRegionAvail().y - 4.0f);
         ImGui::BeginChild("DownloadFileList", ImVec2(0.0f, listHeight), true);
+        ImGui::SetWindowFontScale(0.9f);
         if (tasks.empty()) {
             ImGui::TextDisabled("Checking server files...");
         } else {
@@ -2550,10 +2962,28 @@ void DLManager::RenderImGui() {
                     : ImVec4(0.58f, 0.62f, 0.69f, 1.0f);
 
                 ImGui::PushID(static_cast<int>(i));
+                const float rowStartX = ImGui::GetCursorPosX();
+                const float rowStartScreenX = ImGui::GetCursorScreenPos().x;
+                const float rowStartScreenY = ImGui::GetCursorScreenPos().y;
+                const float rowWidth = ImGui::GetContentRegionAvail().x;
+                const float statusWidth = std::min(104.0f, std::max(80.0f, rowWidth * 0.34f));
+                const float sizeWidth = std::min(64.0f, rowWidth * 0.24f);
+                const float fileStartX = rowStartX + statusWidth + 8.0f;
+                const float fileRightScreenX = rowStartScreenX + rowWidth - sizeWidth - 8.0f;
+                const float lineBottom = rowStartScreenY + ImGui::GetTextLineHeight() + 2.0f;
+
+                ImGui::PushClipRect(ImVec2(rowStartScreenX, rowStartScreenY),
+                                    ImVec2(rowStartScreenX + statusWidth - 4.0f, lineBottom), true);
                 ImGui::TextColored(statusColor, "%s", status);
-                ImGui::SameLine(105.0f);
+                ImGui::PopClipRect();
+
+                ImGui::SameLine(fileStartX);
+                ImGui::PushClipRect(ImVec2(rowStartScreenX + statusWidth + 4.0f, rowStartScreenY),
+                                    ImVec2(fileRightScreenX, lineBottom), true);
                 ImGui::Text("%s", task.hexName.c_str());
-                ImGui::SameLine(ImGui::GetWindowWidth() - 90.0f);
+                ImGui::PopClipRect();
+
+                ImGui::SameLine(rowStartX + rowWidth - sizeWidth);
                 ImGui::TextDisabled("%.1f KiB", static_cast<double>(task.size) / 1024.0);
                 if (task.failed && !task.lastError.empty())
                     ImGui::TextColored(ImVec4(0.96f, 0.34f, 0.34f, 1.0f),
@@ -2562,7 +2992,9 @@ void DLManager::RenderImGui() {
                 ImGui::PopID();
             }
         }
+        ImGui::SetWindowFontScale(1.0f);
         ImGui::EndChild();
+        ImGui::SetWindowFontScale(1.0f);
     }
     ImGui::End();
 

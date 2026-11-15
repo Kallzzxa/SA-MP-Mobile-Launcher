@@ -26,6 +26,9 @@ RwBool (*pRwStreamClose)(RwStream*, void*) = nullptr;
 RwTexDictionary* (*RwTexDictionaryGtaStreamRead)(
     RwStream*
 ) = nullptr;
+RwTexDictionary* (*RwTexDictionaryCreate)(void) = nullptr;
+RwBool (*RwTexDictionaryDestroy)(RwTexDictionary*) = nullptr;
+RwTexture* (*RwTexDictionaryAddTexture)(RwTexDictionary*, RwTexture*) = nullptr;
 
 RpClump* (*RpClumpStreamRead)(RwStream*) = nullptr;
 
@@ -110,6 +113,9 @@ void InitRenderWareFunctions()
 		(void*)CHook::getSym(
 			"_Z28RwTexDictionaryGtaStreamReadP8RwStream"
 		);
+	*(void**)(&RwTexDictionaryCreate) = (void*)CHook::getSym("_Z21RwTexDictionaryCreatev");
+	*(void**)(&RwTexDictionaryDestroy) = (void*)CHook::getSym("_Z22RwTexDictionaryDestroyP15RwTexDictionary");
+	*(void**)(&RwTexDictionaryAddTexture) = (void*)CHook::getSym("_Z25RwTexDictionaryAddTextureP15RwTexDictionaryP9RwTexture");
 
 	*(void**)(&RpClumpStreamRead) =
 		(void*)CHook::getSym(

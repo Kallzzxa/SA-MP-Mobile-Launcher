@@ -282,6 +282,21 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     return fileIndex;
 }
 
+void CStreaming::RemoveImageFromList(int imageIndex) {
+    if (imageIndex < 0 || imageIndex >= static_cast<int>(TOTAL_IMG_ARCHIVES))
+        return;
+
+    tStreamingFileDesc& image = ms_files[imageIndex];
+    if (!image.m_szName[0])
+        return;
+
+    // Custom model teardown runs on the game thread. Finish any outstanding
+    // reads before closing this archive's CdStream handle and freeing its slot.
+    FlushChannels();
+    CdStreamClose(image.m_StreamHandle);
+    image = tStreamingFileDesc{};
+}
+
 void CStreaming::InitImageList() {
     for (auto & ms_file : ms_files) {
         ms_file.m_szName[0] = 0;

@@ -78,6 +78,15 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
+struct DLLocalMod {
+    int32_t serverModelId{0};
+    int16_t virtualModelId{-1};
+    int32_t baseId{0};
+    std::string dffPath;
+    std::string archiveName;
+    std::vector<std::string> pngPaths;
+};
+
 class DLManager {
 public:
     static DLManager& Instance();
@@ -163,6 +172,8 @@ private:
 
     // Model registry
     std::vector<DLModelInfo> m_models;
+    std::vector<DLLocalMod> m_localMods;
+    std::unordered_set<int32_t> m_localServerModelIds;
     std::unordered_map<int32_t, int16_t> m_networkToVirtual;
     std::unordered_map<int16_t, int32_t> m_virtualToNetwork;
     int16_t m_nextVirtualId{DL_VIRT_MAX};
@@ -173,6 +184,7 @@ private:
     std::unordered_set<int16_t> m_registeredModels;
     std::vector<int32_t> m_customTxdSlots;
     std::vector<CColModel*> m_customColModels;
+    std::vector<int32_t> m_customImgIndexes;
     size_t m_atomicStoreStartCount{0};
     size_t m_pedStoreStartCount{0};
     bool m_modelStoreStartCaptured{false};
