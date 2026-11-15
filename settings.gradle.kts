@@ -3,7 +3,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven(url = "https://artifacts.applovin.com/android")
     }
     plugins {
         id("com.android.application") version "8.2.1" apply false
