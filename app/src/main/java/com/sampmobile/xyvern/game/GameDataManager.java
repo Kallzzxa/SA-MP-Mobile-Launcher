@@ -101,6 +101,19 @@ public final class GameDataManager {
                     MAIN.post(() -> { dismissLoading(); if (!activity.isFinishing()) callback.onReady(); });
                     return;
                 }
+                // Data ditempel manual (bukan download): file game sudah ada di
+                // storage tapi marker .data_ready + pref data_version belum
+                // tercatat (keduanya baru ditulis setelah download+ekstrak),
+                // jadi data tempelan tidak akan pernah lolos isInstalled().
+                // Adopsi data yang sudah ada: tulis marker + versi, lalu
+                // lanjut main tanpa download.
+                if (hasPastedData(activity, info)) {
+                    android.util.Log.i("GameDataManager",
+                            "Adopted pasted game data (sentinel present, version " + info.version + ")");
+                    markInstalled(activity, info);
+                    MAIN.post(() -> { dismissLoading(); if (!activity.isFinishing()) callback.onReady(); });
+                    return;
+                }
                 final DataInfo fi = info;
                 MAIN.post(() -> showDownloadOffer(activity, fi, callback));
             } catch (Exception e) {
@@ -122,6 +135,27 @@ public final class GameDataManager {
                 if (!s.exists()) return false;
             }
             // game root must not be empty
+            String[] list = root.list();
+            return list != null && list.length > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Data game sudah ada di storage karena ditempel manual (bukan hasil
+     * download launcher): sentinel ada + folder game tidak kosong. Marker
+     * .data_ready dan pref data_version SENGAJA tidak dicek di sini —
+     * keduanya baru ditulis setelah download+ekstrak, jadi data tempelan
+     * tidak akan pernah lolos isInstalled() tanpa cabang ini.
+     */
+    private static boolean hasPastedData(Activity a, DataInfo info) {
+        try {
+            File root = a.getExternalFilesDir(null);
+            if (root == null) return false;
+            if (info.sentinel == null || info.sentinel.isEmpty()) return false;
+            File s = new File(root, info.sentinel);
+            if (!s.exists()) return false;
             String[] list = root.list();
             return list != null && list.length > 0;
         } catch (Exception e) {
