@@ -57,6 +57,7 @@ public class GameDataDownloadService extends Service {
     private static final int NOTIF_ID = 1001;
     private static final int MAX_RETRIES = 5;
     private static final long RETRY_BACKOFF_MS = 3000;
+    private static final int MAX_RESOLVES = 2; // re-resolve link MediaFire max 2x per job (link baru tiap kali)
 
     // ------------------------------------------------------------ state ----
     public static final int PHASE_IDLE = 0;
@@ -245,7 +246,9 @@ public class GameDataDownloadService extends Service {
             File finalZip = new File(cache, "game_data_" + versionTag + ".zip");
 
             // 2. + 3. Download with full resume + retry-with-backoff.
-            downloadLoop(direct, part, expectedSize);
+            // downloadLoop me-resolve ulang link MediaFire sendiri saat
+            // server menolaknya (link one-shot kedaluwarsa / hasil resolve rusak).
+            downloadLoop(pageUrl, resolvedKey, direct, part, expectedSize);
 
             // 5. Verify size BEFORE extract.
             if (expectedSize > 0 && part.length() != expectedSize)
@@ -286,14 +289,32 @@ public class GameDataDownloadService extends Service {
 
     // ------------------------------------------------------------ download -
     /** Full resume loop: Range + .part + retry with backoff. Never deletes the partial file. */
-    private void downloadLoop(String directUrl, File part, long expectedSize) throws Exception {
+    private void downloadLoop(String pageUrl, String resolvedKey, String directUrl,
+                              File part, long expectedSize) throws Exception {
         int attempt = 0;
+        int resolves = 0;
+        String url = directUrl;
         while (true) {
             try {
-                downloadOnce(directUrl, part, expectedSize);
+                downloadOnce(url, pageUrl, part, expectedSize);
                 return;
             } catch (Exception e) {
                 if (mCancelled) throw new Exception("Download dibatalkan.");
+                // Link MediaFire one-shot/kedaluwarsa atau hasil resolve rusak:
+                // server menolak dengan 4xx. Buang link tersimpan, resolve
+                // ulang dari halaman, coba lagi dengan link baru.
+                if (e instanceof HttpStatusException
+                        && isStaleLinkCode(((HttpStatusException) e).code)
+                        && resolves < MAX_RESOLVES) {
+                    resolves++;
+                    prefs(this).edit().remove(resolvedKey).apply();
+                    setState(sState.phase, sState.percent, sState.bytes, sState.total,
+                            "Link download kedaluwarsa — mencari link baru...", null);
+                    url = resolveDownloadUrl(pageUrl);
+                    if (url == null || url.isEmpty()) throw new Exception("Link download tidak valid.");
+                    prefs(this).edit().putString(resolvedKey, url).apply();
+                    continue;
+                }
                 if (isTransient(e) && ++attempt <= MAX_RETRIES) {
                     long backoffMs = RETRY_BACKOFF_MS * (1L << Math.min(attempt - 1, 4));
                     setState(sState.phase, sState.percent, sState.bytes, sState.total,
@@ -305,6 +326,20 @@ public class GameDataDownloadService extends Service {
                 }
                 throw e;
             }
+        }
+    }
+
+    /** HTTP codes that mean "this direct link is dead" — re-resolve, don't just retry. */
+    private static boolean isStaleLinkCode(int code) {
+        return code == 400 || code == 403 || code == 404 || code == 410;
+    }
+
+    /** HTTP error carrying its status code, so the retry loop can tell a stale link from a network blip. */
+    private static final class HttpStatusException extends Exception {
+        final int code;
+        HttpStatusException(int code) {
+            super("Server menolak download (HTTP " + code + ").");
+            this.code = code;
         }
     }
 
@@ -321,12 +356,20 @@ public class GameDataDownloadService extends Service {
     }
 
     /** One attempt: continue from the current .part length via Range, else start over. */
-    private void downloadOnce(String directUrl, File part, long expectedSize) throws Exception {
+    private void downloadOnce(String directUrl, String referer, File part, long expectedSize) throws Exception {
         long existing = part.exists() ? part.length() : 0L;
-        HttpURLConnection conn = connect(directUrl, existing);
+        HttpURLConnection conn = connect(directUrl, referer, existing);
         int code = conn.getResponseCode();
+        if ((code == 400 || code == 403) && existing > 0) {
+            // Server menolak request ber-Range (link/session lama): coba
+            // sekali tanpa Range dari nol dengan link yang sama.
+            conn.disconnect();
+            existing = 0;
+            conn = connect(directUrl, referer, 0);
+            code = conn.getResponseCode();
+        }
         if (code < 200 || code >= 300)
-            throw new Exception("Server menolak download (HTTP " + code + ").");
+            throw new HttpStatusException(code);
 
         boolean append = (code == HttpURLConnection.HTTP_PARTIAL);
         if (!append && existing > 0) existing = 0; // server ignored Range: restart from 0
@@ -374,11 +417,15 @@ public class GameDataDownloadService extends Service {
         }
     }
 
-    private HttpURLConnection connect(String url, long rangeStart) throws Exception {
+    private HttpURLConnection connect(String url, String referer, long rangeStart) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(20000);
         c.setReadTimeout(60000);
-        c.setRequestProperty("User-Agent", "M-SAMP-Launcher");
+        // Header mirip browser: host download (MediaFire) menolak request
+        // dengan User-Agent non-browser / tanpa Referer.
+        c.setRequestProperty("User-Agent", GameDataManager.BROWSER_UA);
+        c.setRequestProperty("Accept", "*/*");
+        if (referer != null && !referer.isEmpty()) c.setRequestProperty("Referer", referer);
         c.setInstanceFollowRedirects(true);
         if (rangeStart > 0) c.setRequestProperty("Range", "bytes=" + rangeStart + "-");
         return c;
@@ -390,7 +437,22 @@ public class GameDataDownloadService extends Service {
             String html = GameDataManager.httpGet(url);
             Matcher m = Pattern.compile("https://download\\d*\\.mediafire\\.com/[^\\s\"'<>]+")
                     .matcher(html);
-            if (m.find()) return m.group(0);
+            if (m.find()) {
+                String direct = m.group(0);
+                // Regex di atas tidak berhenti di '&': HTML halaman bisa
+                // menyelipkan entitas (&amp;) atau tanda baca di ujung URL.
+                direct = direct.replace("&amp;", "&")
+                        .replace("&quot;", "\"").replace("&#39;", "'");
+                while (!direct.isEmpty()
+                        && ".,;)]}".indexOf(direct.charAt(direct.length() - 1)) >= 0)
+                    direct = direct.substring(0, direct.length() - 1);
+                try {
+                    new URL(direct); // validasi sebelum disimpan/dipakai
+                } catch (Exception bad) {
+                    throw new Exception("Link download dari MediaFire tidak valid.");
+                }
+                return direct;
+            }
             throw new Exception("Tidak bisa menemukan link download langsung dari MediaFire.");
         }
         return url;

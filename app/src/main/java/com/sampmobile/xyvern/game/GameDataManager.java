@@ -58,6 +58,9 @@ public final class GameDataManager {
     private static final String KEY_DATA_VERSION = "data_version";
     private static final String MARKER = "SAMP/.data_ready";
 
+    /** User-Agent browser: host download (MediaFire) menolak / menyajikan HTML berbeda untuk UA non-browser. */
+    public static final String BROWSER_UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
     private static final int ACCENT = Color.rgb(240, 180, 41); // emas/amber modern (#F0B429)
     private static final int CARD = Color.rgb(29, 35, 52);
     private static final int WHITE = Color.rgb(245, 247, 255);
@@ -538,7 +541,8 @@ public final class GameDataManager {
     private static String getText(String address) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(30000);
-        c.setRequestProperty("User-Agent", "M-SAMP-Launcher");
+        c.setRequestProperty("User-Agent", BROWSER_UA);
+        c.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         c.setInstanceFollowRedirects(true);
         try (InputStream in = new BufferedInputStream(c.getInputStream());
              BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"))) {
