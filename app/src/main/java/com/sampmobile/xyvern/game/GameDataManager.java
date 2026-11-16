@@ -541,7 +541,13 @@ public final class GameDataManager {
     private static String getText(String address) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(30000);
-        c.setRequestProperty("User-Agent", BROWSER_UA);
+        // JANGAN pakai User-Agent browser di sini: MediaFire hanya menyisipkan
+        // link download langsung di HTML yang disajikan ke UA non-browser.
+        // Dengan UA browser, halaman yang dikembalikan adalah shell JS tanpa
+        // link itu, dan resolveDownloadUrl gagal ("Tidak bisa menemukan link
+        // download langsung dari MediaFire") — terbukti 2026-11-16: UA lama
+        // menemukan 1 link, UA browser 0.
+        c.setRequestProperty("User-Agent", "M-SAMP-Launcher");
         c.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         c.setInstanceFollowRedirects(true);
         try (InputStream in = new BufferedInputStream(c.getInputStream());
