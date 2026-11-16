@@ -358,8 +358,27 @@ public class GameDataDownloadService extends Service {
     /** One attempt: continue from the current .part length via Range, else start over. */
     private void downloadOnce(String directUrl, String referer, File part, long expectedSize) throws Exception {
         long existing = part.exists() ? part.length() : 0L;
+        if (expectedSize > 0 && existing > expectedSize) {
+            // File lokal lebih besar dari yang diharapkan (corrupt / salah versi) — buang, download ulang dari nol.
+            part.delete();
+            existing = 0;
+        }
+        if (expectedSize > 0 && existing == expectedSize) {
+            // Sudah lengkap dari percobaan sebelumnya — langsung ke ekstrak tanpa download ulang.
+            setState(PHASE_DOWNLOAD, 100, existing, existing, "Download selesai", null);
+            return;
+        }
         HttpURLConnection conn = connect(directUrl, referer, existing);
         int code = conn.getResponseCode();
+        if (code == 416 && existing > 0) {
+            // Range di luar file (file di server berubah / sudah lengkap):
+            // mulai dari nol dengan link yang sama.
+            conn.disconnect();
+            part.delete();
+            existing = 0;
+            conn = connect(directUrl, referer, 0);
+            code = conn.getResponseCode();
+        }
         if ((code == 400 || code == 403) && existing > 0) {
             // Server menolak request ber-Range (link/session lama): coba
             // sekali tanpa Range dari nol dengan link yang sama.
@@ -385,7 +404,10 @@ public class GameDataDownloadService extends Service {
         long lastUi = 0;
         long startNs = System.nanoTime();
         InputStream in = new BufferedInputStream(conn.getInputStream(), 128 * 1024);
-        OutputStream out = new BufferedOutputStream(new FileOutputStream(part, append));
+        // Simpan referensi FileOutputStream-nya: out adalah BufferedOutputStream,
+        // jadi ((FileOutputStream) out) selalu ClassCastException.
+        FileOutputStream fos = new FileOutputStream(part, append);
+        OutputStream out = new BufferedOutputStream(fos);
         try {
             byte[] buf = new byte[128 * 1024];
             int n;
@@ -408,7 +430,7 @@ public class GameDataDownloadService extends Service {
                 }
             }
             out.flush();
-            ((FileOutputStream) out).getFD().sync();
+            fos.getFD().sync();
             setState(PHASE_DOWNLOAD, 100, downloaded, downloaded, "Download selesai", null);
         } finally {
             try { in.close(); } catch (Exception ignored) {}
