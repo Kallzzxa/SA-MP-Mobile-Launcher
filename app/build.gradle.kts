@@ -184,32 +184,36 @@ dependencies {
     implementation(libs.shadowhook)
 }
 
-// Optional Laragon deployment on local Windows development machine only
-val laragonDir = file("C:\\laragon\\www")
-if (System.getenv("GITHUB_ACTIONS") == null && laragonDir.exists()) {
-    afterEvaluate {
-        android.applicationVariants.all {
-            val variant = this
-            val taskName = "copy${variant.name.replaceFirstChar { if (it.isLowerCase()) it.uppercase() else it.toString() }}ApksToLaragon"
-            
-            tasks.register<Copy>(taskName) {
-                doNotTrackState("Destination directory contains unreadable content")
-                description = "Copies ${variant.name} APKs to Laragon www directory"
-                into(laragonDir)
-                
-                variant.outputs.all {
-                    @Suppress("DEPRECATION")
-                    val output = this as com.android.build.gradle.api.BaseVariantOutput
-                    from(output.outputFile)
+// Optional Laragon deployment on local Windows development machine only.
+// The Windows path is only evaluated on Windows: on Linux (CI) the
+// file("C:\laragon\www") call throws URISyntaxException at configuration time.
+if (System.getenv("GITHUB_ACTIONS") == null && System.getProperty("os.name").startsWith("Windows")) {
+    val laragonDir = file("C:\\laragon\\www")
+    if (laragonDir.exists()) {
+        afterEvaluate {
+            android.applicationVariants.all {
+                val variant = this
+                val taskName = "copy${variant.name.replaceFirstChar { if (it.isLowerCase()) it.uppercase() else it.toString() }}ApksToLaragon"
+
+                tasks.register<Copy>(taskName) {
+                    doNotTrackState("Destination directory contains unreadable content")
+                    description = "Copies ${variant.name} APKs to Laragon www directory"
+                    into(laragonDir)
+
+                    variant.outputs.all {
+                        @Suppress("DEPRECATION")
+                        val output = this as com.android.build.gradle.api.BaseVariantOutput
+                        from(output.outputFile)
+                    }
+
+                    doLast {
+                        println("Copied APKs for variant '${variant.name}' to C:\\laragon\\www")
+                    }
                 }
-                
-                doLast {
-                    println("Copied APKs for variant '${variant.name}' to C:\\laragon\\www")
+
+                variant.assembleProvider.configure {
+                    finalizedBy(taskName)
                 }
-            }
-            
-            variant.assembleProvider.configure {
-                finalizedBy(taskName)
             }
         }
     }
