@@ -2,8 +2,8 @@ package com.sampmobile.xyvern.game;
 
 import android.widget.FrameLayout;
 
-import com.sampmobile.xyvern.cef.CefClientManager;
 import com.sampmobile.xyvern.cef.CefJavaManager;
+import com.sampmobile.xyvern.cef.CefMobileClient;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -40,8 +40,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private AttachEdit mAttachEdit;
     private LoadingScreen mLoadingScreen;
-    private CefClientManager mCefClientManager;
     private CefJavaManager mCefJavaManager;
+    private CefMobileClient mCefMobileClient;
     public static SAMP getInstance() {
         return instance;
     }
@@ -75,6 +75,41 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 }
             }
         });
+        // CEF UI ikut disembunyikan saat menu pause / peta game terbuka
+        if (mCefJavaManager != null) mCefJavaManager.setGamePaused(pause);
+    }
+
+    // CefMobile: info koneksi dari native (pNetGame). Dipakai CefMobileClient
+    // untuk tahu server mana yang dihubungi + playerid lokal.
+    private native String nativeGetCefMobileServer();
+    private native int nativeGetCefMobileGameState();
+    private native int nativeGetCefMobilePlayerId();
+
+    /** "host:port" server yang sedang dihubungi, atau null kalau belum connect. */
+    public String getCefMobileServer() {
+        try {
+            return nativeGetCefMobileServer();
+        } catch (UnsatisfiedLinkError | Exception e) {
+            return null;
+        }
+    }
+
+    /** Game state native (5 = GAMESTATE_CONNECTED), atau -1 kalau tidak ada. */
+    public int getCefMobileGameState() {
+        try {
+            return nativeGetCefMobileGameState();
+        } catch (UnsatisfiedLinkError | Exception e) {
+            return -1;
+        }
+    }
+
+    /** Playerid lokal (0..999), atau -1 kalau belum join. */
+    public int getCefMobilePlayerId() {
+        try {
+            return nativeGetCefMobilePlayerId();
+        } catch (UnsatisfiedLinkError | Exception e) {
+            return -1;
+        }
     }
 
     public void exitGame(){
@@ -186,28 +221,28 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         instance = this;
 
         // ============================================================
-        // SA:MP MOBILE CEF (can be toggled in launcher Settings)
+        // CefMobile (UI web dari server, port 8778) — pengganti omp-cef lama.
+        // Bisa dimatikan di launcher Settings (CEF_ENABLED, default ON).
+        // Dibuat SEBELUM initializeSAMP(), supaya thread monitor CefMobile
+        // sudah jalan saat game connect ke server.
         // ============================================================
         try {
             android.content.SharedPreferences cefPrefs = getSharedPreferences(
                     com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
             boolean cefEnabled = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
-            com.sampmobile.xyvern.cef.CefJavaManager.setWebViewEnabled(cefEnabled);
             if (!cefEnabled) {
-                Log.i(TAG, "SA:MP Mobile CEF disabled in settings");
+                Log.i(TAG, "CefMobile disabled in settings");
             } else {
                 FrameLayout rootLayout = findViewById(android.R.id.content);
 
-                mCefClientManager = new CefClientManager(this);
                 mCefJavaManager = new CefJavaManager(rootLayout, this);
+                mCefMobileClient = new CefMobileClient(this, mCefJavaManager);
+                mCefMobileClient.start();
 
-                mCefClientManager.setJavaManager(mCefJavaManager);
-                mCefJavaManager.setClientManager(mCefClientManager);
-
-                Log.i(TAG, "SA:MP Mobile CEF initialized");
+                Log.i(TAG, "CefMobile initialized");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize SA:MP Mobile CEF", e);
+            Log.e(TAG, "Failed to initialize CefMobile", e);
         }
 
         // 1. Nhận thông tin IP & Port từ Intent
@@ -362,6 +397,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         Log.i(TAG, "**** onDestroy");
         super.onDestroy();
         instance = null;
+        if (mCefMobileClient != null) {
+            try { mCefMobileClient.stop(); } catch (Exception ignored) {}
+            mCefMobileClient = null;
+        }
         // Mematikan paksa proses game saat keluar untuk menghindari crash "destroyed mutex" 
         // yang sering terjadi di thread native saat activity dihancurkan.
         android.os.Process.killProcess(android.os.Process.myPid());

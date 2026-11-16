@@ -1,9 +1,8 @@
 package com.sampmobile.xyvern.cef;
 
 import android.app.Activity;
-import android.content.res.AssetManager;
+import android.content.Context;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -12,273 +11,186 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import org.json.JSONArray;
+import org.json.JSONException;
 
-import java.io.IOException;
-import java.io.File;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.ArrayList;
+import java.util.TreeMap;
 
 /**
- * SA:MP Mobile CEF - Java Manager for Android WebView Overlay.
+ * Mengelola browser CefMobile (WebView) — UI web dari server SA-MP.
  *
- * Mirrors the open.mp omp-cef PC browser API surface so web UIs written for
- * omp-cef keep working on mobile:
+ * Ini pengganti omp-cef lama: TIDAK ada lagi jalur native (samp-mobile-cef),
+ * semua browser di sini adalah browser CefMobile (plugin server, port 8778).
+ * Satu browser dipakai CefMobileClient (id 65000); id lain bebas dipakai
+ * siapa pun yang butuh browser server-side.
  *
- *   window.cef.on(name, callback)        - subscribe to server events
- *   window.cef.off(name, callback?)      - unsubscribe
- *   window.cef.emit(name, ...args)       - send event to client/server
- *   window.cef.set_focus(bool)          - focus / unfocus the browser
- *   window.cef.isChatInputOpen()        - true while an input is focused
- *   window.cef.exitGame()               - close the game
- *
- * Local resources are served through the "cef://" scheme (and the PC-style
- * "http://cef/" scheme) from the app's assets/cef/ folder, exactly like
- * omp-cef serves its local "cef" resource folder on PC.
+ * - id 0..0xFFFE = satu browser, {@link #BROWSER_ALL} = semua browser.
+ * - id yang lebih besar digambar di atas id yang lebih kecil.
+ * - Semua state hanya disentuh dari main thread (setiap public method memakai mMainHandler.post).
+ * - Event dari server yang tiba sebelum halaman selesai dimuat ditahan lalu dikirim saat onPageFinished.
  */
 public class CefJavaManager {
     private static final String TAG = "SAMP_CEF_JAVA";
-    private final Activity mActivity;
-    private final FrameLayout mRootLayout;
-    private WebView mWebView;
-    private CefClientManager mClientManager;
-    private boolean mIsShown = false;
-    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
-    private final AtomicBoolean mChatInputOpen = new AtomicBoolean(false);
 
-    // ---- omp-cef Android port (aurora-mp/omp-cef client, via WebView) ----
-    /** VFS lookup for http://cef/<resource>/<internalPath>, supplied by OmpCefClient. */
-    public interface OmpVfsProvider { byte[] getFile(String resource, String internalPath); }
-    /** JS -> server event sink for omp browsers (browserId >= 0). */
-    public interface OmpEventSink { void sendOmpClientEvent(int browserId, String eventName, String argsJson); }
-    private final Map<Integer, WebView> mOmpBrowsers = new HashMap<>();
-    private volatile OmpVfsProvider mOmpVfsProvider;
-    private volatile OmpEventSink mOmpEventSink;
-    private volatile OmpCefClient mOmpClient;
-    public void setOmpVfsProvider(OmpVfsProvider provider) { mOmpVfsProvider = provider; }
-    public void setOmpEventSink(OmpEventSink sink) { mOmpEventSink = sink; }
-    public java.io.File getExternalFilesDir() { return mActivity.getExternalFilesDir(null); }
-
-    /** Master switch: when false the WebView is never created (Settings toggle). */
-    private static volatile boolean sWebViewEnabled = true;
-    public static void setWebViewEnabled(boolean enabled) { sWebViewEnabled = enabled; }
-    public static boolean isWebViewEnabled() { return sWebViewEnabled; }
+    /** target "semua browser". */
+    public static final int BROWSER_ALL = 0xFFFF;
+    /** batas jumlah browser per client (satu WebView memakan memori GPU). */
+    public static final int MAX_BROWSERS = 32;
+    private static final int MAX_PENDING_EVENTS = 64;
 
     /**
-     * WebView overlay HUD: sentuhan TEMBUS ke game di bawahnya saat tidak ada
-     * dialog HTML terbuka. JS mengaktifkan interaksi lewat cef.set_focus(true).
+     * Objek JS "cef" untuk HTML: cef.emit("nama", "data") mengirim event/klik
+     * ke server (OnCefMobileEvent di Pawn). data berupa object otomatis
+     * di-JSON.stringify. cef.on("nama", fn) menerima event dari server
+     * (CefMobile_SendEvent). Tidak menimpa "cef" buatan HTML sendiri.
+     * _dispatch ditambahkan supaya event dari server juga sampai ke halaman
+     * yang hanya mendengarkan lewat cef.on/_dispatch.
      */
-    private static final class CefHudWebView extends WebView {
-        private volatile boolean mInteractionEnabled = false;
-        CefHudWebView(android.content.Context ctx) { super(ctx); }
-        void setInteractionEnabled(boolean enabled) { mInteractionEnabled = enabled; }
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            if (!mInteractionEnabled) return false; // tembus ke game di bawahnya
-            return super.onTouchEvent(event);
+    private static final String CEF_MOBILE_SHIM_JS =
+            "(function(){var b=window.CefMobileBridge;if(!b||(window.cef&&window.cef.emit))return;"
+          + "window.cef={emit:function(n,d){if(d===undefined||d===null)d='';"
+          + "else if(typeof d!=='string')d=JSON.stringify(d);b.postEvent(String(n),d);},"
+          + "on:function(n,f){window.addEventListener(n,function(e){f(e.detail);});},"
+          + "_dispatch:function(e,d){window.dispatchEvent(new CustomEvent(e,{detail:d}));"
+          + "if(typeof window.onCefEvent===\"function\"){window.onCefEvent(e,d);}},"
+          + "id:b.getBrowserId()};})();";
+
+    /** Dipanggil saat JS di browser CefMobile memanggil window.cef.emit(...). */
+    public interface MobileEventListener {
+        void onMobileEvent(int browserId, String event, String data);
+    }
+
+    /**
+     * WebView yang bisa "tembus sentuhan". Kalau touch dimatikan, dispatchTouchEvent
+     * return false sehingga event diteruskan ke view di bawahnya (UI game / SurfaceView
+     * / Activity.onTouchEvent -> native).
+     */
+    private static class CefWebView extends WebView {
+        private volatile boolean mTouchEnabled = true;
+
+        CefWebView(Context context) {
+            super(context);
+        }
+
+        void setTouchEnabled(boolean enabled) {
+            mTouchEnabled = enabled;
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent ev) {
+            if (!mTouchEnabled) return false;
+            return super.dispatchTouchEvent(ev);
         }
     }
 
-    /** Device folder where server-synced CEF UI files are cached. Null if unavailable. */
-    private File getUiDir() {
-        File ext = mActivity.getExternalFilesDir(null);
-        if (ext == null) return null;
-        File dir = new File(ext, "SAMP/cef_ui");
-        if (!dir.exists()) dir.mkdirs();
-        return dir;
+    private static final class Browser {
+        final int id;
+        final CefWebView view;
+        boolean shown;
+        boolean focused;
+        boolean pageLoaded;
+        boolean bridgeAttached;
+        MobileEventListener mobileListener;
+        final ArrayList<String[]> pendingEvents = new ArrayList<>();
+
+        Browser(int id, CefWebView view) {
+            this.id = id;
+            this.view = view;
+        }
     }
 
-    private static byte[] readAllBytes(InputStream in) throws IOException {
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-        try { in.close(); } catch (IOException ignored) {}
-        return out.toByteArray();
+    private interface BrowserOp {
+        void run(Browser b);
     }
 
-    /** omp-cef compatible JS bootstrap, injected before page scripts run. */
-    private static final String BOOTSTRAP_JS =
-        "(function(){\n" +
-        "  if (window.cef && window.cef.__sampMobile) return;\n" +
-        "  var handlers = {};\n" +
-        "  var pending = {};\n" +
-        "  function flush(name) {\n" +
-        "    var q = pending[name];\n" +
-        "    if (!q) return;\n" +
-        "    delete pending[name];\n" +
-        "    var list = handlers[name] || [];\n" +
-        "    for (var i = 0; i < q.length; i++) {\n" +
-        "      for (var j = 0; j < list.length; j++) { try { list[j].apply(null, q[i]); } catch (e) {} }\n" +
-        "    }\n" +
-        "  }\n" +
-        "  var api = {\n" +
-        "    __sampMobile: true,\n" +
-        "    on: function(name, cb) {\n" +
-        "      if (typeof name !== 'string' || typeof cb !== 'function') return;\n" +
-        "      (handlers[name] = handlers[name] || []).push(cb);\n" +
-        "      flush(name);\n" +
-        "    },\n" +
-        "    off: function(name, cb) {\n" +
-        "      var list = handlers[name];\n" +
-        "      if (!list) return;\n" +
-        "      if (typeof cb !== 'function') { handlers[name] = []; return; }\n" +
-        "      for (var i = list.length - 1; i >= 0; i--) { if (list[i] === cb) list.splice(i, 1); }\n" +
-        "    },\n" +
-        "    emit: function(name) {\n" +
-        "      var args = Array.prototype.slice.call(arguments, 1);\n" +
-        "      try { AndroidCefBridge.emitEvent(String(name), JSON.stringify(args)); } catch (e) {}\n" +
-        "    },\n" +
-        "    set_focus: function(focused) {\n" +
-        "      try { AndroidCefBridge.setBrowserFocus(!!focused); } catch (e) {}\n" +
-        "    },\n" +
-        "    isChatInputOpen: function() {\n" +
-        "      try { return !!AndroidCefBridge.isChatInputOpen(); } catch (e) { return false; }\n" +
-        "    },\n" +
-        "    exitGame: function() {\n" +
-        "      try { AndroidCefBridge.exitGame(); } catch (e) {}\n" +
-        "    }\n" +
-        "  };\n" +
-        "  if (!window.cef) { window.cef = api; }\n" +
-        "  else { for (var k in api) { if (typeof window.cef[k] === 'undefined') window.cef[k] = api[k]; } }\n" +
-        "  window.__sampcef = {\n" +
-        "    dispatch: function(name, argsJson) {\n" +
-        "      var args = [];\n" +
-        "      try { args = JSON.parse(argsJson || '[]'); if (!Array.isArray(args)) args = [args]; }\n" +
-        "      catch (e) { args = [argsJson]; }\n" +
-        "      if (name && name.indexOf('__cefui_') === 0 && handleCefUi(name, args)) return;\n" +
-        "      var list = handlers[name] || [];\n" +
-        "      if (!list.length) { (pending[name] = pending[name] || []).push(args); return; }\n" +
-        "      for (var i = 0; i < list.length; i++) { try { list[i].apply(null, args); } catch (e) {} }\n" +
-        "    }\n" +
-        "  };\n" +
-        "  // Server-hosted CEF UI sync (scriptfiles/cef/ on the game server).\n" +
-        "  // The server sends __cefui_* events; they are handled here and never\n" +
-        "  // reach user handlers.\n" +
-        "  var uiState = { file: '', received: 0, total: 0 };\n" +
-        "  function ompProgress() {\n" +
-        "    try {\n" +
-        "      if (window.__ompcef) window.__ompcef.progress(uiState.file, uiState.received, uiState.total, uiState.received, uiState.total);\n" +
-        "    } catch (e) {}\n" +
-        "  }\n" +
-        "  function handleCefUi(name, args) {\n" +
-        "    try {\n" +
-        "      if (name === '__cefui_version') {\n" +
-        "        var serverVer = String(args[0]);\n" +
-        "        var localVer = '';\n" +
-        "        try { localVer = String(AndroidCefBridge.getUiVersion()); } catch (e) {}\n" +
-        "        try { if (window.__ompcef) window.__ompcef.manifest(0, 0); } catch (e) {}\n" +
-        "        if (localVer === serverVer && serverVer !== '') { api.emit('__cefui_uptodate'); }\n" +
-        "        else { api.emit('__cefui_needfiles'); }\n" +
-        "        return true;\n" +
-        "      }\n" +
-        "      if (name === '__cefui_begin') {\n" +
-        "        uiState.file = String(args[0]);\n" +
-        "        uiState.total = parseInt(args[1] || '0', 10) || 0;\n" +
-        "        uiState.received = 0;\n" +
-        "        AndroidCefBridge.uiFileBegin(uiState.file, uiState.total);\n" +
-        "        ompProgress();\n" +
-        "        return true;\n" +
-        "      }\n" +
-        "      if (name === '__cefui_chunk') {\n" +
-        "        var b64 = String(args[0]);\n" +
-        "        AndroidCefBridge.uiFileChunk(b64);\n" +
-        "        uiState.received += Math.floor(b64.length * 3 / 4);\n" +
-        "        ompProgress();\n" +
-        "        return true;\n" +
-        "      }\n" +
-        "      if (name === '__cefui_end') {\n" +
-        "        AndroidCefBridge.uiFileEnd(String(args[0]));\n" +
-        "        return true;\n" +
-        "      }\n" +
-        "      if (name === '__cefui_done') {\n" +
-        "        AndroidCefBridge.setUiVersion(String(args[0]));\n" +
-        "        try { if (window.__ompcef) window.__ompcef.done(); } catch (e) {}\n" +
-        "        api.emit('__cefui_ready');\n" +
-        "        return true;\n" +
-        "      }\n" +
-        "    } catch (e) {}\n" +
-        "    return false;\n" +
-        "  }\n" +
-        "  var inputFocused = false;\n" +
-        "  function checkFocus(target) {\n" +
-        "    var isInput = !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));\n" +
-        "    if (isInput !== inputFocused) {\n" +
-        "      inputFocused = isInput;\n" +
-        "      try { AndroidCefBridge.setChatInputOpen(isInput); } catch (e) {}\n" +
-        "      try { window.cef.emit('omp:cef:internal:inputFocusChanged', isInput); } catch (e) {}\n" +
-        "    }\n" +
-        "  }\n" +
-        "  document.addEventListener('focusin', function(e) { checkFocus(e.target); }, true);\n" +
-        "  document.addEventListener('focusout', function(e) {\n" +
-        "    if (inputFocused) {\n" +
-        "      inputFocused = false;\n" +
-        "      try { AndroidCefBridge.setChatInputOpen(false); } catch (e) {}\n" +
-        "      try { window.cef.emit('omp:cef:internal:inputFocusChanged', false); } catch (e) {}\n" +
-        "    }\n" +
-        "  }, true);\n" +
-        "  document.addEventListener('mousedown', function(e) { checkFocus(e.target); }, true);\n" +
-        "})();";
+    private final Activity mActivity;
+    private final FrameLayout mRootLayout;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
-    private static final Map<String, String> MIME_TYPES = new HashMap<>();
-    static {
-        MIME_TYPES.put("html", "text/html");
-        MIME_TYPES.put("htm", "text/html");
-        MIME_TYPES.put("js", "application/javascript");
-        MIME_TYPES.put("mjs", "application/javascript");
-        MIME_TYPES.put("css", "text/css");
-        MIME_TYPES.put("json", "application/json");
-        MIME_TYPES.put("png", "image/png");
-        MIME_TYPES.put("jpg", "image/jpeg");
-        MIME_TYPES.put("jpeg", "image/jpeg");
-        MIME_TYPES.put("gif", "image/gif");
-        MIME_TYPES.put("webp", "image/webp");
-        MIME_TYPES.put("svg", "image/svg+xml");
-        MIME_TYPES.put("ico", "image/x-icon");
-        MIME_TYPES.put("woff", "font/woff");
-        MIME_TYPES.put("woff2", "font/woff2");
-        MIME_TYPES.put("ttf", "font/ttf");
-        MIME_TYPES.put("otf", "font/otf");
-        MIME_TYPES.put("mp3", "audio/mpeg");
-        MIME_TYPES.put("ogg", "audio/ogg");
-        MIME_TYPES.put("wav", "audio/wav");
-        MIME_TYPES.put("mp4", "video/mp4");
-        MIME_TYPES.put("webm", "video/webm");
-        MIME_TYPES.put("txt", "text/plain");
-        MIME_TYPES.put("xml", "application/xml");
-    }
+    // hanya diakses dari main thread. TreeMap = urut id (id besar di atas)
+    private final TreeMap<Integer, Browser> mBrowsers = new TreeMap<>();
+
+    private CefWebView mNotifyWebView;
+    private boolean mNotifyWebViewReady = false;
+
+    // true saat menu pause / peta game terbuka: semua UI CEF disembunyikan sementara
+    private boolean mGamePaused = false;
 
     public CefJavaManager(FrameLayout rootLayout, Activity activity) {
         this.mRootLayout = rootLayout;
         this.mActivity = activity;
 
-        if (sWebViewEnabled) {
-            mMainHandler.post(this::initWebView);
-        } else {
-            Log.i(TAG, "CEF WebView disabled in settings, skipping init");
-        }
+        // membuat WebView pertama juga "memanaskan" engine Chromium, jadi browser berikutnya lebih cepat
+        mMainHandler.post(this::initNotifyWebView);
     }
 
-    private void initWebView() {
-        if (mWebView != null) return;
+    // ------------------------------------------------------------------ setup
 
-        // Pakai CefHudWebView: sentuhan tembus ke game kecuali dialog HTML sedang fokus.
-        mWebView = new CefHudWebView(mActivity);
-        mWebView.setFocusable(true);
-        mWebView.setFocusableInTouchMode(true);
-        mWebView.setClickable(true);
-        mWebView.setLongClickable(true);
-        mWebView.setBackgroundColor(Color.TRANSPARENT);
-        mWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+    private void attachMobileBridgeIfNeeded(Browser b) {
+        if (b.bridgeAttached || b.mobileListener == null) return;
+        b.view.addJavascriptInterface(new CefMobileBridge(b.mobileListener, b.id), "CefMobileBridge");
+        b.bridgeAttached = true;
+    }
 
-        WebSettings settings = mWebView.getSettings();
+    private int dpToPx(int dp) {
+        float density = mActivity.getResources().getDisplayMetrics().density;
+        return Math.round(dp * density);
+    }
+
+    private void initNotifyWebView() {
+        if (mNotifyWebView != null) return;
+
+        mNotifyWebView = new CefWebView(mActivity);
+        // overlay notifikasi hanya tampilan, tidak boleh menelan sentuhan
+        mNotifyWebView.setTouchEnabled(false);
+        mNotifyWebView.setFocusable(false);
+        mNotifyWebView.setClickable(false);
+        mNotifyWebView.setBackgroundColor(Color.TRANSPARENT);
+        mNotifyWebView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
+        WebSettings settings = mNotifyWebView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+
+        mNotifyWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                mNotifyWebViewReady = true;
+                Log.i(TAG, "Notify overlay WebView ready");
+            }
+        });
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                dpToPx(300), dpToPx(500)
+        );
+        params.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+        mRootLayout.addView(mNotifyWebView, params);
+
+        mNotifyWebView.loadUrl("file:///android_asset/html/notify.html");
+    }
+
+    // ------------------------------------------------------------------ browser lifecycle (main thread)
+
+    private Browser createBrowser(final int id, final MobileEventListener mobileListener) {
+        if (mBrowsers.size() >= MAX_BROWSERS) {
+            Log.e(TAG, "createBrowser(" + id + ") ditolak: sudah mencapai MAX_BROWSERS=" + MAX_BROWSERS);
+            return null;
+        }
+
+        CefWebView wv = new CefWebView(mActivity);
+        wv.setTouchEnabled(false);
+        wv.setBackgroundColor(Color.TRANSPARENT);
+        wv.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        WebSettings settings = wv.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
@@ -288,659 +200,350 @@ public class CefJavaManager {
         settings.setAllowUniversalAccessFromFileURLs(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Enable Cookies
         CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(mWebView, true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true);
 
-        // Web Chrome Client for JS Console Logging
-        mWebView.setWebChromeClient(new WebChromeClient() {
+        final Browser b = new Browser(id, wv);
+        b.mobileListener = mobileListener;
+
+        wv.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-                Log.d(TAG, "[CEF JS Console] " + consoleMessage.message() +
+                Log.d(TAG, "[" + id + "] console says " + consoleMessage.message() +
                         " -- From line " + consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
                 return true;
             }
         });
 
-        mWebView.setWebViewClient(new WebViewClient() {
+        wv.setWebViewClient(new WebViewClient() {
             @Override
-            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                injectBootstrap(view);
+            public void onPageCommitVisible(WebView view, String url) {
+                super.onPageCommitVisible(view, url);
+                view.evaluateJavascript(CEF_MOBILE_SHIM_JS, null);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                injectBootstrap(view);
-                Log.d(TAG, "WebView page loaded successfully: " + url);
-                if (mClientManager != null) {
-                    mClientManager.onBrowserInit(true, -1);
-                }
-            }
+                if (mBrowsers.get(id) != b) return; // browser sudah di-destroy
+                view.evaluateJavascript(CEF_MOBILE_SHIM_JS, null);
+                Log.d(TAG, "[" + id + "] Page loaded: " + url);
 
-            @Override
-            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                super.onReceivedError(view, errorCode, description, failingUrl);
-                Log.e(TAG, "WebView error (" + errorCode + "): " + description);
-                if (mClientManager != null) {
-                    mClientManager.onBrowserInit(false, errorCode);
-                }
-            }
-
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                WebResourceResponse local = serveCefScheme(request.getUrl());
-                return local != null ? local : super.shouldInterceptRequest(view, request);
+                b.pageLoaded = true;
+                flushPendingEvents(b);
             }
 
             @Override
             @SuppressWarnings("deprecation")
-            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-                WebResourceResponse local = serveCefScheme(Uri.parse(url));
-                return local != null ? local : super.shouldInterceptRequest(view, url);
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                super.onReceivedError(view, errorCode, description, failingUrl);
+                if (mBrowsers.get(id) != b) return;
+                Log.e(TAG, "[" + id + "] WebView error (" + errorCode + "): " + description + " url=" + failingUrl);
             }
         });
 
-        mWebView.setVisibility(View.GONE);
-        mRootLayout.addView(mWebView, new FrameLayout.LayoutParams(
+        wv.setVisibility(View.GONE);
+        mRootLayout.addView(wv, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Register the bridge even if the manager was set before WebView initialization.
-        if (mClientManager != null) {
-            mWebView.addJavascriptInterface(
-                    new CefWebInterface(mClientManager), "AndroidCefBridge");
-        }
+        mBrowsers.put(id, b);
+        attachMobileBridgeIfNeeded(b);
+        reorderViews();
+
+        Log.i(TAG, "Browser " + id + " dibuat (total=" + mBrowsers.size() + ")");
+        return b;
     }
 
-    private void injectBootstrap(WebView view) {
-        try {
-            view.evaluateJavascript(BOOTSTRAP_JS, null);
-        } catch (Exception e) {
-            Log.w(TAG, "bootstrap inject failed: " + e.getMessage());
+    // id kecil di bawah, id besar di atas; overlay notifikasi selalu paling atas
+    private void reorderViews() {
+        for (Browser b : mBrowsers.values()) b.view.bringToFront();
+        if (mNotifyWebView != null) mNotifyWebView.bringToFront();
+    }
+
+    private void destroyInternal(Browser b) {
+        Log.i(TAG, "Destroy browser " + b.id);
+        mBrowsers.remove(b.id);
+        b.pendingEvents.clear();
+
+        b.view.animate().cancel();
+        b.view.stopLoading();
+        b.view.setWebViewClient(new WebViewClient());
+        b.view.setWebChromeClient(null);
+        b.view.removeJavascriptInterface("CefMobileBridge");
+
+        ViewGroup parent = (ViewGroup) b.view.getParent();
+        if (parent != null) parent.removeView(b.view);
+        b.view.destroy();
+    }
+
+    private void startLoad(Browser b, String url) {
+        b.pageLoaded = false;
+        b.pendingEvents.clear(); // event lama ditujukan ke halaman yang akan diganti
+        Log.d(TAG, "[" + b.id + "] Loading URL: " + url);
+        b.view.loadUrl(url);
+    }
+
+    private void showInternal(Browser b) {
+        if (mGamePaused) {
+            // menu pause terbuka: catat bahwa browser ini harus tampil, wujudkan saat game dilanjutkan
+            b.shown = true;
+            return;
         }
+        if (b.shown && b.view.getVisibility() == View.VISIBLE) return;
+
+        b.shown = true;
+        b.view.animate().cancel();
+        b.view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        b.view.setAlpha(0f);
+        b.view.setVisibility(View.VISIBLE);
+        b.view.animate().alpha(1f).setDuration(200).start();
+        Log.i(TAG, "[" + b.id + "] Showing WebView");
+    }
+
+    private void hideInternal(final Browser b) {
+        if (!b.shown) return;
+
+        b.shown = false;
+        b.view.animate().cancel();
+        b.view.animate().alpha(0f).setDuration(150).withEndAction(() -> {
+            if (!b.shown) { // belum di-show lagi selama animasi
+                b.view.setVisibility(View.GONE);
+                b.view.setLayerType(View.LAYER_TYPE_NONE, null);
+                mRootLayout.invalidate();
+            }
+        }).start();
+        Log.i(TAG, "[" + b.id + "] Hiding WebView");
+    }
+
+    private void forTargets(int id, String what, BrowserOp op) {
+        if (id == BROWSER_ALL) {
+            for (Browser b : new ArrayList<>(mBrowsers.values())) op.run(b);
+            return;
+        }
+        Browser b = mBrowsers.get(id);
+        if (b == null) {
+            Log.w(TAG, what + ": browser " + id + " tidak ada (belum di-Init atau sudah di-Destroy)");
+            return;
+        }
+        op.run(b);
+    }
+
+    // ------------------------------------------------------------------ public API (thread-safe)
+
+    public void destroyBrowser(final int id) {
+        mMainHandler.post(() -> forTargets(id, "destroyBrowser", this::destroyInternal));
     }
 
     /**
-     * Serve the omp-cef style local schemes:
-     *   cef://index.html        -> device SAMP/cef_ui/index.html (server-synced),
-     *                              fallback assets/cef/index.html
-     *   http://cef/index.html   -> same (PC omp-cef scheme)
+     * Buat (kalau belum ada) browser CefMobile lalu muat url dan tampilkan.
+     * Dipanggil lagi = muat ulang url. Browser ini memakai CefMobileBridge +
+     * CEF_MOBILE_SHIM_JS. Dipanggil dari CefMobileClient.
      */
-    private WebResourceResponse serveCefScheme(Uri uri) {
-        CefContent c = resolveCefContent(uri);
-        if (c == null) return null;
-        InputStream in = new java.io.ByteArrayInputStream(c.data);
-        return new WebResourceResponse(c.mime, encodingOf(c.mime), in);
-    }
-
-    /** Resolved cef:// content: raw bytes + mime. Null if not a cef URL or not found. */
-    private static class CefContent {
-        final byte[] data;
-        final String mime;
-        CefContent(byte[] data, String mime) { this.data = data; this.mime = mime; }
-    }
-
-    private CefContent resolveCefContent(Uri uri) {
-        if (uri == null) return null;
-        String scheme = uri.getScheme();
-        String host = uri.getHost();
-        boolean isCefScheme = "cef".equalsIgnoreCase(scheme)
-                || ("http".equalsIgnoreCase(scheme) && "cef".equalsIgnoreCase(host));
-        if (!isCefScheme) return null;
-
-        // omp-cef VFS first: http://cef/<resource>/<internalPath>
-        if ("http".equalsIgnoreCase(scheme) && "cef".equalsIgnoreCase(host) && mOmpVfsProvider != null) {
-            String rawPath = uri.getPath();
-            if (rawPath != null && rawPath.length() > 1) {
-                String rel = rawPath.substring(1);
-                int slash = rel.indexOf('/');
-                if (slash > 0) {
-                    String resource = rel.substring(0, slash);
-                    String internal = rel.substring(slash + 1);
-                    if (!internal.contains("..")) {
-                        byte[] vfsData = mOmpVfsProvider.getFile(resource, internal);
-                        if (vfsData != null) {
-                            Log.d(TAG, "serving http://cef/ from omp VFS: " + resource + "/" + internal);
-                            return new CefContent(vfsData, mimeOf(internal));
-                        }
-                    }
-                }
+    public void openMobileBrowser(final int id, final String url, final MobileEventListener listener) {
+        mMainHandler.post(() -> {
+            if (id < 0 || id >= BROWSER_ALL) {
+                Log.e(TAG, "openMobileBrowser: browser id " + id + " tidak valid");
+                return;
             }
-        }
+            if (url == null || url.isEmpty()) {
+                Log.e(TAG, "openMobileBrowser: url is null/empty");
+                return;
+            }
+            if (listener == null) {
+                Log.e(TAG, "openMobileBrowser: listener is null");
+                return;
+            }
 
-        String path;
-        if ("cef".equalsIgnoreCase(scheme)) {
-            // cef://__internal/loading.html -> __internal/loading.html
-            // Android Uri parses the first segment as host, so prepend it back.
-            String p = uri.getPath();
-            if (host != null && !host.isEmpty()) {
-                path = host + (p != null ? p : "");
+            Browser b = mBrowsers.get(id);
+            if (b == null) b = createBrowser(id, listener);
+            if (b == null) return;
+
+            b.mobileListener = listener;
+            attachMobileBridgeIfNeeded(b);
+            b.focused = true;
+            b.view.setTouchEnabled(true);
+            startLoad(b, url);
+            showInternal(b);
+        });
+    }
+
+    public void showBrowser(final int id) {
+        mMainHandler.post(() -> forTargets(id, "showBrowser", this::showInternal));
+    }
+
+    public void hideBrowser(final int id) {
+        mMainHandler.post(() -> forTargets(id, "hideBrowser", this::hideInternal));
+    }
+
+    /** Ganti url browser yang sudah ada. */
+    public void loadUrl(final int id, final String url) {
+        if (url == null || url.isEmpty()) {
+            Log.e(TAG, "loadUrl failed: url is null/empty");
+            return;
+        }
+        mMainHandler.post(() -> forTargets(id, "loadUrl", b -> startLoad(b, url)));
+    }
+
+    /** fokus = HTML menerima sentuhan; tidak fokus = sentuhan tembus ke game. */
+    public void setBrowserFocus(final int id, final boolean isFocused) {
+        mMainHandler.post(() -> forTargets(id, "setBrowserFocus", b -> {
+            b.focused = isFocused;
+            b.view.setTouchEnabled(isFocused);
+            if (isFocused) {
+                b.view.requestFocus();
             } else {
-                path = p;
+                b.view.clearFocus();
             }
-        } else {
-            // http://cef/index.html -> /index.html
-            path = uri.getPath();
-        }
-        if (path == null || path.isEmpty() || path.equals("/")) path = "/index.html";
-        if (path.startsWith("/")) path = path.substring(1);
-        // block directory traversal
-        if (path.contains("..")) return null;
-
-        // 1) server-synced UI on the device wins
-        try {
-            File uiDir = getUiDir();
-            if (uiDir != null) {
-                File dev = new File(uiDir, path);
-                if (dev.isFile() && dev.canRead()) {
-                    Log.d(TAG, "serving cef:// -> " + dev.getAbsolutePath());
-                    return new CefContent(readAllBytes(new java.io.FileInputStream(dev)), mimeOf(path));
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "cef device file error: " + path);
-        }
-
-        // 2) fallback to bundled assets/cef/
-        String assetPath = "cef/" + path;
-        try {
-            AssetManager am = mActivity.getAssets();
-            InputStream in = am.open(assetPath);
-            try {
-                Log.d(TAG, "serving cef:// -> assets/" + assetPath);
-                return new CefContent(readAllBytes(in), mimeOf(path));
-            } finally {
-                try { in.close(); } catch (IOException ignored) {}
-            }
-        } catch (IOException e) {
-            Log.w(TAG, "cef asset missing: " + assetPath);
-            return null;
-        }
+            Log.d(TAG, "[" + b.id + "] Browser focus set to: " + isFocused);
+        }));
     }
 
-    private static String mimeOf(String path) {
-        String ext = "";
-        int dot = path.lastIndexOf('.');
-        if (dot >= 0) ext = path.substring(dot + 1).toLowerCase();
-        String mime = MIME_TYPES.get(ext);
-        return mime != null ? mime : "application/octet-stream";
-    }
-
-    private static String encodingOf(String mime) {
-        // text types get a charset, binary types must pass null encoding
-        return (mime.startsWith("text/") || mime.equals("application/javascript")
-                || mime.equals("application/json") || mime.equals("image/svg+xml")
-                || mime.equals("application/xml")) ? "UTF-8" : null;
-    }
-
-    public void setClientManager(CefClientManager clientManager) {
-        this.mClientManager = clientManager;
+    /**
+     * Dipanggil saat menu pause / peta game dibuka (paused = true) atau ditutup.
+     * Semua UI CEF disembunyikan selama pause, lalu dikembalikan sesuai status show/hide dari server.
+     */
+    public void setGamePaused(final boolean paused) {
         mMainHandler.post(() -> {
-            if (mWebView != null && clientManager != null) {
-                mWebView.addJavascriptInterface(
-                        new CefWebInterface(clientManager), "AndroidCefBridge");
+            if (mGamePaused == paused) return;
+            mGamePaused = paused;
+            Log.i(TAG, "Game paused=" + paused + " -> UI CEF " + (paused ? "disembunyikan" : "dikembalikan"));
+
+            for (Browser b : mBrowsers.values()) applyPauseVisibility(b);
+
+            if (mNotifyWebView != null) {
+                mNotifyWebView.setVisibility(paused ? View.INVISIBLE : View.VISIBLE);
             }
         });
     }
 
-    /** Dispatch a server -> browser CEF event into window.cef handlers. */
-    public void dispatchServerEvent(String eventName, String argsJson) {
-        if (eventName == null) return;
-        final String js = "window.__sampcef && window.__sampcef.dispatch("
-                + jsString(eventName) + "," + jsString(argsJson == null ? "[]" : argsJson) + ");";
-        mMainHandler.post(() -> {
-            if (mWebView != null) {
-                try {
-                    mWebView.evaluateJavascript(js, null);
-                } catch (Exception e) {
-                    Log.w(TAG, "dispatchServerEvent failed: " + e.getMessage());
-                }
-            }
-        });
-    }
-
-    private static String jsString(String s) {
-        StringBuilder b = new StringBuilder(s.length() + 2);
-        b.append('\'');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\': b.append("\\\\"); break;
-                case '\'': b.append("\\'"); break;
-                case '\n': b.append("\\n"); break;
-                case '\r': b.append("\\r"); break;
-                case '\u2028': b.append("\\u2028"); break;
-                case '\u2029': b.append("\\u2029"); break;
-                default: b.append(c);
-            }
+    private void applyPauseVisibility(Browser b) {
+        if (mGamePaused) {
+            if (b.view.getVisibility() == View.VISIBLE) b.view.setVisibility(View.INVISIBLE);
+        } else if (b.shown) {
+            b.view.animate().cancel();
+            b.view.setAlpha(1f);
+            b.view.setVisibility(View.VISIBLE);
         }
-        b.append('\'');
-        return b.toString();
     }
 
-    public void loadUrl(String url) {
+    /** true kalau ada minimal satu browser yang sedang tampil. Hanya untuk main thread. */
+    public boolean isShow() {
+        for (Browser b : mBrowsers.values()) {
+            if (b.shown) return true;
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ server -> html
+
+    public void dispatchServerEvent(final int id, final String eventName, final String eventData) {
         mMainHandler.post(() -> {
-            if (mWebView == null) return;
-            // Load cef:// pages by injecting content directly: WebView's
-            // shouldInterceptRequest is unreliable for the main frame with
-            // custom schemes on some devices/Android versions ("webpage not
-            // available"). Sub-resources still go through the interceptor.
-            try {
-                CefContent c = resolveCefContent(Uri.parse(url));
-                if (c != null && c.mime.startsWith("text/html")) {
-                    String html = new String(c.data, java.nio.charset.StandardCharsets.UTF_8);
-                    mWebView.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+            if ("cef_ui_notification".equals(eventName)) {
+                dispatchToNotifyWebView(eventName, eventData);
+                return;
+            }
+
+            forTargets(id, "dispatchServerEvent(" + eventName + ")", b -> {
+                if (!b.pageLoaded) {
+                    // halaman belum siap: tahan, kirim saat onPageFinished
+                    if (b.pendingEvents.size() >= MAX_PENDING_EVENTS) b.pendingEvents.remove(0);
+                    b.pendingEvents.add(new String[]{eventName, eventData});
+                    Log.d(TAG, "[" + b.id + "] event '" + eventName + "' ditahan sampai halaman selesai dimuat");
                     return;
                 }
-            } catch (Exception e) {
-                Log.w(TAG, "cef direct load failed, falling back to loadUrl: " + e.getMessage());
-            }
-            mWebView.loadUrl(url);
+                deliverEvent(b, eventName, eventData);
+            });
         });
     }
 
-    public void showBrowserView() {
-        mMainHandler.post(() -> {
-            if (mWebView != null) {
-                mWebView.setAlpha(0f);
-                mWebView.setVisibility(View.VISIBLE);
-                mWebView.setFocusable(true);
-                mWebView.setFocusableInTouchMode(true);
-                mWebView.animate().alpha(1f).setDuration(200).start();
-                mIsShown = true;
-            }
-        });
+    private void flushPendingEvents(Browser b) {
+        if (b.pendingEvents.isEmpty()) return;
+        ArrayList<String[]> copy = new ArrayList<>(b.pendingEvents);
+        b.pendingEvents.clear();
+        for (String[] e : copy) deliverEvent(b, e[0], e[1]);
     }
 
-    public void hideBrowserView() {
-        mMainHandler.post(() -> {
-            if (mWebView != null) {
-                mWebView.animate().alpha(0f).setDuration(150).withEndAction(() -> {
-                    mWebView.setVisibility(View.GONE);
-                    mIsShown = false;
-                }).start();
-            }
-        });
-    }
-
-    public boolean isShow() {
-        return mIsShown;
-    }
-
-    public WebView getWebView() {
-        return mWebView;
-    }
-
-    // ---------------------------------------------------------------
-    // omp-cef port: multi-browser WebView management.
-    // The legacy single browser (mWebView, RakNet 252) is untouched; omp
-    // browsers live in mOmpBrowsers, stacked in the same root layout.
-    // Layer ordering uses elevation (higher layer = drawn on top).
-    // World2D / WorldObject3D browsers are never created here: OmpApp
-    // already rejects them with BrowserCreateResult ERROR_GENERIC.
-    // ---------------------------------------------------------------
-
-    /** Start the omp-cef client for the current game connection. Called from native code. */
-    public void startOmpCef(String host, int gamePort, int playerId) {
-        mMainHandler.post(() -> {
-            if (mOmpClient != null) {
-                try { mOmpClient.stop(); } catch (Exception ignored) {}
-                mOmpClient = null;
-            }
+    private void deliverEvent(Browser b, String eventName, String eventData) {
+        if ("_cef_eval".equals(eventName)) {
             try {
-                OmpCefClient client = new OmpCefClient(this);
-                mOmpClient = client;
-                setOmpEventSink(client);
-                client.start(host, gamePort, playerId);
-            } catch (Exception e) {
-                Log.e(TAG, "startOmpCef failed: " + e.getMessage());
+                JSONArray arr = new JSONArray(eventData);
+                String code = arr.getString(0);
+                b.view.evaluateJavascript(code, null);
+            } catch (JSONException e) {
+                Log.e(TAG, "[" + b.id + "] Failed to parse _cef_eval payload: " + eventData, e);
             }
-        });
-    }
-
-    /** Stop the omp-cef client (game disconnect / restart). Called from native code. */
-    public void stopOmpCef() {
-        mMainHandler.post(() -> {
-            if (mOmpClient != null) {
-                try { mOmpClient.stop(); } catch (Exception ignored) {}
-                mOmpClient = null;
-            }
-            setOmpEventSink(null);
-            for (WebView w : new java.util.ArrayList<>(mOmpBrowsers.values())) {
-                try { mRootLayout.removeView(w); w.destroy(); } catch (Exception ignored) {}
-            }
-            mOmpBrowsers.clear();
-        });
-    }
-
-    private WebView createOmpWebView(final int browserId) {
-        CefHudWebView w = new CefHudWebView(mActivity);
-        w.setFocusable(true);
-        w.setFocusableInTouchMode(true);
-        w.setClickable(true);
-        w.setLongClickable(true);
-        w.setBackgroundColor(Color.TRANSPARENT);
-        w.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        WebSettings settings = w.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
-        w.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-                Log.d(TAG, "[OMP CEF JS] " + consoleMessage.message() +
-                        " -- line " + consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
-                return true;
-            }
-        });
-        w.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                injectBootstrap(view);
-            }
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                injectBootstrap(view);
-                Log.d(TAG, "omp browser " + browserId + " loaded: " + url);
-            }
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                WebResourceResponse local = serveCefScheme(request.getUrl());
-                return local != null ? local : super.shouldInterceptRequest(view, request);
-            }
-            @Override
-            @SuppressWarnings("deprecation")
-            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-                WebResourceResponse local = serveCefScheme(Uri.parse(url));
-                return local != null ? local : super.shouldInterceptRequest(view, url);
-            }
-        });
-        w.addJavascriptInterface(new CefWebInterface(mClientManager, w, browserId), "AndroidCefBridge");
-        w.setVisibility(View.GONE);
-        mRootLayout.addView(w, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        return w;
-    }
-
-    private void ompLoadInto(WebView w, String url) {
-        try {
-            CefContent c = resolveCefContent(Uri.parse(url));
-            if (c != null && c.mime.startsWith("text/html")) {
-                String html = new String(c.data, java.nio.charset.StandardCharsets.UTF_8);
-                w.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
-                return;
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "omp direct load failed, falling back: " + e.getMessage());
+            return;
         }
-        w.loadUrl(url);
-    }
 
-    public void ompCreateBrowser(final int browserId, final String url, final boolean focused,
-                                 final boolean controlsChat, final float width, final float height) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w == null) {
-                w = createOmpWebView(browserId);
-                mOmpBrowsers.put(browserId, w);
-            }
-            w.setVisibility(View.VISIBLE);
-            ompLoadInto(w, url);
-            if (focused) ompSetBrowserFocus(browserId, true);
-        });
-    }
-
-    public void ompDestroyBrowser(final int browserId) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.remove(browserId);
-            if (w != null) {
-                try { mRootLayout.removeView(w); w.destroy(); } catch (Exception ignored) {}
-            }
-        });
-    }
-
-    public void ompSetBrowserVisible(final int browserId, final boolean visible) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w != null) w.setVisibility(visible ? View.VISIBLE : View.GONE);
-        });
-    }
-
-    public void ompSetBrowserLayer(final int browserId, final int layer) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w != null) {
-                try { w.setElevation(layer * 10f); } catch (Exception ignored) {}
-            }
-        });
-    }
-
-    public void ompSetBrowserFocus(final int browserId, final boolean focused) {
-        mMainHandler.post(() -> {
-            for (Map.Entry<Integer, WebView> e : mOmpBrowsers.entrySet()) {
-                WebView w = e.getValue();
-                if (w instanceof CefHudWebView) {
-                    ((CefHudWebView) w).setInteractionEnabled(focused && e.getKey() == browserId);
-                }
-                if (focused && e.getKey() == browserId) {
-                    w.requestFocus();
-                    w.requestFocusFromTouch();
-                }
-            }
-        });
-    }
-
-    public void ompLoadBrowserUrl(final int browserId, final String url) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w != null) ompLoadInto(w, url);
-        });
-    }
-
-    public void ompReloadBrowser(final int browserId, final boolean ignoreCache) {
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w == null) return;
-            if (ignoreCache) {
-                try { w.clearCache(true); } catch (Exception ignored) {}
-            }
-            w.reload();
-        });
-    }
-
-    public void ompDispatchToBrowser(final int browserId, final String eventName, final String argsJson) {
-        if (eventName == null) return;
-        final String js = "window.__sampcef && window.__sampcef.dispatch("
-                + jsString(eventName) + "," + jsString(argsJson == null ? "[]" : argsJson) + ");";
-        mMainHandler.post(() -> {
-            WebView w = mOmpBrowsers.get(browserId);
-            if (w != null) {
-                try { w.evaluateJavascript(js, null); } catch (Exception e) {
-                    Log.w(TAG, "ompDispatchToBrowser failed: " + e.getMessage());
-                }
-            }
-        });
+        Log.d(TAG, "[" + b.id + "] dispatchServerEvent: " + eventName + " data=" + eventData);
+        b.view.evaluateJavascript(buildEventJs(eventName, eventData), null);
     }
 
     /**
-     * JavaScript Bridge Interface attached to WebView (window.AndroidCefBridge)
+     * Kirim event ke halaman HTML dalam dua gaya sekaligus:
+     *  1) window.addEventListener("namaEvent", e => e.detail)
+     *  2) function onCefEvent(event, data) { ... } (kalau didefinisikan di HTML)
      */
-    public class CefWebInterface {
-        private final CefClientManager mClientManager;
-        private final WebView mBridgeView;
-        private final int mOmpBrowserId;
+    private String buildEventJs(String eventName, String eventData) {
+        String n = escapeJsString(eventName);
+        String d = escapeJsString(eventData);
+        return "(function(){var n=\"" + n + "\",d=\"" + d + "\";"
+                + "window.dispatchEvent(new CustomEvent(n,{detail:d}));"
+                + "if(typeof window.onCefEvent===\"function\"){window.onCefEvent(n,d);}"
+                + "})();";
+    }
 
-        public CefWebInterface(CefClientManager clientManager) {
-            this(clientManager, null, -1);
+    private void dispatchToNotifyWebView(final String eventName, final String eventData) {
+        if (mNotifyWebView == null || !mNotifyWebViewReady) {
+            Log.w(TAG, "dispatchToNotifyWebView: notify overlay is not ready, event was dropped.");
+            return;
+        }
+        mNotifyWebView.evaluateJavascript(buildEventJs(eventName, eventData), null);
+    }
+
+    // Escape agar payload aman di dalam string literal JS
+    private static String escapeJsString(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\u2028", "\\u2028")
+                .replace("\u2029", "\\u2029");
+    }
+
+    // ------------------------------------------------------------------ html -> server
+
+    /**
+     * Objek JS "CefMobileBridge" untuk browser CefMobile. Dipanggil dari
+     * CEF_MOBILE_SHIM_JS saat halaman memanggil window.cef.emit(nama, data);
+     * event diteruskan ke MobileEventListener (CefMobileClient), yang
+     * me-POST-nya ke /cef-mobile/event di server. Tidak ada jalur ke native.
+     */
+    public static class CefMobileBridge {
+        private final MobileEventListener mListener;
+        private final int mBrowserId;
+
+        public CefMobileBridge(MobileEventListener listener, int browserId) {
+            this.mListener = listener;
+            this.mBrowserId = browserId;
         }
 
-        public CefWebInterface(CefClientManager clientManager, WebView bridgeView, int ompBrowserId) {
-            this.mClientManager = clientManager;
-            this.mBridgeView = bridgeView;
-            this.mOmpBrowserId = ompBrowserId;
-        }
-
-        /** Legacy single-event bridge. */
-        @android.webkit.JavascriptInterface
-        public void sendEvent(String eventName, String eventDataJson) {
-            emitEvent(eventName, eventDataJson);
-        }
-
-        /** omp-cef style: window.cef.emit(name, ...args) with args as JSON array. */
-        @android.webkit.JavascriptInterface
-        public void emitEvent(String eventName, String argsJson) {
-            if (mOmpBrowserId >= 0 && mOmpEventSink != null) {
-                // omp-cef browser: event goes over the omp-cef UDP/KCP channel,
-                // with the browser id the server used in CreateBrowser.
-                mOmpEventSink.sendOmpClientEvent(mOmpBrowserId, eventName, argsJson == null ? "[]" : argsJson);
-                return;
-            }
-            if (mClientManager != null) {
-                mClientManager.sendClientEvent(eventName, argsJson == null ? "[]" : argsJson);
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public void setChatInputOpen(boolean open) {
-            mChatInputOpen.set(open);
-        }
-
-        @android.webkit.JavascriptInterface
-        public boolean isChatInputOpen() {
-            return mChatInputOpen.get();
-        }
-
-        @android.webkit.JavascriptInterface
-        public void setBrowserFocus(boolean focused) {
-            mMainHandler.post(() -> {
-                WebView target = mBridgeView != null ? mBridgeView : mWebView;
-                if (target == null) return;
-                if (focused) {
-                    target.requestFocus();
-                    target.requestFocusFromTouch();
-                } else {
-                    target.clearFocus();
-                }
-                if (target instanceof CefHudWebView) ((CefHudWebView) target).setInteractionEnabled(focused);
-            });
-        }
-
-        @android.webkit.JavascriptInterface
-        public void exitGame() {
-            mMainHandler.post(() -> {
-                try {
-                    mActivity.finishAffinity();
-                } catch (Exception ignored) {}
-                android.os.Process.killProcess(android.os.Process.myPid());
-            });
-        }
-
-        // ---------------------------------------------------------------
-        // Server-hosted CEF UI sync (scriptfiles/cef/ on the game server).
-        // Files are cached in <game>/SAMP/cef_ui/ and served via cef://.
-        // ---------------------------------------------------------------
-        private java.io.OutputStream mUiOut;
-        private String mUiFileName = "";
-
-        private File uiSafeFile(String name) {
-            if (name == null) return null;
-            name = name.replace('\\', '/');
-            while (name.startsWith("/")) name = name.substring(1);
-            if (name.isEmpty() || name.contains("..")) return null;
-            try {
-                File dir = getUiDir();
-                File f = new File(dir, name);
-                String canonDir = dir.getCanonicalPath() + java.io.File.separator;
-                String canonFile = f.getCanonicalPath();
-                if (!canonFile.startsWith(canonDir)) return null;
-                return f;
-            } catch (Exception e) {
-                return null;
+        @JavascriptInterface
+        public void postEvent(String eventName, String eventData) {
+            if (mListener != null) {
+                mListener.onMobileEvent(mBrowserId,
+                        eventName == null ? "" : eventName,
+                        eventData == null ? "" : eventData);
             }
         }
 
-        @android.webkit.JavascriptInterface
-        public String getUiVersion() {
-            try {
-                File ver = new File(getUiDir(), ".version");
-                if (!ver.isFile()) return "";
-                byte[] buf = new byte[(int) Math.min(ver.length(), 64)];
-                try (java.io.FileInputStream fis = new java.io.FileInputStream(ver)) {
-                    int n = fis.read(buf);
-                    if (n > 0) return new String(buf, 0, n, "UTF-8").trim();
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "getUiVersion failed: " + e.getMessage());
-            }
-            return "";
-        }
-
-        @android.webkit.JavascriptInterface
-        public boolean setUiVersion(String version) {
-            try {
-                File ver = new File(getUiDir(), ".version");
-                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(ver)) {
-                    fos.write((version == null ? "" : version).getBytes("UTF-8"));
-                }
-                return true;
-            } catch (Exception e) {
-                Log.w(TAG, "setUiVersion failed: " + e.getMessage());
-                return false;
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public boolean uiFileBegin(String name, long totalBytes) {
-            try {
-                if (mUiOut != null) { try { mUiOut.close(); } catch (Exception ignored) {} mUiOut = null; }
-                File f = uiSafeFile(name);
-                if (f == null) return false;
-                File parent = f.getParentFile();
-                if (parent != null && !parent.exists()) parent.mkdirs();
-                mUiOut = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));
-                mUiFileName = name;
-                return true;
-            } catch (Exception e) {
-                Log.w(TAG, "uiFileBegin failed: " + e.getMessage());
-                return false;
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public boolean uiFileChunk(String base64) {
-            try {
-                if (mUiOut == null || base64 == null) return false;
-                byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
-                mUiOut.write(data);
-                return true;
-            } catch (Exception e) {
-                Log.w(TAG, "uiFileChunk failed: " + e.getMessage());
-                return false;
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public boolean uiFileEnd(String name) {
-            try {
-                if (mUiOut != null) { mUiOut.flush(); mUiOut.close(); mUiOut = null; }
-                mUiFileName = "";
-                return true;
-            } catch (Exception e) {
-                Log.w(TAG, "uiFileEnd failed: " + e.getMessage());
-                return false;
-            }
+        /** id browser ini (CefMobile memakai id 65000). */
+        @JavascriptInterface
+        public int getBrowserId() {
+            return mBrowserId;
         }
     }
 }

@@ -25,7 +25,6 @@
 #include "settings.h"
 
 #include "crashlytics.h"
-#include "cef/SAMPMobileCef.h"
 /*
 Peerapol Unarak
 */
@@ -324,52 +323,33 @@ extern "C" {
 
 		pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
 	}
-	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeOnBrowserInit(
-			JNIEnv* env,
-			jobject thiz,
-			jboolean isSuccess,
-			jint errorCode)
+	// ------------------------------------------------------------------ CefMobile
+	//
+	// Java (CefMobileClient) perlu tahu server mana yang dihubungi + playerid
+	// lokal + status koneksi. Semua diambil dari global pNetGame; null/-1 kalau
+	// belum ada koneksi, jadi Java tidak pernah crash di sini.
+	JNIEXPORT jstring JNICALL
+	Java_com_sampmobile_xyvern_game_SAMP_nativeGetCefMobileServer(JNIEnv* env, jobject thiz)
 	{
-		cef::log(
-			"nativeOnBrowserInit: success=%d errorCode=%d",
-			isSuccess ? 1 : 0,
-			(int)errorCode
-		);
-		cef::sendBrowserInit(isSuccess != JNI_FALSE, (int)errorCode);
+		if (!pNetGame || pNetGame->m_szHostOrIp[0] == '\0' || pNetGame->m_iPort <= 0) return nullptr;
+		std::string hostport = std::string(pNetGame->m_szHostOrIp) + ":" + std::to_string(pNetGame->m_iPort);
+		return env->NewStringUTF(hostport.c_str());
 	}
 
-	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSendClientEvent(
-			JNIEnv* env,
-			jobject thiz,
-			jstring eventName,
-			jstring eventDataJson)
+	JNIEXPORT jint JNICALL
+	Java_com_sampmobile_xyvern_game_SAMP_nativeGetCefMobileGameState(JNIEnv* env, jobject thiz)
 	{
-		if (eventName == nullptr || eventDataJson == nullptr)
-			return;
-
-		const char* name = env->GetStringUTFChars(eventName, nullptr);
-		const char* data = env->GetStringUTFChars(eventDataJson, nullptr);
-
-		if (name && data)
-		{
-			cef::sendClientEvent(name, data);
-		}
-
-		if (name)
-			env->ReleaseStringUTFChars(eventName, name);
-
-		if (data)
-			env->ReleaseStringUTFChars(eventDataJson, data);
+		if (!pNetGame) return -1;
+		return pNetGame->GetGameState();
 	}
-	JNIEXPORT void JNICALL
-	Java_com_sampmobile_xyvern_cef_CefClientManager_nativeSetJavaManager(
-			JNIEnv* env,
-			jobject thiz,
-			jobject javaManager)
+
+	JNIEXPORT jint JNICALL
+	Java_com_sampmobile_xyvern_game_SAMP_nativeGetCefMobilePlayerId(JNIEnv* env, jobject thiz)
 	{
-		cef::setJavaManager(env, javaManager);
+		if (!pNetGame || !pNetGame->GetPlayerPool()) return -1;
+		PLAYERID id = pNetGame->GetPlayerPool()->GetLocalPlayerID();
+		if (id > 999) return -1;
+		return (jint) id;
 	}
 }
 

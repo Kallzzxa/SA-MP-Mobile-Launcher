@@ -1,0 +1,57 @@
+name: Build Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Install SDK packages
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "ndk;26.2.11394342" "cmake;3.22.1"
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+
+      # Artifact upload is blocked by the account's Actions storage quota,
+      # so try pixeldrain (primary) then tmpfiles.org (fallback, 60 min).
+      - name: Upload APK to file host
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+          RESP=$(curl -s --max-time 300 -F "file=@$APK" https://pixeldrain.com/api/file) || RESP=""
+          echo "pixeldrain response: $RESP"
+          URL=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('https://pixeldrain.com/u/'+d['id'] if d.get('success') else '')" 2>/dev/null) || URL=""
+          if [ -z "$URL" ]; then
+            echo "pixeldrain failed, trying tmpfiles.org"
+            RESP2=$(curl -s --max-time 300 -F "file=@$APK" https://tmpfiles.org/api/v1/upload) || RESP2=""
+            echo "tmpfiles response: $RESP2"
+            URL=$(echo "$RESP2" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['url'])" 2>/dev/null) || URL=""
+          fi
+          if [ -z "$URL" ] || ! echo "$URL" | grep -q '^https://'; then
+            echo "All file hosts failed"
+            exit 1
+          fi
+          echo "DOWNLOAD_URL=$URL"
+          echo "### Debug APK download" >> $GITHUB_STEP_SUMMARY
+          echo "[$URL]($URL)" >> $GITHUB_STEP_SUMMARY

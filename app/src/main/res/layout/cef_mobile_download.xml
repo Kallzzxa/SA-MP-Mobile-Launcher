@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/downloading_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:background="#80000000"
+    android:padding="20dp">
+
+    <!-- Main Container Card (Dark Grey + Crimson Accent) -->
+    <LinearLayout
+        android:id="@+id/downloading_card"
+        android:layout_width="500dp"
+        android:layout_height="310dp"
+        android:orientation="vertical"
+        android:background="@drawable/bg_download_card"
+        android:padding="20dp">
+
+        <!-- Header Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:id="@+id/tv_download_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Downloading Assets"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_total_percent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0% • 0/0 Files"
+                android:textColor="#DC2626"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Overall Progress Bar -->
+        <ProgressBar
+            android:id="@+id/pb_overall"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#DC2626"
+            android:progressBackgroundTint="#27272A"
+            android:layout_marginBottom="14dp" />
+
+        <!-- Scrollable File List Container -->
+        <ScrollView
+            android:id="@+id/sv_asset_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="false"
+            android:scrollbarThumbVertical="@drawable/bg_scrollbar_thumb">
+
+            <LinearLayout
+                android:id="@+id/ll_asset_items"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingRight="6dp">
+                <!-- File rows diisi dinamis dari manifest (satu row per file). -->
+            </LinearLayout>
+        </ScrollView>
+
+    </LinearLayout>
+</LinearLayout>
