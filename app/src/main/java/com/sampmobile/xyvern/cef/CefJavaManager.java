@@ -1,12 +1,15 @@
 package com.sampmobile.xyvern.cef;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,12 +23,18 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import com.sampmobile.xyvern.R;
 import org.json.JSONArray;
 import org.json.JSONException;
 
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -939,6 +948,139 @@ public class CefJavaManager {
         public int getBrowserId() {
             return mBrowserId;
         }
+    }
+
+    // ---- omp-cef download UI ("Downloading Assets", sama seperti CefMobile/Alyn) ----
+    /** Satu baris file di dialog download omp-cef. */
+    private static final class OmpDownloadRow {
+        String name;
+        TextView status;
+        ProgressBar bar;
+        long size;
+        long done;
+        int lastPct = -1;
+    }
+
+    private AlertDialog mOmpDownloadDialog;
+    private TextView mOmpDownloadTotal;
+    private ProgressBar mOmpDownloadOverall;
+    private LinearLayout mOmpDownloadList;
+    private ArrayList<OmpDownloadRow> mOmpDownloadRows;
+
+    /** Tampilkan dialog "Downloading Assets" untuk download resource omp-cef. */
+    public void showOmpDownloadUi(final List<String> files) {
+        mMainHandler.post(() -> {
+            try {
+                if (mActivity.isFinishing() || mActivity.isDestroyed()) return;
+                if (mOmpDownloadDialog != null) return;
+                View root = LayoutInflater.from(mActivity)
+                        .inflate(R.layout.cef_mobile_download, null);
+                mOmpDownloadTotal = root.findViewById(R.id.tv_total_percent);
+                mOmpDownloadOverall = root.findViewById(R.id.pb_overall);
+                mOmpDownloadList = root.findViewById(R.id.ll_asset_items);
+                mOmpDownloadRows = new ArrayList<>();
+                for (String name : files) {
+                    View row = LayoutInflater.from(mActivity)
+                            .inflate(R.layout.cef_mobile_download_item, mOmpDownloadList, false);
+                    TextView fileName = row.findViewById(R.id.tv_file_name);
+                    TextView status = row.findViewById(R.id.tv_file_status);
+                    ProgressBar bar = row.findViewById(R.id.pb_file);
+                    fileName.setText(name);
+                    status.setText("Queued");
+                    status.setTextColor(Color.parseColor("#71717A"));
+                    bar.setProgress(0);
+                    mOmpDownloadList.addView(row);
+                    OmpDownloadRow dr = new OmpDownloadRow();
+                    dr.name = name;
+                    dr.status = status;
+                    dr.bar = bar;
+                    mOmpDownloadRows.add(dr);
+                }
+                updateOmpDownloadOverallUi();
+                mOmpDownloadDialog = new AlertDialog.Builder(mActivity)
+                        .setView(root)
+                        .setCancelable(false)
+                        .create();
+                mOmpDownloadDialog.show();
+            } catch (Exception e) {
+                Log.w(TAG, "showOmpDownloadUi failed", e);
+            }
+        });
+    }
+
+    /** Progress satu file .pak (dipanggil dari thread network; dipost ke UI thread). */
+    public void updateOmpDownloadFile(final String file, final long downloaded, final long total) {
+        mMainHandler.post(() -> {
+            if (mOmpDownloadRows == null) return;
+            OmpDownloadRow dr = null;
+            for (OmpDownloadRow r : mOmpDownloadRows) {
+                if (r.name.equals(file)) { dr = r; break; }
+            }
+            if (dr == null) return;
+            dr.size = total;
+            dr.done = downloaded;
+            if (total > 0) {
+                int pct = (int) Math.min(100, (downloaded * 100) / total);
+                if (pct == dr.lastPct) return;
+                dr.lastPct = pct;
+                dr.bar.setProgress(pct);
+                if (pct >= 100) {
+                    dr.bar.setProgressTintList(ColorStateList.valueOf(Color.parseColor("#10B981")));
+                    dr.status.setText("100% (" + formatOmpSize(total) + ")");
+                    dr.status.setTextColor(Color.parseColor("#10B981"));
+                } else {
+                    dr.bar.setProgressTintList(ColorStateList.valueOf(Color.parseColor("#DC2626")));
+                    dr.status.setText(pct + "% (" + formatOmpSize(downloaded) + ")");
+                    dr.status.setTextColor(Color.parseColor("#DC2626"));
+                }
+            } else {
+                dr.status.setText(formatOmpSize(downloaded));
+                dr.status.setTextColor(Color.parseColor("#DC2626"));
+            }
+            updateOmpDownloadOverallUi();
+        });
+    }
+
+    /** Refresh header "N% • i/M Files" + overall bar. Hanya dari UI thread. */
+    private void updateOmpDownloadOverallUi() {
+        if (mOmpDownloadTotal == null || mOmpDownloadOverall == null || mOmpDownloadRows == null) return;
+        long done = 0;
+        long total = 0;
+        int doneFiles = 0;
+        for (OmpDownloadRow r : mOmpDownloadRows) {
+            if (r.size > 0) {
+                total += r.size;
+                done += Math.min(Math.max(0, r.done), r.size);
+            }
+            if (r.lastPct >= 100) doneFiles++;
+        }
+        int pct = total > 0 ? (int) Math.min(100, (done * 100) / total) : 0;
+        mOmpDownloadTotal.setText(pct + "% • " + doneFiles + "/" + mOmpDownloadRows.size() + " Files");
+        mOmpDownloadOverall.setProgress(pct);
+    }
+
+    /** Sembunyikan dialog download (selesai / putus / gagal). */
+    public void hideOmpDownloadUi() {
+        mMainHandler.post(() -> {
+            try {
+                if (mOmpDownloadDialog != null) {
+                    if (mOmpDownloadDialog.isShowing()) mOmpDownloadDialog.dismiss();
+                    mOmpDownloadDialog = null;
+                }
+            } catch (Exception ignored) {
+            }
+            mOmpDownloadTotal = null;
+            mOmpDownloadOverall = null;
+            mOmpDownloadList = null;
+            mOmpDownloadRows = null;
+        });
+    }
+
+    private static String formatOmpSize(long bytes) {
+        if (bytes < 0) return "?";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format(Locale.US, "%.0f KB", bytes / 1024.0);
+        return String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     /**

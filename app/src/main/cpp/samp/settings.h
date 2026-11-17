@@ -42,9 +42,6 @@ struct stSettings
 	float fVoiceChatSize;
 	float fVoiceChatPosX;
 	float fVoiceChatPosY;
-	float fDefenseButtonPosX;
-	float fDefenseButtonPosY;
-	float fDefenseButtonScale;
 
 	bool iAndroidKeyboard;
 	bool iCutout;
@@ -69,7 +66,6 @@ public:
 	~CSettings();
 
 	stSettings& Get() { return m_Settings; }
-	void SaveDefenseButtonSettings();
 	void SaveVoiceButtonSettings();
 	
 private:

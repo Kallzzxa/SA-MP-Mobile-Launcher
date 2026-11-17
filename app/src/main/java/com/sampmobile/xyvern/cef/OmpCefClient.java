@@ -54,14 +54,14 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
         resources = new OmpResourceManager(cacheDir, new OmpResourceManager.ProgressListener() {
             @Override public void onDownloadStart(List<String> files) {
                 Log.i(TAG, "omp download start: " + files);
+                javaManager.showOmpDownloadUi(files);
             }
             @Override public void onFileProgress(String file, long downloaded, long total) {
-                // Progress is also visible in the PC client's download dialog;
-                // on Android the loading.html page shows it via window.__ompcef
-                // if the gamemode wires it up. Keep this cheap: no log per chunk.
+                javaManager.updateOmpDownloadFile(file, downloaded, total);
             }
             @Override public void onDownloadComplete() {
                 Log.i(TAG, "omp download complete");
+                javaManager.hideOmpDownloadUi();
             }
         });
         app = new OmpApp(this);
@@ -72,6 +72,7 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
 
     public void stop() {
         stopped = true;
+        javaManager.hideOmpDownloadUi();
         if (client != null) {
             try { client.disconnect(); } catch (Exception ignored) {}
             client = null;
@@ -88,10 +89,12 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
 
     @Override public void onFailed(String reason) {
         Log.w(TAG, "omp failed: " + reason + " (falling back to legacy MobileCEF if present)");
+        javaManager.hideOmpDownloadUi();
     }
 
     @Override public void onDisconnected() {
         Log.i(TAG, "omp disconnected");
+        javaManager.hideOmpDownloadUi();
         mainHandler.post(() -> {
             if (app != null) app.reset();
         });

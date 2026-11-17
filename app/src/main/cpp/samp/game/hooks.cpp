@@ -379,8 +379,6 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
 	if (pUI != nullptr)
 	{
-        pUI->HandleDefenseTouchEvent(type, num, posX, posY);
-
 		switch (type)
 		{
 			case 2: // push

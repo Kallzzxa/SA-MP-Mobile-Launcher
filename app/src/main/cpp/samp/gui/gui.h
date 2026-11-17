@@ -38,8 +38,6 @@ struct BUFFERED_COMMAND_TEXTDRAW
 };
 #pragma pack(pop)
 
-class DefenseButton;
-
 class UI : public Widget, public ImGuiWrapper
 {
 public:
@@ -79,8 +77,6 @@ public:
 	}
 
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override;
-	void HandleDefenseTouchEvent(int type, int pointerId, int x, int y);
-	void ToggleDefenseButtonEditor();
 
 	bool OnTouchEvent(int type, bool multi, int x, int y);
 
@@ -93,8 +89,6 @@ protected:
 	void drawList() override;
 
 private:
-	void FinishDefenseButtonEditor(bool save);
-
 	Keyboard* m_keyboard;
 	SplashScreen* m_splashScreen;
 	Chat* m_chat;
@@ -103,19 +97,6 @@ private:
 	ButtonPanel* m_buttonPanel;
 	PlayerTabList* m_playerTabList;
 	VoiceButton* m_voiceButton;
-	DefenseButton* m_defenseButton = nullptr;
-	Button* m_defenseScaleDown = nullptr;
-	Button* m_defenseScaleUp = nullptr;
-	Button* m_defenseSave = nullptr;
-	Button* m_defenseCancel = nullptr;
-	Label* m_defenseEditorHelp = nullptr;
-	std::unordered_set<int> m_defenseTouchIds;
-	bool m_defenseEditorActive = false;
-	int m_defenseDragPointer = -1;
-	ImVec2 m_defenseDefaultPosition = ImVec2(0.0f, 0.0f);
-	ImVec2 m_defenseEditPosition = ImVec2(0.0f, 0.0f);
-	ImVec2 m_defenseLastTouch = ImVec2(0.0f, 0.0f);
-	float m_defenseEditScale = 1.0f;
 	Label* label;
     Label* label2;
     Label* label3;
