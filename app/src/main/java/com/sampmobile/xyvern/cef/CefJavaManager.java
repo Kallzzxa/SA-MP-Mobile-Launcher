@@ -110,7 +110,7 @@ public class CefJavaManager {
         "    }\n" +
         "  };\n" +
         "  if (!window.cef) { window.cef = api; }\n" +
-        "  else { for (var k in api) { if (typeof window.cef[k] === 'undefined') window.cef[k] = api[k]; } }\n" +
+        "  else if (!window.cef.__sampMobile) { window.cef = api; }\n" +
         "  window.__sampcef = {\n" +
         "    dispatch: function(name, argsJson) {\n" +
         "      var args = [];\n" +
@@ -649,6 +649,37 @@ public class CefJavaManager {
         return b;
     }
 
+    /**
+     * Sisipkan OMP_BOOTSTRAP_JS ke dalam HTML supaya window.cef (yang asli,
+     * bicara ke AndroidCefBridge) sudah ada SEBELUM script halaman jalan.
+     * Sebelumnya bootstrap baru disuntik di onPageFinished, jadi script
+     * halaman (mis. js/cef-bridge.js) duluan melihat window.cef belum ada,
+     * membuat stub yang cuma console.log, dan stub itu bertahan karena
+     * merge bootstrap lama hanya mengisi key yang undefined (on/emit stub
+     * tidak pernah tertimpa). Akibatnya RP.emit/RP.on tidak pernah sampai
+     * ke server — tombol DAFTAR/MASUK tidak berfungsi sama sekali.
+     * Dipakai di ompLoadInto (loadDataWithBaseURL) dan serveOmpVfs
+     * (navigasi antar halaman), jadi semua halaman omp dapat window.cef
+     * yang asli sejak parse. onPageFinished tetap menyuntik sebagai
+     * fallback; guard __sampMobile di bootstrap mencegah instalasi ganda.
+     */
+    private static String injectOmpBootstrap(String html) {
+        if (html == null) return null;
+        String script = "<script>" + OMP_BOOTSTRAP_JS + "</script>";
+        String lower = html.toLowerCase(java.util.Locale.ROOT);
+        int head = lower.indexOf("<head");
+        if (head >= 0) {
+            int end = html.indexOf('>', head);
+            if (end >= 0) return html.substring(0, end + 1) + script + html.substring(end + 1);
+        }
+        int doctype = lower.indexOf("<!doctype");
+        if (doctype >= 0) {
+            int end = html.indexOf('>', doctype);
+            if (end >= 0) return html.substring(0, end + 1) + script + html.substring(end + 1);
+        }
+        return script + html;
+    }
+
     private void ompLoadInto(Browser b, String url) {
         try {
             byte[] data = null;
@@ -670,6 +701,7 @@ public class CefJavaManager {
             }
             if (data != null && mime != null && mime.startsWith("text/html")) {
                 String html = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+                html = injectOmpBootstrap(html);
                 b.pageLoaded = false;
                 b.pendingEvents.clear();
                 Log.d(TAG, "[" + b.id + "] Loading omp HTML from VFS: " + url);
@@ -765,7 +797,12 @@ public class CefJavaManager {
         byte[] data = provider.getFile(resource, internal);
         if (data == null) return null;
         Log.d(TAG, "serving http://cef/ from omp VFS: " + resource + "/" + internal);
-        return new WebResourceResponse(mimeOf(internal), "UTF-8", new ByteArrayInputStream(data));
+        String mime = mimeOf(internal);
+        if (mime.startsWith("text/html")) {
+            String html = injectOmpBootstrap(new String(data, java.nio.charset.StandardCharsets.UTF_8));
+            data = html.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+        return new WebResourceResponse(mime, "UTF-8", new ByteArrayInputStream(data));
     }
 
     private static String mimeOf(String path) {
