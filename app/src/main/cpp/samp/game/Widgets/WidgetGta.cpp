@@ -35,6 +35,24 @@ WidgetIDs GetWidgetTypeFromWidget(CWidgetGta* pWidget)
         if(m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT]) return WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT;
         if(m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE]) return WidgetIDs::WIDGET_HANDBRAKE;
         if(m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT]) return WidgetIDs::WIDGET_CAR_SHOOT;
+        // The launcher's own registry only covers widgets registered by
+        // name (accelerate, brake, horn, ...). Widgets like ATTACK and
+        // SPRINT have no name entry, so their ProcessFixedWidget cases were
+        // dead (always -1). Fall back to the game's own array, which is
+        // indexed by widget type id, so those cases go live.
+        if (CTouchInterface::m_pWidgets)
+        {
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ATTACK]) return WidgetIDs::WIDGET_ATTACK;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_SPRINT]) return WidgetIDs::WIDGET_SPRINT;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ACCELERATE]) return WidgetIDs::WIDGET_ACCELERATE;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR]) return WidgetIDs::WIDGET_ENTER_CAR;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_BRAKE]) return WidgetIDs::WIDGET_BRAKE;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_HORN]) return WidgetIDs::WIDGET_HORN;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_LEFT]) return WidgetIDs::WIDGET_VEHICLE_STEER_LEFT;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT]) return WidgetIDs::WIDGET_VEHICLE_STEER_RIGHT;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_HANDBRAKE]) return WidgetIDs::WIDGET_HANDBRAKE;
+            if(pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_CAR_SHOOT]) return WidgetIDs::WIDGET_CAR_SHOOT;
+        }
     }
 
     return static_cast<WidgetIDs>(-1);
@@ -72,18 +90,21 @@ static bool IsVehicleControlWidget(CWidgetGta* pWidget)
         return true;
     }
 
+    // The game's widget array is indexed by widget TYPE id (WidgetIDs), NOT
+    // by layout position (WIDGET_POSITION_*). The old code used position ids
+    // here and several of them collide with unrelated widget types:
+    //   WIDGET_POSITION_CAR_SHOOT (0x1) == WIDGET_ATTACK (0x1) -> the punch
+    //   button was treated as a vehicle widget and disabled on foot.
+    //   WIDGET_POSITION_HORN_ALT (0x8) == WIDGET_PHONE (0x8) -> the phone
+    //   button was disabled on foot too.
+    //   WIDGET_POSITION_VEHICLE_SHOOT_LEFT (0xA) == WIDGET_KISS (0xA).
+    // Only the vehicle-shoot / air-gun widgets are not covered by the
+    // launcher's own name registry above, so check those by type id.
     if (CTouchInterface::m_pWidgets)
     {
-        if (pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_ACCELERATE] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_BRAKE] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_LEFT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_STEER_RIGHT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HORN_ALT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_HANDBRAKE_AND_AIR_SHOOT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_CAR_SHOOT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_LEFT] ||
-            pWidget == CTouchInterface::m_pWidgets[CTouchInterface::WIDGET_POSITION_VEHICLE_SHOOT_RIGHT])
+        if (pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_VEHICLE_SHOOT_LEFT] ||
+            pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_VEHICLE_SHOOT_RIGHT] ||
+            pWidget == CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_AIR_GUN])
         {
             return true;
         }
