@@ -39,6 +39,8 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
     private OmpResourceManager resources;
     private OmpApp app;
     private volatile boolean stopped;
+    /** True between the DownloadStart and DownloadFinish client events. */
+    private boolean downloadStarted;
 
     public OmpCefClient(CefJavaManager javaManager) {
         this.javaManager = javaManager;
@@ -102,6 +104,12 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
             // Everything was already cached: skip straight to ready.
             sendDownloadCompleteAndFlush();
         } else {
+            // Like the PC client's download dialog: tell the server the
+            // download started (fires OnCefDownloadStart in the gamemode).
+            if (client != null) {
+                client.sendClientEmitEvent(0, "DownloadStart", new ArrayList<>());
+                downloadStarted = true;
+            }
             client.sendRequestFiles(req);
         }
     }
@@ -123,6 +131,10 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
     }
 
     private void sendDownloadCompleteAndFlush() {
+        if (downloadStarted && client != null) {
+            client.sendClientEmitEvent(0, "DownloadFinish", new ArrayList<>());
+            downloadStarted = false;
+        }
         if (client != null) client.sendDownloadComplete();
         Runnable flush = app.onResourcesComplete();
         // Queued creates must run on the main thread (they create WebViews).

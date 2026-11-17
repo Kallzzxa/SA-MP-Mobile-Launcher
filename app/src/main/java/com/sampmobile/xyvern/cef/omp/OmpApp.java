@@ -213,6 +213,22 @@ public final class OmpApp {
 
     private OmpPacket.Packet handleServerCommand(OmpPacket.Packet p, boolean flushed) {
         String name = p.eventName;
+        // Server commands (PacketType::EmitEvent) carry the browser id in
+        // args[0]; only JS events (EmitBrowserEvent) carry it in the
+        // packet's browserId field. The plugin never sets browserId for
+        // server commands (CefApi::* puts the id in args[0]; the PC client
+        // reads it from there). Reading p.browserId here made every
+        // command target browser 0 with all args shifted by one, so
+        // CreateBrowser got an empty URL and the WebView stayed blank.
+        if (isServerCommand(name) && !p.args.isEmpty()
+                && p.args.get(0).type == OmpPacket.ARG_INTEGER) {
+            OmpPacket.Packet q = new OmpPacket.Packet();
+            q.type = p.type;
+            q.browserId = p.args.get(0).intValue;
+            q.eventName = p.eventName;
+            q.args.addAll(p.args.subList(1, p.args.size()));
+            p = q;
+        }
         int id = p.browserId;
         switch (name) {
             case "CreateBrowser": {
