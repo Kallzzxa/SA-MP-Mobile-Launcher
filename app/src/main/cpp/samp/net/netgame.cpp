@@ -10,6 +10,7 @@
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
 #include "../java/editobject.h"
+#include "cef/OmpCefGlue.h"
 
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
@@ -117,6 +118,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 
 CNetGame::~CNetGame()
 {
+	cef::ompStop();
 	DLManager::Instance().Reset();
 	// voice
 	Network::OnRaknetDisconnect();
@@ -405,6 +407,7 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
 
 void CNetGame::ShutdownForGameModeRestart()
 {
+	cef::ompStop();
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
@@ -634,6 +637,10 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	// omp-cef port: coba channel UDP omp-cef paralel dengan CefMobile.
+	// Kalau server tidak punya plugin omp-cef, client timeout setelah
+	// 5x percobaan join dan CefMobile tetap jalan.
+	cef::ompStart(m_szHostOrIp, m_iPort, (int)MyPlayerID);
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();

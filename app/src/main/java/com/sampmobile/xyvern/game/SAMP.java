@@ -85,6 +85,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     private native int nativeGetCefMobileGameState();
     private native int nativeGetCefMobilePlayerId();
 
+    // omp-cef: daftarkan CefJavaManager ke native supaya CNetGame bisa
+    // memanggil startOmpCef/stopOmpCef saat connect/disconnect.
+    private native void nativeSetOmpCefManager(CefJavaManager manager);
+
     /** "host:port" server yang sedang dihubungi, atau null kalau belum connect. */
     public String getCefMobileServer() {
         try {
@@ -236,6 +240,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 FrameLayout rootLayout = findViewById(android.R.id.content);
 
                 mCefJavaManager = new CefJavaManager(rootLayout, this);
+                try { nativeSetOmpCefManager(mCefJavaManager); } catch (Throwable ignored) {}
                 mCefMobileClient = new CefMobileClient(this, mCefJavaManager);
                 mCefMobileClient.start();
 
