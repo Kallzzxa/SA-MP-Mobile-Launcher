@@ -14,8 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -87,6 +87,13 @@ public final class OmpResourceManager {
     private final Map<String, String> assemblingHash = new HashMap<>();
     private final Map<String, Long> assemblingSize = new HashMap<>();
     private boolean downloadStarted;
+    /** Why the last .pak unpack failed, or null if it worked. */
+    private String lastUnpackError;
+
+    /** Why the last .pak unpack failed, or null if the last unpack worked. */
+    public String getLastUnpackError() {
+        return lastUnpackError;
+    }
 
     public OmpResourceManager(File cacheDir, ProgressListener progress) {
         this.cacheDir = cacheDir;
@@ -213,26 +220,109 @@ public final class OmpResourceManager {
     // ---- .pak handling ----
 
     public boolean loadPakIntoVfs(String resource, byte[] pakBytes) {
-        if (masterKey == null || masterKey.length == 0) return false;
-        Map<String, byte[]> files = new HashMap<>();
-        try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(pakBytes))) {
-            ZipEntry entry;
-            while ((entry = zin.getNextEntry()) != null) {
-                if (entry.isDirectory()) continue;
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] tmp = new byte[8192];
-                int n;
-                while ((n = zin.read(tmp)) > 0) out.write(tmp, 0, n);
-                byte[] decoded = decodeResourceEntry(out.toByteArray(), masterKey);
-                if (decoded == null) continue;
-                files.put(entry.getName(), decoded);
-            }
-        } catch (Exception e) {
+        if (masterKey == null || masterKey.length == 0) {
+            lastUnpackError = "missing master key";
             return false;
         }
-        if (files.isEmpty()) return false;
+        Map<String, byte[]> raw = readZipEntries(pakBytes);
+        if (raw == null) {
+            lastUnpackError = "not a readable ZIP (central directory parse failed)";
+            return false;
+        }
+        Map<String, byte[]> files = new HashMap<>();
+        for (Map.Entry<String, byte[]> e : raw.entrySet()) {
+            byte[] decoded = decodeResourceEntry(e.getValue(), masterKey);
+            if (decoded == null) continue;
+            files.put(e.getKey(), decoded);
+        }
+        if (files.isEmpty()) {
+            lastUnpackError = "no entries decoded (" + raw.size() + " raw entries)";
+            return false;
+        }
         vfs.put(resource, files);
+        lastUnpackError = null;
         return true;
+    }
+
+    /**
+     * Read a ZIP archive via its central directory (name -> raw entry bytes).
+     * Java's ZipInputStream refuses STORED entries with a data descriptor
+     * ("only DEFLATED entries can have EXT descriptor"), which is exactly
+     * how miniz — the server's packer, MZ_NO_COMPRESSION — writes every
+     * entry: the local header has CRC/sizes zero + flag bit 3 set, and the
+     * real values live only in the central directory. That made every
+     * server .pak unreadable here (empty VFS, blank WebView) even though
+     * the download itself succeeded. Null if the archive is malformed.
+     */
+    static Map<String, byte[]> readZipEntries(byte[] pak) {
+        if (pak == null || pak.length < 22) return null;
+        // Find the End of Central Directory record (PK\x05\x06), scanning
+        // backwards from the end (max 64 KiB comment).
+        int eocd = -1;
+        int scanStart = Math.max(0, pak.length - 22 - 65536);
+        for (int i = pak.length - 22; i >= scanStart; i--) {
+            if (pak[i] == 0x50 && pak[i + 1] == 0x4b && pak[i + 2] == 0x05 && pak[i + 3] == 0x06) {
+                eocd = i;
+                break;
+            }
+        }
+        if (eocd < 0) return null;
+        int cdCount = u16(pak, eocd + 10);
+        int cdOffset = (int) u32(pak, eocd + 16);
+        if (cdOffset < 0 || cdOffset >= pak.length) return null;
+        Map<String, byte[]> out = new LinkedHashMap<>();
+        int p = cdOffset;
+        for (int n = 0; n < cdCount; n++) {
+            if (p + 46 > pak.length) return null;
+            if (!(pak[p] == 0x50 && pak[p + 1] == 0x4b && pak[p + 2] == 0x01 && pak[p + 3] == 0x02)) return null;
+            int method = u16(pak, p + 10);
+            long compSize = u32(pak, p + 20);
+            long uncompSize = u32(pak, p + 24);
+            int nameLen = u16(pak, p + 28);
+            int extraLen = u16(pak, p + 30);
+            int commentLen = u16(pak, p + 32);
+            long localOffset = u32(pak, p + 42);
+            if (p + 46 + nameLen + extraLen + commentLen > pak.length) return null;
+            String name = new String(pak, p + 46, nameLen, java.nio.charset.StandardCharsets.UTF_8);
+            p += 46 + nameLen + extraLen + commentLen;
+            if (name.endsWith("/")) continue;
+            if (localOffset < 0 || localOffset + 30 > pak.length) return null;
+            int lo = (int) localOffset;
+            if (!(pak[lo] == 0x50 && pak[lo + 1] == 0x4b && pak[lo + 2] == 0x03 && pak[lo + 3] == 0x04)) return null;
+            int lNameLen = u16(pak, lo + 26);
+            int lExtraLen = u16(pak, lo + 28);
+            long dataStart = localOffset + 30L + lNameLen + lExtraLen;
+            if (dataStart < 0 || dataStart + compSize > pak.length) return null;
+            byte[] raw = new byte[(int) compSize];
+            System.arraycopy(pak, (int) dataStart, raw, 0, (int) compSize);
+            if (method == 0) {
+                out.put(name, raw);
+            } else if (method == 8) {
+                try {
+                    Inflater inf = new Inflater(true);
+                    inf.setInput(raw);
+                    byte[] buf = new byte[(int) uncompSize];
+                    int got = inf.inflate(buf);
+                    inf.end();
+                    if (got != uncompSize) return null;
+                    out.put(name, buf);
+                } catch (DataFormatException e) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+        return out;
+    }
+
+    private static int u16(byte[] b, int off) {
+        return (b[off] & 0xFF) | ((b[off + 1] & 0xFF) << 8);
+    }
+
+    private static long u32(byte[] b, int off) {
+        return (b[off] & 0xFFL) | ((b[off + 1] & 0xFFL) << 8)
+                | ((b[off + 2] & 0xFFL) << 16) | ((b[off + 3] & 0xFFL) << 24);
     }
 
     static byte[] decodeResourceEntry(byte[] input, byte[] masterKey) {

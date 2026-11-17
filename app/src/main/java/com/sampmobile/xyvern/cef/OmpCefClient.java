@@ -117,7 +117,13 @@ public final class OmpCefClient implements OmpClient.Listener, OmpApp.Ui,
     @Override public void onFileData(OmpPacket.Packet fileData) {
         try {
             boolean done = resources.onFileData(fileData);
-            if (done) sendDownloadCompleteAndFlush();
+            if (done) {
+                String unpackError = resources.getLastUnpackError();
+                if (unpackError != null) {
+                    Log.e(TAG, "omp .pak unpack failed: " + unpackError + " (VFS empty, browsers will be blank)");
+                }
+                sendDownloadCompleteAndFlush();
+            }
         } catch (Exception e) {
             Log.e(TAG, "omp onFileData failed: " + e.getMessage());
         }
