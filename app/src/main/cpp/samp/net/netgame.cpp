@@ -637,9 +637,6 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-	// omp-cef port: coba channel UDP omp-cef paralel dengan CefMobile.
-	// Kalau server tidak punya plugin omp-cef, client timeout setelah
-	// 5x percobaan join dan CefMobile tetap jalan.
 	cef::ompStart(m_szHostOrIp, m_iPort, (int)MyPlayerID);
 	// voice
 	SpeakerList::Hide();
@@ -1033,6 +1030,12 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	// Client-side quick command: Exit game
 	if (strcasecmp(cmd.c_str(), "/q") == 0 || strcasecmp(cmd.c_str(), "/quit") == 0) {
 		if (pJavaWrapper) pJavaWrapper->exitGame();
+		return;
+	}
+
+	if (strcasecmp(cmd.c_str(), "/cleo") == 0 || strcasecmp(cmd.c_str(), "/cleomenu") == 0 || strcasecmp(cmd.c_str(), "/menu") == 0) {
+		extern void TriggerCleoMenu();
+		TriggerCleoMenu();
 		return;
 	}
 

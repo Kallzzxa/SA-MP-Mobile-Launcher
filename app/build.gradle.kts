@@ -111,6 +111,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.30.5"
         }
     }
 
@@ -138,6 +139,7 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols += "**/*.so"
             excludes += "META-INF/*"
         }
         resources {

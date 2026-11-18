@@ -52,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        com.sampmobile.xyvern.launcher.util.LogcatRecorder.start(this);
         // Keep the launcher Activity as the entry point, but do not initialize its tabs
         // until the maintenance check and game-data download gate have completed.
         setContentView(R.layout.activity_main);
@@ -74,6 +75,8 @@ public class MainActivity extends AppCompatActivity {
 
         if (!isPermissionsGranted()) {
             ActivityCompat.requestPermissions(this, permissions, 1);
+        } else {
+            checkAndRequestAllFilesPermission();
         }
 
         File file = new File(getExternalFilesDir(null) + "/download/update.apk");
@@ -186,17 +189,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public boolean isPermissionsGranted() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                return false;
+            }
+        }
         for (String permission : permissions) {
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) return false;
         }
         return true;
     }
 
+    public void checkAndRequestAllFilesPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                try {
+                    android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    startActivity(intent);
+                }
+            }
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1 && !isPermissionsGranted()) {
-            // The launcher remains gated by data readiness; permissions can be requested again if needed.
+        if (requestCode == 1) {
+            checkAndRequestAllFilesPermission();
         }
     }
 }

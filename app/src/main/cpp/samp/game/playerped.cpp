@@ -1184,6 +1184,16 @@ void CPlayerPed::FireInstant()
 
 	CVector vecBonePos, vecOut;
 
+	if (m_bytePlayerNumber == 0)
+	{
+		CAMERA_AIM* aim = GameGetInternalAim();
+		if (aim && m_pPed && (aim->f1x != 0.0f || aim->f1y != 0.0f))
+		{
+			float fHeading = atan2f(-aim->f1x, aim->f1y) * 57.2957795f;
+			SetTargetRotation(fHeading);
+		}
+	}
+
 	if (GetCurrentWeapon() == WEAPON_SNIPERRIFLE)
 	{
         if(m_pPed)

@@ -1,10 +1,3 @@
-// OmpCefGlue.cpp — JNI bridge native -> Java untuk omp-cef.
-//
-// SAMP.java memanggil nativeSetOmpCefManager(manager) sekali saat
-// CefJavaManager dibuat; di sini disimpan sebagai global ref + JavaVM.
-// ompStart/ompStop dipanggil dari thread game (CNetGame) — JNIEnv diambil
-// dengan attach bila perlu, lalu dilepas lagi.
-
 #include "OmpCefGlue.h"
 
 #include <jni.h>

@@ -199,7 +199,6 @@ public class CefJavaManager {
         "  document.addEventListener('mousedown', function(e) { checkFocus(e.target); }, true);\n" +
         "})();";
 
-    /** Dipanggil saat JS di browser CefMobile memanggil window.cef.emit(...). */
     public interface MobileEventListener {
         void onMobileEvent(int browserId, String event, String data);
     }
@@ -253,13 +252,11 @@ public class CefJavaManager {
     private final FrameLayout mRootLayout;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
-    // hanya diakses dari main thread. TreeMap = urut id (id besar di atas)
     private final TreeMap<Integer, Browser> mBrowsers = new TreeMap<>();
 
     private CefWebView mNotifyWebView;
     private boolean mNotifyWebViewReady = false;
 
-    // true saat menu pause / peta game terbuka: semua UI CEF disembunyikan sementara
     private boolean mGamePaused = false;
 
     // ---- omp-cef Android port (aurora-mp/omp-cef client, via WebView) ----
@@ -278,7 +275,6 @@ public class CefJavaManager {
         this.mRootLayout = rootLayout;
         this.mActivity = activity;
 
-        // membuat WebView pertama juga "memanaskan" engine Chromium, jadi browser berikutnya lebih cepat
         mMainHandler.post(this::initNotifyWebView);
     }
 
@@ -305,7 +301,6 @@ public class CefJavaManager {
         if (mNotifyWebView != null) return;
 
         mNotifyWebView = new CefWebView(mActivity);
-        // overlay notifikasi hanya tampilan, tidak boleh menelan sentuhan
         mNotifyWebView.setTouchEnabled(false);
         mNotifyWebView.setFocusable(false);
         mNotifyWebView.setClickable(false);
@@ -426,7 +421,6 @@ public class CefJavaManager {
         return b;
     }
 
-    // id kecil di bawah, id besar di atas; overlay notifikasi selalu paling atas
     private void reorderViews() {
         for (Browser b : mBrowsers.values()) b.view.bringToFront();
         if (mNotifyWebView != null) mNotifyWebView.bringToFront();
@@ -447,6 +441,23 @@ public class CefJavaManager {
         ViewGroup parent = (ViewGroup) b.view.getParent();
         if (parent != null) parent.removeView(b.view);
         b.view.destroy();
+
+        if (mBrowsers.isEmpty()) {
+            try {
+                android.view.inputmethod.InputMethodManager imm =
+                        (android.view.inputmethod.InputMethodManager) mActivity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    View cur = mActivity.getCurrentFocus();
+                    if (cur != null) {
+                        imm.hideSoftInputFromWindow(cur.getWindowToken(), 0);
+                        cur.clearFocus();
+                    }
+                }
+                if (mRootLayout != null) {
+                    mRootLayout.requestFocus();
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     private void startLoad(Browser b, String url) {
@@ -458,7 +469,6 @@ public class CefJavaManager {
 
     private void showInternal(Browser b) {
         if (mGamePaused) {
-            // menu pause terbuka: catat bahwa browser ini harus tampil, wujudkan saat game dilanjutkan
             b.shown = true;
             return;
         }
@@ -548,7 +558,6 @@ public class CefJavaManager {
         mMainHandler.post(() -> forTargets(id, "hideBrowser", this::hideInternal));
     }
 
-    /** Ganti url browser yang sudah ada. */
     public void loadUrl(final int id, final String url) {
         if (url == null || url.isEmpty()) {
             Log.e(TAG, "loadUrl failed: url is null/empty");
@@ -557,7 +566,6 @@ public class CefJavaManager {
         mMainHandler.post(() -> forTargets(id, "loadUrl", b -> startLoad(b, url)));
     }
 
-    /** fokus = HTML menerima sentuhan; tidak fokus = sentuhan tembus ke game. */
     public void setBrowserFocus(final int id, final boolean isFocused) {
         mMainHandler.post(() -> forTargets(id, "setBrowserFocus", b -> {
             b.focused = isFocused;
@@ -599,7 +607,6 @@ public class CefJavaManager {
         }
     }
 
-    /** true kalau ada minimal satu browser yang sedang tampil. Hanya untuk main thread. */
     public boolean isShow() {
         for (Browser b : mBrowsers.values()) {
             if (b.shown) return true;
@@ -609,11 +616,6 @@ public class CefJavaManager {
 
 
     // ---------------------------------------------------------------
-    // omp-cef port: browser management lewat Browser map yang sama.
-    // Browser omp-cef dibuat lewat startOmpCef() (dipanggil dari native
-    // saat game connect); browser CefMobile (id 65000) tidak tersentuh.
-    // World2D / WorldObject3D tidak pernah dibuat di sini: OmpApp sudah
-    // menolaknya dengan BrowserCreateResult ERROR_GENERIC.
     // ---------------------------------------------------------------
 
     /** Start the omp-cef client for the current game connection. Called from native code. */
@@ -790,7 +792,6 @@ public class CefJavaManager {
         return "\"" + escapeJsString(s == null ? "" : s) + "\"";
     }
 
-    /** Layani http://cef/<resource>/<path> dari VFS omp (isi .pak yang di-download). */
     private WebResourceResponse serveOmpVfs(Uri uri) {
         OmpVfsProvider provider = mOmpVfsProvider;
         if (provider == null || uri == null) return null;
@@ -850,7 +851,6 @@ public class CefJavaManager {
 
             forTargets(id, "dispatchServerEvent(" + eventName + ")", b -> {
                 if (!b.pageLoaded) {
-                    // halaman belum siap: tahan, kirim saat onPageFinished
                     if (b.pendingEvents.size() >= MAX_PENDING_EVENTS) b.pendingEvents.remove(0);
                     b.pendingEvents.add(new String[]{eventName, eventData});
                     Log.d(TAG, "[" + b.id + "] event '" + eventName + "' ditahan sampai halaman selesai dimuat");
@@ -906,7 +906,6 @@ public class CefJavaManager {
         mNotifyWebView.evaluateJavascript(buildEventJs(eventName, eventData), null);
     }
 
-    // Escape agar payload aman di dalam string literal JS
     private static String escapeJsString(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -943,7 +942,6 @@ public class CefJavaManager {
             }
         }
 
-        /** id browser ini (CefMobile memakai id 65000). */
         @JavascriptInterface
         public int getBrowserId() {
             return mBrowserId;
@@ -951,7 +949,6 @@ public class CefJavaManager {
     }
 
     // ---- omp-cef download UI ("Downloading Assets", sama seperti CefMobile/Alyn) ----
-    /** Satu baris file di dialog download omp-cef. */
     private static final class OmpDownloadRow {
         String name;
         TextView status;
@@ -967,7 +964,6 @@ public class CefJavaManager {
     private LinearLayout mOmpDownloadList;
     private ArrayList<OmpDownloadRow> mOmpDownloadRows;
 
-    /** Tampilkan dialog "Downloading Assets" untuk download resource omp-cef. */
     public void showOmpDownloadUi(final List<String> files) {
         mMainHandler.post(() -> {
             try {
@@ -1008,7 +1004,6 @@ public class CefJavaManager {
         });
     }
 
-    /** Progress satu file .pak (dipanggil dari thread network; dipost ke UI thread). */
     public void updateOmpDownloadFile(final String file, final long downloaded, final long total) {
         mMainHandler.post(() -> {
             if (mOmpDownloadRows == null) return;
@@ -1041,7 +1036,6 @@ public class CefJavaManager {
         });
     }
 
-    /** Refresh header "N% • i/M Files" + overall bar. Hanya dari UI thread. */
     private void updateOmpDownloadOverallUi() {
         if (mOmpDownloadTotal == null || mOmpDownloadOverall == null || mOmpDownloadRows == null) return;
         long done = 0;
@@ -1128,8 +1122,6 @@ public class CefJavaManager {
             android.os.Process.killProcess(android.os.Process.myPid());
         }
 
-        // Sinkronisasi UI server-hosted (__cefui_*): tidak dipakai gamemode
-        // ini (server mengirim .pak, bukan file satu-satu) — stub saja.
         @JavascriptInterface
         public String getUiVersion() { return ""; }
         @JavascriptInterface

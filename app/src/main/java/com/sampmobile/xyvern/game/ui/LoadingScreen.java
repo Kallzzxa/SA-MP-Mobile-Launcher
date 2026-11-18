@@ -43,7 +43,9 @@ public class LoadingScreen {
     public void hide() {
         activity.runOnUiThread(() -> {
             if (mainLayout != null) {
-                mainLayout.setVisibility(View.INVISIBLE);
+                mainLayout.setVisibility(View.GONE);
+                mainLayout.setClickable(false);
+                mainLayout.setFocusable(false);
             }
         });
     }

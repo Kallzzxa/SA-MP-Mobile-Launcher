@@ -52,11 +52,11 @@ int32_t NVEventGetNextEvent_hook(NVEvent* ev, int waitMSecs)
         {
             if (num == 0 && type != NV_MULTITOUCH_MOVE)
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA + (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(type, 0, x1, y1); // AND_TouchEvent
+                AND_TouchEvent_hook(type, 0, x1, y1);
             }
             else
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA +  (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(NV_MULTITOUCH_MOVE, 0, x1, y1); // AND_TouchEvent
+                AND_TouchEvent_hook(NV_MULTITOUCH_MOVE, 0, x1, y1);
             }
         }
 
@@ -64,22 +64,22 @@ int32_t NVEventGetNextEvent_hook(NVEvent* ev, int waitMSecs)
         {
             if (num == 1 && type != NV_MULTITOUCH_MOVE)
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA +  (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(type, 1, x2, y2); // AND_TouchEvent
+                AND_TouchEvent_hook(type, 1, x2, y2);
             }
             else
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA +  (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(NV_MULTITOUCH_MOVE, 1, x2, y2); // AND_TouchEvent
+                AND_TouchEvent_hook(NV_MULTITOUCH_MOVE, 1, x2, y2);
             }
         }
         if ((x3 || y3) || num == 2)
         {
             if (num == 2 && type != NV_MULTITOUCH_MOVE)
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA +  (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(type, 2, x3, y3); // AND_TouchEvent
+                AND_TouchEvent_hook(type, 2, x3, y3);
             }
             else
             {
-                ((void(*)(int, int, int posX, int posY))(g_libGTASA +  (VER_x32 ? 0x00269740  + 1 : 0x31EC0C)))(NV_MULTITOUCH_MOVE, 2, x3, y3); // AND_TouchEvent
+                AND_TouchEvent_hook(NV_MULTITOUCH_MOVE, 2, x3, y3);
             }
         }
     }
