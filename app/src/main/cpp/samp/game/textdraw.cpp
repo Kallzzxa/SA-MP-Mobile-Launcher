@@ -336,7 +336,7 @@ void CTextDraw::DrawTextured()
         && strncmp(m_szText, "mdl-", 4) == 0)
     {
         static uint32_t s_lastTry = 0;
-        uint32_t now = GetCurrentTick();
+        uint32_t now = GetTickCount();
         if (now - s_lastTry > 1000) { s_lastTry = now; LoadTexture(); }
     }
 
