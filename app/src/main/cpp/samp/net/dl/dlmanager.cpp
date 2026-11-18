@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <chrono>
 #include <mutex>
+#include <set>
 
 extern UI* pUI;
 
