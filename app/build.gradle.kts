@@ -111,7 +111,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.30.5"
+            version = if (System.getProperty("os.name").lowercase().contains("windows")) "3.30.5" else "3.22.1"
         }
     }
 
