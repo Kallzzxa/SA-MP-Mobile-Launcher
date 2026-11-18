@@ -370,41 +370,10 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 
 void (*AND_TouchEvent)(int type, int num, int posX, int posY) = nullptr;
 
-void TriggerCleoMenu()
-{
-	if (AND_TouchEvent) {
-		AND_TouchEvent(1, 100, 50, 0);
-		AND_TouchEvent(2, 100, 300, 0);
-	}
-}
-
-static float s_fTouchDownX = 0.0f;
-static float s_fTouchDownY = 0.0f;
-static bool s_bTouchDown = false;
-
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
 	if (!AND_TouchEvent) {
 		AND_TouchEvent = (void(*)(int, int, int, int))(g_libGTASA + (VER_x32 ? 0x00269740 + 1 : 0x31EC0C));
-	}
-
-	if (num == 0)
-	{
-		if (type == 2)
-		{
-			s_fTouchDownX = (float)posX;
-			s_fTouchDownY = (float)posY;
-			s_bTouchDown = true;
-		}
-		else if (type == 1 && s_bTouchDown)
-		{
-			s_bTouchDown = false;
-			float dy = (float)posY - s_fTouchDownY;
-			if (dy > 120.0f && s_fTouchDownY < 350.0f)
-			{
-				TriggerCleoMenu();
-			}
-		}
 	}
 
 	if (pGame->IsGamePaused())

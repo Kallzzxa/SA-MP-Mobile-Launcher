@@ -180,42 +180,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             if (extFiles != null) {
                 File modsDir = new File(extFiles, "mods");
                 if (!modsDir.exists()) modsDir.mkdirs();
-                File cleoDir = new File(extFiles, "cleo");
-                if (!cleoDir.exists()) cleoDir.mkdirs();
-                File cleoSaDir = new File(cleoDir, "sa");
-                if (!cleoSaDir.exists()) cleoSaDir.mkdirs();
-            }
-
-            try {
-                File rootCleo = new File(android.os.Environment.getExternalStorageDirectory(), "cleo");
-                if (!rootCleo.exists()) rootCleo.mkdirs();
-                File rootCleoSa = new File(rootCleo, "sa");
-                if (!rootCleoSa.exists()) rootCleoSa.mkdirs();
-            } catch (Exception ignored) {}
-
-            boolean cleoEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
-                    .getBoolean("cleo_enabled", true);
-            if (cleoEnabled) {
-                try {
-                    System.loadLibrary("threadfix");
-                    Log.i(TAG, "libthreadfix.so loaded successfully");
-                } catch (Throwable e) {
-                    Log.w(TAG, "Optional libthreadfix.so not loaded: " + e.getMessage());
-                }
-
-                try {
-                    System.loadLibrary("SAcleo64");
-                    Log.i(TAG, "CLEO Android 64-bit (libSAcleo64.so) loaded successfully");
-                } catch (UnsatisfiedLinkError e64) {
-                    try {
-                        System.loadLibrary("cleo");
-                        Log.i(TAG, "CLEO Android 32-bit (libcleo.so) loaded successfully");
-                    } catch (Throwable e32) {
-                        Log.e(TAG, "Failed to load CLEO library", e32);
-                    }
-                } catch (Throwable e) {
-                    Log.e(TAG, "Failed to load libSAcleo64.so", e);
-                }
             }
 
             boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)

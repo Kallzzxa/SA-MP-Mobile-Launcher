@@ -1049,12 +1049,6 @@ void CNetGame::SendChatCommand(const char* szCommand)
 		return;
 	}
 
-	if (strcasecmp(cmd.c_str(), "/cleo") == 0 || strcasecmp(cmd.c_str(), "/cleomenu") == 0 || strcasecmp(cmd.c_str(), "/menu") == 0) {
-		extern void TriggerCleoMenu();
-		TriggerCleoMenu();
-		return;
-	}
-
 	// Client-side command: Toggle FPS overlay
 	if (strcasecmp(cmd.c_str(), "/fps") == 0) {
 		if (pSettings) {
