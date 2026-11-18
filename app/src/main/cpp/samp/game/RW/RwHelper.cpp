@@ -16,6 +16,7 @@ RwObject* GetFirstObject(RwFrame* frame) {
 }
 
 RpAtomic* GetFirstAtomic(RpClump* clump) {
+    if (!clump) return nullptr;
     RpAtomic* atomic{};
     RpClumpForAllAtomics(clump, GetFirstAtomicCallback, &atomic);
     return atomic;
@@ -32,6 +33,7 @@ RpHAnimHierarchy* GetAnimHierarchyFromSkinClump(RpClump* clump) {
         RpClumpForAllAtomics(clump, SkinAtomicGetHAnimHierarchCB, &anim);
         return anim;
     }
+    return nullptr;
 }
 
 // name not from Android

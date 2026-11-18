@@ -511,20 +511,13 @@ void CPlayerPed::RestartIfWastedAt(CVector *vecRestart, float fRotation)
 
 bool IsPedModel(unsigned int iModelID)
 {
-    if(iModelID < 0 || iModelID > 20000) return false;
-    auto dwModelArray = CModelInfo::ms_modelInfoPtrs;
-
-    uintptr_t ModelInfo = reinterpret_cast<uintptr_t>(dwModelArray[iModelID]);
-    if(ModelInfo && *(uintptr_t*)ModelInfo == (uintptr_t)g_libGTASA + (VER_x32 ? 0x00667658 : 0x82F310))
-        return true;
-
-    return false;
+    return IsValidPedModel(iModelID);
 }
 
 void CPlayerPed::SetModelIndex(uint uiModel)
 {
     if(!GamePool_Ped_GetAt(m_dwGTAId)) return;
-    if(!IsPedModel(uiModel))
+    if(!IsValidPedModel(uiModel))
         uiModel = 0;
 
     if(m_pPed)
@@ -534,10 +527,16 @@ void CPlayerPed::SetModelIndex(uint uiModel)
         if (!CStreaming::TryLoadModel(uiModel))
             return;
 
-        // CEntity::DeleteRwObject();
         m_pPed->m_nModelIndex = uiModel;
-
         m_pPed->SetModelIndex(uiModel);
+
+        // Safety fallback: if custom model failed to create clump, recover to model 0 (CJ) to prevent SIGSEGV
+        if (!m_pPed->m_pRwClump && uiModel != 0) {
+            if (CStreaming::TryLoadModel(0)) {
+                m_pPed->m_nModelIndex = 0;
+                m_pPed->SetModelIndex(0);
+            }
+        }
 
         CStreaming::RemoveModelIfNoRefs(oldModelId);
     }
@@ -2406,7 +2405,7 @@ void CPlayerPed::FlushAttach()
 
 void CPlayerPed::ProcessAttach()
 {
-    if (!m_pPed) return;
+    if (!m_pPed || !m_pPed->m_pRwClump) return;
 
     bool needRender = true;
     if (m_pPed->IsInVehicle() && m_pPed->pVehicle->IsRCVehicleModelID())

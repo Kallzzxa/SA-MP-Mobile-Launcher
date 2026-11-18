@@ -521,11 +521,21 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
 	if (!pPlayerPool) return;
 
-	int iPlayerID;
-	int iModel;
+	PLAYERID iPlayerID = 0;
+	int iModel = 0;
 	uint32_t dCustomSkinID = 0;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(iPlayerID);
+
+	// In SA-MP & open.mp network protocol, playerid is UINT16 (48 bits = 16-bit id + 32-bit model, 80 bits = +32-bit customModel).
+	// If the payload is larger (e.g. 64 or 96 bits), playerid was encoded as 32-bit.
+	if (iBitLength <= 80 && iBitLength >= 48) {
+		bsData.Read(iPlayerID);
+	} else {
+		uint32_t dwPlayerID = 0;
+		bsData.Read(dwPlayerID);
+		iPlayerID = (PLAYERID)dwPlayerID;
+	}
+
 	bsData.Read(iModel);
 	if (bsData.GetNumberOfUnreadBits() >= 32) {
 		bsData.Read(dCustomSkinID);
@@ -534,6 +544,11 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 	int actualModel = iModel;
 	if (dCustomSkinID > 0) {
 		int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
+		if (IsValidPedModel(virtId)) {
+			actualModel = virtId;
+		}
+	} else if (iModel > 20000) {
+		int16_t virtId = DLManager::Instance().GetVirtualModelId(iModel);
 		if (IsValidPedModel(virtId)) {
 			actualModel = virtId;
 		}

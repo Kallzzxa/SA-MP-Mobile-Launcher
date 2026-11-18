@@ -121,9 +121,13 @@ void CEntityGTA::SetCollisionChecking(bool bCheck)
 }
 
 void CEntityGTA::UpdateRpHAnim() {
+    if (!m_pRwClump) return;
     if (const auto atomic = GetFirstAtomic(m_pRwClump)) {
         if (RpSkinGeometryGetSkin(RpAtomicGetGeometry(atomic)) && !m_bDontUpdateHierarchy) {
-            RpHAnimHierarchyUpdateMatrices(GetAnimHierarchyFromSkinClump(m_pRwClump));
+            auto anim = GetAnimHierarchyFromSkinClump(m_pRwClump);
+            if (anim) {
+                RpHAnimHierarchyUpdateMatrices(anim);
+            }
         }
     }
 }

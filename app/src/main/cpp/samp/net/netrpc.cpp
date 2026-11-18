@@ -5,6 +5,9 @@
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
 #include "dl/dlmanager.h"
+#include "../game/constants.h"
+#include "../game/Models/ModelInfo.h"
+#include "../vendor/raknet/GetTime.h"
 #include <cstdio>
 
 extern UI* pUI;
@@ -1586,6 +1589,81 @@ void DL_DownloadCompleted(RPCParameters* rpcParams)
 	DLManager::Instance().OnDownloadCompleted(rpcParams);
 }
 
+static uint8_t ClientCheckChecksum(const void* data, uint16_t length)
+{
+	uint8_t result = 0;
+	const uint8_t* bytes = (const uint8_t*)data;
+	for (unsigned i = 0; i < length; ++i)
+		result ^= bytes[i] & 0xcc;
+	return result;
+}
+
+static void SendClientCheckResponse(uint8_t type, uint32_t argument, uint8_t result)
+{
+	RakNet::BitStream stream;
+	stream.Write(type);
+	stream.Write(argument);
+	stream.Write(result);
+	if (pNetGame && pNetGame->GetRakClient()) {
+		pNetGame->GetRakClient()->RPC(&RPC_ClientCheck, &stream, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	}
+}
+
+void ClientCheck(RPCParameters* parameters)
+{
+	RakNet::BitStream stream(parameters->input, (int)parameters->numberOfBitsOfData / 8 + 1, false);
+	uint8_t type = 0, result = 0;
+	uint32_t argument = 0, offset = 0, length = 0;
+	stream.Read(type);
+	stream.Read(argument);
+	stream.ReadBits((unsigned char*)&offset, 16, true);
+	stream.ReadBits((unsigned char*)&length, 16, true);
+	if ((uint16_t)offset > 256 || (uint16_t)length > 256 || (uint16_t)length < 2)
+		return;
+
+	if (type == 0x46) // 70: Model info check
+	{
+		if (argument < TOTAL_DFF_MODEL_IDS)
+		{
+			void* info = CModelInfo::GetModelInfo(argument);
+			if (info)
+				result = ClientCheckChecksum((void*)((uintptr_t)info + (uint16_t)offset), (uint16_t)length);
+		}
+		SendClientCheckResponse(0x46, argument, result);
+	}
+	else if (type == 2) // 2: Ped / vehicle state check
+	{
+		if (pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer())
+		{
+			CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
+			if (pPed)
+			{
+				if (pPed->IsInVehicle() && !pPed->IsAPassenger())
+					result = 2;
+				else
+					result = 1;
+			}
+		}
+		SendClientCheckResponse(2, argument, result);
+	}
+	else if (type == 0x47) // 71: Collision check
+	{
+		SendClientCheckResponse(0x47, argument, result);
+	}
+	else if (type == 5) // 5: Memory check
+	{
+		SendClientCheckResponse(5, argument, result);
+	}
+	else if (type == 0x45) // 69: Module check
+	{
+		SendClientCheckResponse(0x45, argument, result);
+	}
+	else if (type == 0x48) // 72: Timing check
+	{
+		SendClientCheckResponse(0x48, RakNet::GetTime(), 0);
+	}
+}
+
 void RegisterRPCs(RakClientInterface *pRakClient)
 {
 	Log::traceLastFunc("Registering RPC's..");
@@ -1647,6 +1725,7 @@ void RegisterRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelReset, DL_ModelReset);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelFile, DL_ModelFile);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DownloadCompleted, DL_DownloadCompleted);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ClientCheck, ClientCheck);
 }
 
 void UnregisterRPCs(RakClientInterface *pRakClient)
@@ -1654,7 +1733,8 @@ void UnregisterRPCs(RakClientInterface *pRakClient)
 	Log::traceLastFunc("Unregistering RPC's..");
     pRakClient->UnregisterAsRemoteProcedureCall(&RPC_InitGame);
 
-	// 0.3.DL Artwork
+	// 0.3.DL Artwork & Checks
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ClientCheck);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelRequest);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelReset);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelFile);

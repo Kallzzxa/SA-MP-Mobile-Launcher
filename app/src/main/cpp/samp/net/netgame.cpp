@@ -586,11 +586,13 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
 	PLAYERID MyPlayerID;
 	unsigned int uiChallenge;
-	int iVersion = 4057;
+	int iVersion = 4062;
+	const char* szClientVer = "0.3.DL-R1";
 	if (pSettings && strstr(pSettings->Get().szVersion, "0.3.DL")) {
-		iVersion = 4062;
-	} else if (!pSettings && strstr(SAMP_VERSION, "0.3.DL")) {
-		iVersion = 4062;
+		szClientVer = pSettings->Get().szVersion;
+	} else if (pSettings && pSettings->Get().szVersion[0] != '\0') {
+		// If settings explicitly forced another version, respect it, but default 0.3.DL builds to 4062
+		szClientVer = "0.3.DL-R1";
 	}
 	uint8_t byteMod = 1;
 
@@ -608,10 +610,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 	uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
 	uint8_t byteAuthBSLen = strlen(AUTH_BS);
-	uint8_t byteClientVerLen = strlen(SAMP_VERSION);
-    if(pSettings)
-        byteClientVerLen = strlen(pSettings->Get().szVersion);
-
+	uint8_t byteClientVerLen = strlen(szClientVer);
 
 	RakNet::BitStream bsSend;
 	bsSend.Write(iVersion);
@@ -622,11 +621,12 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSend.Write(byteAuthBSLen);
 	bsSend.Write(AUTH_BS, byteAuthBSLen);
 	bsSend.Write(byteClientVerLen);
-	//bsSend.Write(SAMP_VERSION, byteClientVerLen);
-    if(pSettings)
-        bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
-    else
-        bsSend.Write(SAMP_VERSION, byteClientVerLen);
+	bsSend.Write(szClientVer, byteClientVerLen);
+
+	// SA-MP 0.3.DL handshake requirement: write uiChallenge at the end
+	if (iVersion == 4062) {
+		bsSend.Write(uiChallenge);
+	}
 
 	if (iVersion != 4062 && pUI) {
 		pUI->chat()->addDebugMessage(
