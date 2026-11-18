@@ -30,11 +30,13 @@ union ScmVariable {
     float     fValue;
     uintptr_t pValue;
 
-    ScmVariable() : uValue(0) {}
+    ScmVariable() : pValue(0) {}
     explicit ScmVariable(int32_t v) : iValue(v) {}
     explicit ScmVariable(uint32_t v) : uValue(v) {}
     explicit ScmVariable(float v) : fValue(v) {}
+#if defined(__aarch64__)
     explicit ScmVariable(uintptr_t v) : pValue(v) {}
+#endif
 };
 
 // Script status
