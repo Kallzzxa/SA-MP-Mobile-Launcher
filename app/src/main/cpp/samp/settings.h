@@ -57,6 +57,7 @@ struct stSettings
 	int iFPSCount;
 
 	bool iDialog;
+	bool bScriptLoader;
 };
 
 class CSettings

@@ -30,6 +30,7 @@
 #include "CrossHair.h"
 #include "World.h"
 #include "CFileMgr.h"
+#include "../csaloader/hook/GameHook.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -415,6 +416,10 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 		AND_TouchEvent(type, num, posX, posY);
 	else
 		AND_TouchEvent(1, 0, 0, 0);
+
+	if (pSettings && pSettings->Get().bScriptLoader) {
+		CSALoader::GameHook::Instance().OnTouchEvent(type, num, posX, posY);
+	}
 }
 
 /* =============================================================================== */

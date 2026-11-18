@@ -30,6 +30,7 @@ CSettings::CSettings()
 		ini.SetValue("gui", "fps", "0");
 		ini.SetValue("gui", "ChatMaxMessages", "6");
 		ini.SetValue("gui", "FPSLimit", "120");
+		ini.SetValue("gui", "script_loader", "true");
 		ini.SaveFile(buff);
 	}
 
@@ -93,6 +94,7 @@ CSettings::CSettings()
 	m_Settings.fVoiceChatPosY = reader.GetReal("gui", "VoiceChatPosY", 480.0f);
 
 	m_Settings.iAndroidKeyboard = reader.GetBoolean("gui", "androidkeyboard", false);
+	m_Settings.bScriptLoader = reader.GetBoolean("gui", "script_loader", true);
 	m_Settings.iFirstPerson = reader.GetBoolean("gui", "firstperson", true);
 	m_Settings.iCutout = reader.GetBoolean("gui", "cutout", false);
 	m_Settings.iFPSCounter = reader.GetBoolean("gui", "fps", false);
