@@ -160,4 +160,3 @@ int RPC_RequestTxd = 182;
 int RPC_ModelFile = 183;
 int RPC_FinishDownload = 184;
 int RPC_DownloadCompleted = 185;
-int RPC_ClientCheck = 103;

@@ -164,4 +164,3 @@ extern int RPC_RequestTxd;
 extern int RPC_ModelFile;
 extern int RPC_FinishDownload;
 extern int RPC_DownloadCompleted;
-extern int RPC_ClientCheck;
