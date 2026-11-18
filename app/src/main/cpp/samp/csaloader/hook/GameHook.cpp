@@ -20,6 +20,8 @@
     constexpr bool IS_64BIT = false;
 #endif
 
+extern uintptr_t g_libGTASA;
+
 namespace CSALoader {
 
 // Original function pointers
@@ -77,13 +79,11 @@ uintptr_t GameHook::FindLibraryBase(const char* libName) {
     return base;
 }
 
-extern uintptr_t g_libGTASA;
-
 bool GameHook::InstallHooks() {
     if (m_bInstalled) return true;
 
-    if (g_libGTASA) {
-        m_libGtaBase = g_libGTASA;
+    if (::g_libGTASA) {
+        m_libGtaBase = ::g_libGTASA;
     } else {
         m_libGtaBase = FindLibraryBase("libGTASA.so");
     }
