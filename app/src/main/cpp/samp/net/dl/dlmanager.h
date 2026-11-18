@@ -86,6 +86,7 @@ public:
 
     // RPC Handlers (invoked on the RakNet UpdateNetworkLoop thread - never block)
     void OnModelRequest(RPCParameters* rpcParams);
+    void OnModelReset(RPCParameters* rpcParams);
     void OnModelFile(RPCParameters* rpcParams);
     void OnDownloadCompleted(RPCParameters* rpcParams);
 
@@ -174,6 +175,7 @@ private:
     // Set once we have actually transmitted RPC 184; used to re-arm if a late 179 arrives.
     bool m_bFinishSent{false};
     bool m_bSawAnyModel{false};      // any RPC 179 ever received this session
+    std::atomic<bool> m_bManifestComplete{false};
 
     // Worker pool
     std::mutex m_workMutex;

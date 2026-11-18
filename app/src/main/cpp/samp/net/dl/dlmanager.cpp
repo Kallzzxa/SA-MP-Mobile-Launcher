@@ -247,6 +247,7 @@ void DLManager::Reset() {
     m_bFinishRequested = false;
     m_bFinishSent = false;
     m_bSawAnyModel = false;
+    m_bManifestComplete = false;
     m_bShutdown = false;
     m_activeWorkers = 0;
     m_totalModels = 0;
@@ -586,10 +587,22 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
         };
         if (!info.dffCached) enqueue(info.dffChecksum, info.dffSize, true);
         if (!info.txdCached) enqueue(info.txdChecksum, info.txdSize, false);
+
+        if (info.count > 0 && m_models.size() >= static_cast<size_t>(info.count)) {
+            m_bManifestComplete = true;
+        }
     }
 
-    // Wake the pool immediately: idle slots pick this up without any batching delay.
-    m_workCv.notify_all();
+    if (m_bManifestComplete.load()) {
+        m_workCv.notify_all();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RPC inbound: 180 ModelReset (S->C) - reset custom model list
+// ---------------------------------------------------------------------------
+void DLManager::OnModelReset(RPCParameters* rpcParams) {
+    Reset();
 }
 
 // ---------------------------------------------------------------------------
@@ -604,7 +617,7 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     int byteLength = bitLength / 8;
 
     RakNet::BitStream bs(data, byteLength, false);
-    uint8_t  arg = 0;        // 6 = HTTP transport
+    uint8_t  arg = 0;        // 6 = HTTP transport, 5 = server error/reject
     uint8_t  fileType = 0;   // 1 = DFF, 2 = TXD
     uint32_t fileChecksum = 0;
     uint8_t  urlLen = 0;
@@ -612,20 +625,32 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     bs.Read(arg);
     bs.Read(fileType);
     bs.Read(fileChecksum);
-    bs.Read(urlLen);
-
-    // Only the HTTP-URL prefix is handled here; in-band RakNet chunking (arg=1)
-    // is a different transport and is out of scope.
-    if (arg != 6) return;
-    if (fileChecksum == 0) return;
 
     const bool isDff = (fileType == 1);
 
+    if (arg == 5) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& t : m_tasks) {
+            if (t.crc == fileChecksum && t.isDff == isDff) {
+                t.failed = true;
+                t.lastError = "server rejected (code 5)";
+                m_failedModels++;
+                break;
+            }
+        }
+        m_workCv.notify_all();
+        return;
+    }
+
+    // Only HTTP transport is supported here
+    if (arg != 6) return;
+    if (fileChecksum == 0) return;
+
+    bs.Read(urlLen);
+
     std::string url;
     if (urlLen > 0) {
-        // Bound the read by what actually arrived (audit A4): 4 (arg/type/crc) +
-        // 1 (urlLen) bytes of prefix precede the URL body.
-        const size_t available = (byteLength > 5) ? static_cast<size_t>(byteLength - 5) : 0u;
+        const size_t available = (byteLength > 6) ? static_cast<size_t>(byteLength - 6) : 0u;
         size_t toRead = std::min<size_t>({ urlLen, available, DL_MAX_URL_BYTES });
         if (toRead > 0) {
             char urlBuffer[512] = {0};
@@ -678,6 +703,12 @@ private:
 // ---------------------------------------------------------------------------
 void DLManager::WorkerLoop() {
     while (!m_bShutdown.load()) {
+        if (!m_bManifestComplete.load()) {
+            std::unique_lock<std::mutex> lock(m_workMutex);
+            m_workCv.wait_for(lock, std::chrono::milliseconds(100));
+            continue;
+        }
+
         // 1. Claim the next unstarted file.
         uint32_t pickedCrc = 0;
         bool pickedIsDff = false;
@@ -1222,7 +1253,7 @@ void DLManager::ProcessRpcOutbox() {
     }
     if (!client) return;
 
-    for (int guard = 0; guard < 32; ++guard) {
+    for (int guard = 0; guard < DL_MAX_CONCURRENT; ++guard) {
         std::pair<uint32_t, bool> item{0, false};
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -1236,11 +1267,6 @@ void DLManager::ProcessRpcOutbox() {
         int rpcId = item.second ? RPC_RequestDff : RPC_RequestTxd;
         client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                     UNASSIGNED_NETWORK_ID, nullptr);
-
-        // Diagnostic per-RPC chat log removed (was commit b978e39): with 325+
-        // models it spams hundreds of "-> 181/182" lines that look like a retry
-        // loop but are normal initial traffic. The skip logic in WorkerLoop
-        // (needRpc = url.empty()) already prevents redundant re-sends.
     }
 }
 
@@ -1251,6 +1277,14 @@ void DLManager::ProcessTick() {
     ProcessRpcOutbox();
 
     const uint32_t now = GetCurrentTick();
+
+    if (m_bSawAnyModel && !m_bManifestComplete.load()) {
+        if ((m_totalModels.load() > 0 && m_models.size() >= static_cast<size_t>(m_totalModels.load())) ||
+            (m_lastModelRequestTick > 0 && now - m_lastModelRequestTick > 1500)) {
+            m_bManifestComplete = true;
+            m_workCv.notify_all();
+        }
+    }
 
     // Speed meter (KB/s), one sample per second.
     if (m_lastSpeedSampleTick == 0) {
@@ -1363,8 +1397,8 @@ void DLManager::SendFinishDownload() {
         m_bFinishSent = true;
     }
     if (!client) return;
-    // RPC 184 must carry a zero-length bitstream (no dummy bytes).
     RakNet::BitStream bs;
+    bs.Write(true);
     client->RPC(&RPC_FinishDownload, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                 UNASSIGNED_NETWORK_ID, nullptr);
 }
