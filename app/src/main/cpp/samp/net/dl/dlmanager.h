@@ -117,6 +117,7 @@ public:
     int GetActiveWorkers() const { return m_activeWorkers.load(); }
     float GetCurrentSpeedKBps() const { return m_speedKBps.load(); }
     void GetProgressStats(size_t& queued, size_t& active, size_t& done, size_t& failed) const;
+    void GetModelProgressStats(size_t& completedModels, size_t& totalModels, size_t& skippedFiles) const;
 
     void SendFinishDownload();
     void ToggleOverlay();
@@ -145,6 +146,7 @@ private:
 
     std::string m_serverIp;
     int m_serverPort;
+    std::string m_storagePath;
     std::string m_cachePath;
     mutable std::mutex m_cachePathMutex;   // guards m_cachePath string read by workers
     RakClientInterface* m_pRakClient;      // game-thread owned; nulled on Reset

@@ -230,6 +230,20 @@ void CStreaming::InjectHooks() {
 }
 
 int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
+    if (!pFileName || !pFileName[0])
+        return -1;
+
+    // If this archive is already registered, refresh/reuse its existing slot.
+    for (std::int32_t i = 0; i < TOTAL_IMG_ARCHIVES; i++) {
+        if (ms_files[i].m_szName[0] && strncmp(ms_files[i].m_szName, pFileName, sizeof(ms_files[i].m_szName)) == 0) {
+            if (ms_files[i].m_StreamHandle < 0) {
+                ms_files[i].m_StreamHandle = CdStreamOpen(pFileName);
+            }
+            ms_files[i].m_bNotPlayerImg = bNotPlayerImg;
+            return i;
+        }
+    }
+
     // find a free slot
     std::int32_t fileIndex = 0;
     for (; fileIndex < TOTAL_IMG_ARCHIVES; fileIndex++) {
@@ -238,15 +252,12 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     }
 
     if (fileIndex >= TOTAL_IMG_ARCHIVES) {
-        // No free slot: return -1 instead of writing out of bounds.
-        // (The old code had assert() here, which is a no-op in release builds,
-        //  leading to heap corruption via ms_files[fileIndex].)
-        // Callers MUST check for < 0.
         return -1;
     }
 
-    // free slot found, load the IMG file
-    strcpy(ms_files[fileIndex].m_szName, pFileName);
+    // free slot found, load the IMG file safely without buffer overflow
+    strncpy(ms_files[fileIndex].m_szName, pFileName, sizeof(ms_files[fileIndex].m_szName) - 1);
+    ms_files[fileIndex].m_szName[sizeof(ms_files[fileIndex].m_szName) - 1] = '\0';
     ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
     return fileIndex;

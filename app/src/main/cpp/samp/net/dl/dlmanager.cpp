@@ -189,6 +189,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
              cleanStorage.c_str(), serverIp.c_str(), serverPort);
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_storagePath = cleanStorage;
         m_cachePath = cacheDir;
     }
     MakeDirectoryTree(cacheDir);
@@ -266,6 +267,7 @@ void DLManager::Reset() {
 
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_storagePath.clear();
         m_cachePath.clear();
     }
     {
@@ -401,12 +403,23 @@ bool DLManager::RegisterCustomModels() {
     }
 
     // Pack into IMG.
-    std::string cacheBase;
+    std::string cleanStorage;
     {
         std::lock_guard<std::mutex> lock(m_cachePathMutex);
-        cacheBase = m_cachePath;
+        cleanStorage = m_storagePath;
     }
-    std::string imgPath = cacheBase + "custom_dl.img";
+    if (cleanStorage.empty()) {
+        cleanStorage = g_pszStorage ? g_pszStorage : "";
+        if (!cleanStorage.empty() && cleanStorage.back() != '/') {
+            cleanStorage += "/";
+        }
+    }
+
+    // GTA SA CStreaming::AddImageToList / CdStreamOpen expects a relative path
+    // because OS_FileOpen internally prepends g_pszStorage, and ms_files[i].m_szName
+    // only has a 40-byte buffer. Using "SAMP/cache/custom_dl.img" fits safely within 40 bytes.
+    const std::string relImgPath = "SAMP/cache/custom_dl.img";
+    const std::string fullImgPath = cleanStorage + relImgPath;
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
@@ -416,7 +429,7 @@ bool DLManager::RegisterCustomModels() {
     }
 
     std::string packError;
-    if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
+    if (!DLImgPack::PackImgV2(entries, fullImgPath, packError)) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
                  packError.c_str());
@@ -426,9 +439,8 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
-    // Register IMG with the streaming system.
-    // Note: path format follows the game's CdStreamOpen expectations.
-    int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
+    // Register IMG with the streaming system using the relative path.
+    int imgIndex = CStreaming::AddImageToList(relImgPath.c_str(), false);
     if (imgIndex < 0) {
         PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -436,10 +448,8 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
     // Verify the IMG was actually registered in the returned slot.
-    // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
-    //  not a stale entry or an out-of-bounds index.)
-    if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
+    if (imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
+        strncmp(CStreaming::ms_files[imgIndex].m_szName, relImgPath.c_str(), sizeof(CStreaming::ms_files[imgIndex].m_szName)) != 0) {
         PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
@@ -452,11 +462,13 @@ bool DLManager::RegisterCustomModels() {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const auto& mf : toRegister) {
-            CBaseModelInfo* pInfo = nullptr;
-            if (mf.type == 1) { // Skin -> ped model
-                pInfo = CModelInfo::AddPedModel(mf.virtualId);
-            } else { // Object -> atomic model
-                pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+            CBaseModelInfo* pInfo = CModelInfo::GetModelInfo(mf.virtualId);
+            if (!pInfo) {
+                if (mf.type == 1) { // Skin -> ped model
+                    pInfo = CModelInfo::AddPedModel(mf.virtualId);
+                } else { // Object -> atomic model
+                    pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+                }
             }
             if (!pInfo) {
                 // Store is full (shouldn't happen with enlarged capacities,
@@ -1355,12 +1367,41 @@ void DLManager::GetProgressStats(size_t& queued, size_t& active, size_t& done, s
     }
 }
 
-void DLManager::RecomputeProgress() {
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
-    if (m_totalModels.load() > 0) {
-        m_downloadedModels = static_cast<int>(done);
+void DLManager::GetModelProgressStats(size_t& completedModels, size_t& totalModels, size_t& skippedFiles) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    totalModels = m_totalModels.load() > 0 ? static_cast<size_t>(m_totalModels.load()) : m_models.size();
+    completedModels = 0;
+    skippedFiles = 0;
+
+    for (const auto& t : m_tasks) {
+        if (t.failed) {
+            ++skippedFiles;
+        }
     }
+
+    for (const auto& m : m_models) {
+        bool dffReady = m.dffCached;
+        bool txdReady = m.txdCached;
+        if (!dffReady || !txdReady) {
+            for (const auto& t : m_tasks) {
+                if (!dffReady && t.crc == m.dffChecksum && t.isDff && (t.done || t.failed)) {
+                    dffReady = true;
+                }
+                if (!txdReady && t.crc == m.txdChecksum && !t.isDff && (t.done || t.failed)) {
+                    txdReady = true;
+                }
+            }
+        }
+        if (dffReady && txdReady) {
+            ++completedModels;
+        }
+    }
+}
+
+void DLManager::RecomputeProgress() {
+    size_t completed = 0, total = 0, skipped = 0;
+    GetModelProgressStats(completed, total, skipped);
+    m_downloadedModels = static_cast<int>(completed);
 }
 
 void DLManager::RequestRetryFailed() {
@@ -1428,13 +1469,16 @@ void DLManager::RenderImGui() {
     size_t queued = 0, active = 0, done = 0, failed = 0;
     GetProgressStats(queued, active, done, failed);
 
-    const int      total    = m_totalModels.load();
+    size_t completedModels = 0, totalModels = 0, skippedFiles = 0;
+    GetModelProgressStats(completedModels, totalModels, skippedFiles);
+
+    const int      total    = static_cast<int>(totalModels);
     const bool     finished = m_bDownloadFinished.load();
     const uint32_t now      = GetCurrentTick();
 
     const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
     const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
-    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && done < (size_t)total));
+    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && completedModels < totalModels));
 
     // Visible while there is real work, while the manifest is still expected,
     // or for a beat after finishing. The /dl command pins it open.
@@ -1445,27 +1489,23 @@ void DLManager::RenderImGui() {
     bool showBar = false;
     float fraction = 0.0f;
 
-    // Progress counts settled work: downloaded + skipped. The bar must always
-    // be able to reach 100% — failures are skipped, never stuck.
-    const size_t settled = done + failed;
-
     if (failed > 0 && !busy && !finished) {
         snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
     } else if (finished) {
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
+        if (skippedFiles > 0) {
+            snprintf(label, sizeof(label), "Models ready (%zu skipped)", skippedFiles);
         } else {
             snprintf(label, sizeof(label), "Models ready");
         }
         fraction = 1.0f;
         showBar = total > 0;
     } else if (total > 0) {
-        fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
-        if (failed > 0) {
+        fraction = std::clamp(static_cast<float>(completedModels) / static_cast<float>(total), 0.0f, 1.0f);
+        if (skippedFiles > 0) {
             snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
-                     settled, total, failed);
+                     completedModels, total, skippedFiles);
         } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+            snprintf(label, sizeof(label), "Downloading models %zu/%d", completedModels, total);
         }
         showBar = true;
     } else {
