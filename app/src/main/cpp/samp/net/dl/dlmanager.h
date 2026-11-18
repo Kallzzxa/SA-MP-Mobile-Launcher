@@ -75,6 +75,9 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
+// ID skin custom 0.3.DL (AddCharModel) bernilai 20001..30000; selain itu bukan skin custom.
+inline bool DLIsCustomSkinId(uint32_t id) { return id >= 20001 && id <= 30000; }
+
 class DLManager {
 public:
     static DLManager& Instance();
@@ -111,6 +114,9 @@ public:
     bool IsModelRegistered(int16_t virtualId) const;
     bool IsSkinRegistered(int16_t virtualId) const;
     bool IsObjectRegistered(int16_t virtualId) const;
+    // Path file TXD (di cache) milik model custom dengan ID jaringan tertentu
+    // (mis. -2001 untuk sprite textdraw "mdl-2001:nama"). false bila belum diunduh.
+    bool GetTxdPathForNetworkModel(int32_t networkId, std::string& outPath);
 
     bool IsInitialized() const { return m_bInitialized.load(); }
     bool IsDownloadFinished() const { return m_bDownloadFinished.load(); }

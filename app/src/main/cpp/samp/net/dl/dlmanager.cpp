@@ -361,6 +361,23 @@ bool DLManager::IsObjectRegistered(int16_t virtualId) const {
     return m_registeredObjects.find(virtualId) != m_registeredObjects.end();
 }
 
+bool DLManager::GetTxdPathForNetworkModel(int32_t networkId, std::string& outPath) {
+    uint32_t crc = 0;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const auto& m : m_models) {
+            if (m.newId == networkId) { crc = m.txdChecksum; found = true; break; }
+        }
+    }
+    if (!found) return false;
+    std::string path = GetModelPath(crc, false);
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0 || st.st_size <= 0) return false;
+    outPath = path;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
 // Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
@@ -435,13 +452,54 @@ bool DLManager::RegisterCustomModels() {
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
-    for (const auto& mf : toRegister) {
-        entries.push_back({mf.dffPath, mf.dffArcName});
-        entries.push_back({mf.txdPath, mf.txdArcName});
+    {
+        std::set<std::string> seen;
+        for (const auto& mf : toRegister) {
+            if (seen.insert(mf.dffArcName).second) entries.push_back({mf.dffPath, mf.dffArcName});
+            if (seen.insert(mf.txdArcName).second) entries.push_back({mf.txdPath, mf.txdArcName});
+        }
+    }
+
+    // Tanda tangan isi IMG (nama + ukuran tiap file). Bila sama dengan IMG yang
+    // sudah ada, tidak perlu menyalin ulang ratusan MB (penyebab game berat/freeze).
+    uint64_t sig = 1469598103934665603ULL;
+    auto mix = [&sig](const void* d, size_t n) {
+        const uint8_t* b = (const uint8_t*)d;
+        for (size_t i = 0; i < n; ++i) { sig ^= b[i]; sig *= 1099511628211ULL; }
+    };
+    for (const auto& e : entries) {
+        struct stat st2;
+        int64_t sz = (stat(e.srcPath.c_str(), &st2) == 0) ? (int64_t)st2.st_size : -1;
+        mix(e.arcName.data(), e.arcName.size());
+        mix(&sz, sizeof(sz));
+    }
+    std::string sigPath = fullImgPath + ".sig";
+    char sigText[32];
+    snprintf(sigText, sizeof(sigText), "%016llx", (unsigned long long)sig);
+    bool needPack = true;
+    {
+        struct stat sti;
+        FILE* sf = fopen(sigPath.c_str(), "rb");
+        if (sf) {
+            char got[32] = {0};
+            size_t n = fread(got, 1, 16, sf);
+            fclose(sf);
+            if (n == 16 && memcmp(got, sigText, 16) == 0 &&
+                stat(fullImgPath.c_str(), &sti) == 0 && sti.st_size > 0)
+                needPack = false;
+        }
     }
 
     std::string packError;
-    if (!DLImgPack::PackImgV2(entries, fullImgPath, packError)) {
+    bool packOk = true;
+    if (needPack) {
+        packOk = DLImgPack::PackImgV2(entries, fullImgPath, packError);
+        if (packOk) {
+            FILE* sf = fopen(sigPath.c_str(), "wb");
+            if (sf) { fwrite(sigText, 1, 16, sf); fclose(sf); }
+        }
+    }
+    if (!packOk) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
                  packError.c_str());

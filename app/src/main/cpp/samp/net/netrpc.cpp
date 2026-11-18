@@ -371,7 +371,7 @@ void RequestClass(RPCParameters *rpcParams)
 		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
 
 		SpawnInfo.byteTeam = byteTeam;
-		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
+		int actualSkin = DLIsCustomSkinId(dCustomSkinID) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
 		SpawnInfo.iSkin = IsValidPedModel(actualSkin) ? actualSkin : iSkin;
 		SpawnInfo.unk = unk;
 		SpawnInfo.vecPos = vecPos;
@@ -649,7 +649,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 	if (bsData.GetNumberOfUnreadBits() >= (47 * 8)) {
 		uint32_t dCustomSkinID = 0;
 		bsData.Read(dCustomSkinID);
-		if (dCustomSkinID > 0) {
+		if (DLIsCustomSkinId(dCustomSkinID)) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
 				iSkin = virtId;
@@ -1438,7 +1438,7 @@ void ShowActor(RPCParameters* rpcParams)
 		bsData.Read(newActor.iSkin);
 		uint32_t dCustomSkinID = 0;
 		bsData.Read(dCustomSkinID);
-		if (dCustomSkinID > 0) {
+		if (DLIsCustomSkinId(dCustomSkinID)) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
 				newActor.iSkin = virtId;

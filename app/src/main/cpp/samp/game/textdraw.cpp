@@ -3,6 +3,14 @@
 #include "util.h"
 #include "RW/RenderWare.h"
 #include "../gui/gui.h"
+#include "../net/dl/dlmanager.h"
+#include "../vendor/shadowhook/patch.h"
+#include <map>
+#include <set>
+#include <unistd.h>
+#include <algorithm>
+#include <vector>
+#include <cstdio>
 
 extern UI* pUI;
 extern CSnapShotHelper* pSnapShotHelper;
@@ -72,9 +80,106 @@ CTextDraw::~CTextDraw()
     DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
 }
 
+// ---------------------------------------------------------------------------
+// 0.3.DL: sprite textdraw "mdl-ID:nama_tekstur" mengambil tekstur dari TXD yang
+// diunduh untuk model custom ID tersebut (AddSimpleModel(..., -ID, dff, txd)).
+// TXD dibaca dari cache ke memori dan dipertahankan (satu kamus per file).
+// ---------------------------------------------------------------------------
+static void* ReadDictFromFile(const std::string& path)
+{
+    static std::map<std::string, void*> s_dicts;
+    auto it = s_dicts.find(path);
+    if (it != s_dicts.end()) return it->second;
+
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return nullptr;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size < 12 || size > 64 * 1024 * 1024) { fclose(f); return nullptr; }
+    std::vector<uint8_t>* buf = new std::vector<uint8_t>((size_t)size);
+    size_t got = fread(buf->data(), 1, (size_t)size, f);
+    fclose(f);
+    if (got != (size_t)size) { delete buf; return nullptr; }
+
+    void* dict = nullptr;
+    RwMemory mem;
+    mem.start = buf->data();
+    mem.length = (RwUInt32)size;
+    RwStream* stream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &mem);
+    if (stream)
+    {
+        uint32_t hdr[3] = {0, 0, 0};
+        if (RwStreamRead(stream, hdr, 12) == 12 && hdr[0] == 0x16)
+            dict = CHook::CallFunction<void*>("_Z25RwTexDictionaryStreamReadP8RwStream", stream);
+        RwStreamClose(stream, &mem);
+    }
+    if (!dict) { delete buf; s_dicts[path] = nullptr; return nullptr; }
+    s_dicts[path] = dict;
+    return dict;
+}
+
+static RwTexture* FindInDict(void* dict, const char* szTexture)
+{
+    if (!dict) return nullptr;
+    RwTexture* tex = CHook::CallFunction<RwTexture*>(
+        "_Z31RwTexDictionaryFindNamedTextureP15RwTexDictionaryPKc", dict, szTexture);
+    if (tex) ++tex->refCount;
+    return tex;
+}
+
+RwTexture* FindCustomDlTextureByModel(int32_t netId, const char* szTexture)
+{
+    std::string path;
+    if (!DLManager::Instance().GetTxdPathForNetworkModel(netId, path)) return nullptr;
+    RwTexture* tex = FindInDict(ReadDictFromFile(path), szTexture);
+    return tex;
+}
+
+RwTexture* FindTextureInNamedTxd(const char* szTxd, const char* szTexture)
+{
+    if (!g_pszStorage || !szTxd || !*szTxd) return nullptr;
+    if (strchr(szTxd, '/') || strchr(szTxd, '\\') || strstr(szTxd, "..")) return nullptr;
+
+    static std::set<std::string> s_missing;
+    if (s_missing.count(szTxd)) return nullptr;
+    bool anyFile = false;
+
+    std::string lower = szTxd;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    const char* dirs[] = { "models/txd/", "SAMP/txd/", "texdb/", "models/" };
+    const std::string names[2] = { szTxd, lower };
+    for (const char* d : dirs)
+        for (const std::string& n : names)
+        {
+            std::string path = std::string(g_pszStorage) + d + n + ".txd";
+            if (access(path.c_str(), R_OK) != 0) continue;
+            anyFile = true;
+            RwTexture* tex = FindInDict(ReadDictFromFile(path), szTexture);
+            if (tex) return tex;
+        }
+    if (!anyFile) s_missing.insert(szTxd);
+    return nullptr;
+}
+
+static RwTexture* FindCustomDlTexture(const char* szSlot, const char* szTexture)
+{
+    if (strncmp(szSlot, "mdl-", 4) != 0) return FindTextureInNamedTxd(szSlot, szTexture);
+    const char* num = szSlot + 4;
+    if (*num == '-') ++num;
+    if (*num < '0' || *num > '9') return nullptr;
+    long id = strtol(num, nullptr, 10);
+    if (id <= 0) return nullptr;
+    if (RwTexture* t = FindCustomDlTextureByModel((int32_t)-id, szTexture)) return t;
+    return FindCustomDlTextureByModel((int32_t)id, szTexture);
+}
+
 uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture)
 {
-    RwTexture* tex;
+    if (RwTexture* custom = FindCustomDlTexture(szSlot, szTexture))
+        return (uintptr_t)custom;
+
+    RwTexture* tex = nullptr;
     if (strncmp(szSlot, "none", 5u))
     {
         /*uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x55BB85))(szSlot);
@@ -226,6 +331,15 @@ void CTextDraw::DrawDefault()
 
 void CTextDraw::DrawTextured()
 {
+    // Sprite "mdl-ID:..." belum bisa dimuat sebelum TXD-nya selesai diunduh: coba lagi berkala.
+    if (m_TextDrawData.iTextureSlot != -1 && !TextDrawTexture[m_TextDrawData.iTextureSlot]
+        && strncmp(m_szText, "mdl-", 4) == 0)
+    {
+        static uint32_t s_lastTry = 0;
+        uint32_t now = GetCurrentTick();
+        if (now - s_lastTry > 1000) { s_lastTry = now; LoadTexture(); }
+    }
+
     float scaleX = (float)(RsGlobal->maximumWidth) * (1.0f / 640.0f);
     float scaleY = (float)(RsGlobal->maximumHeight) * (1.0f / 448.0f);
 
@@ -326,10 +440,18 @@ void CTextDraw::SnapshotProcess()
         // OBJECT MODEL
     else
     {
-        if (!CModelInfo::GetModelInfo(m_TextDrawData.wModelID))
-            m_TextDrawData.wModelID = 18631;
+        uint16_t objModel = m_TextDrawData.wModelID;
+        int16_t signedId = (int16_t)objModel;
+        if (signedId < -1)
+        {
+            int16_t virt = DLManager::Instance().GetVirtualModelId((int32_t)signedId);
+            if (virt > 0 && DLManager::Instance().IsModelRegistered(virt))
+                objModel = (uint16_t)virt;
+        }
+        if (!CModelInfo::GetModelInfo(objModel))
+            objModel = 18631;
         snapshot = (uintptr_t)pSnapShotHelper->CreateObjectSnapShot(
-                m_TextDrawData.wModelID,
+                objModel,
                 m_TextDrawData.dwBackgroundColor,
                 &m_TextDrawData.vecRot,
                 m_TextDrawData.fZoom
