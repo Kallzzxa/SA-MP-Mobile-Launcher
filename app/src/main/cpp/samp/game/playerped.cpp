@@ -524,8 +524,15 @@ void CPlayerPed::SetModelIndex(uint uiModel)
     {
         auto oldModelId = m_pPed->m_nModelIndex;
 
-        if (!CStreaming::TryLoadModel(uiModel))
-            return;
+        if (!CStreaming::TryLoadModel(uiModel)) {
+            if (uiModel != 0) {
+                uiModel = 0;
+                if (!CStreaming::TryLoadModel(0))
+                    return;
+            } else {
+                return;
+            }
+        }
 
         m_pPed->m_nModelIndex = uiModel;
         m_pPed->SetModelIndex(uiModel);

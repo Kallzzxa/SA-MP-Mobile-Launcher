@@ -109,6 +109,8 @@ public:
     // True if virtualId was successfully registered via RegisterCustomModels.
     // Used by the fallback guard so unregistered models fall back to base.
     bool IsModelRegistered(int16_t virtualId) const;
+    bool IsSkinRegistered(int16_t virtualId) const;
+    bool IsObjectRegistered(int16_t virtualId) const;
 
     bool IsInitialized() const { return m_bInitialized.load(); }
     bool IsDownloadFinished() const { return m_bDownloadFinished.load(); }
@@ -163,6 +165,8 @@ private:
     // Custom models successfully registered with the game engine
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
+    std::unordered_set<int16_t> m_registeredSkins;
+    std::unordered_set<int16_t> m_registeredObjects;
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.

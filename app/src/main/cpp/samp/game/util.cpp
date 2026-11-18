@@ -1962,17 +1962,23 @@ int GetModelRefCounts(int iModel)
 
 bool IsValidPedModel(uint modelID)
 {
-    // 0.3.DL virtual custom model range: only valid if actually registered
-    // with the game engine (via DLManager::RegisterCustomModels). An
-    // unregistered virtual ID must fall back to the base model, never crash.
-    if (modelID >= 18631 && modelID < 20000) {
-        return DLManager::Instance().IsModelRegistered((int16_t)modelID);
+    // Valid ped models are standard GTA SA skins (0..311) or 0.3.DL virtual custom skins (18631..19999)
+    if (modelID > 311 && (modelID < 18631 || modelID >= 20000)) {
+        return false;
     }
-    if (modelID > 20000) return false;
+
+    // 0.3.DL virtual custom model range: must be registered specifically as a SKIN (not an object)
+    if (modelID >= 18631 && modelID < 20000) {
+        if (!DLManager::Instance().IsSkinRegistered((int16_t)modelID)) {
+            return false;
+        }
+    }
+
     auto dwModelArray = CModelInfo::ms_modelInfoPtrs;
     if (!dwModelArray) return false;
 
     uintptr_t ModelInfo = reinterpret_cast<uintptr_t>(dwModelArray[modelID]);
+    // Both standard GTA SA ped models and custom ped models created with AddPedModel have the CPedModelInfo vtable
     if(ModelInfo && *(uintptr_t*)ModelInfo == (uintptr_t)g_libGTASA + (VER_x32 ? 0x00667658 : 0x82F310))
         return true;
 

@@ -242,6 +242,8 @@ void DLManager::Reset() {
     m_nextVirtualId = DL_VIRT_MIN;
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
+    m_registeredSkins.clear();
+    m_registeredObjects.clear();
     m_bModelsRegistered = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
@@ -347,6 +349,16 @@ int32_t DLManager::GetNetworkModelId(int16_t virtualId) {
 bool DLManager::IsModelRegistered(int16_t virtualId) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_registeredModels.find(virtualId) != m_registeredModels.end();
+}
+
+bool DLManager::IsSkinRegistered(int16_t virtualId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_registeredSkins.find(virtualId) != m_registeredSkins.end();
+}
+
+bool DLManager::IsObjectRegistered(int16_t virtualId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_registeredObjects.find(virtualId) != m_registeredObjects.end();
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +498,11 @@ bool DLManager::RegisterCustomModels() {
             pInfo->SetTexDictionary(txdBase, "custom_dl");
 
             m_registeredModels.insert(mf.virtualId);
+            if (mf.type == 1) {
+                m_registeredSkins.insert(mf.virtualId);
+            } else {
+                m_registeredObjects.insert(mf.virtualId);
+            }
             ++registered;
         }
         m_bModelsRegistered = true;

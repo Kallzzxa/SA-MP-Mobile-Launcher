@@ -642,6 +642,9 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 			}
 		}
 	}
+	if (!IsValidPedModel(iSkin)) {
+		iSkin = 0;
+	}
 	bsData.Read(vecPos.x);
 	bsData.Read(vecPos.y);
 	bsData.Read(vecPos.z);
@@ -1437,10 +1440,10 @@ void ShowActor(RPCParameters* rpcParams)
 		bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
 	}
 
-	if (IsValidPedModel(newActor.iSkin))
-	{
-		pActorPool->New(&newActor);
+	if (!IsValidPedModel(newActor.iSkin)) {
+		newActor.iSkin = 0;
 	}
+	pActorPool->New(&newActor);
 }
 
 void HideActor(RPCParameters* rpcParams)
