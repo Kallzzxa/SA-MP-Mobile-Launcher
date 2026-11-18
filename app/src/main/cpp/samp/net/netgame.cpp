@@ -107,6 +107,19 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
+	m_iClientVersion = 4062;
+	m_szClientVersion = "0.3.DL-R1";
+	m_bVersionSwitched = false;
+	if (pSettings) {
+		if (strstr(pSettings->Get().szVersion, "0.3.7")) {
+			m_iClientVersion = 4057;
+			m_szClientVersion = pSettings->Get().szVersion;
+		} else if (strstr(pSettings->Get().szVersion, "0.3.DL")) {
+			m_iClientVersion = 4062;
+			m_szClientVersion = pSettings->Get().szVersion;
+		}
+	}
+
     pJavaWrapper->HideLoadingScreen();
 
     const char* sampVer = SAMP_VERSION;
@@ -581,19 +594,22 @@ void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 	MicroIcon::Hide();
 }
 
+void CNetGame::RequestReconnect(int delayMs)
+{
+	if (m_pRakClient) {
+		m_pRakClient->Disconnect(delayMs);
+	}
+	m_dwLastConnectAttempt = 0;
+	SetGameState(GAMESTATE_WAIT_CONNECT);
+}
+
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
 	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
 	PLAYERID MyPlayerID;
 	unsigned int uiChallenge;
-	int iVersion = 4062;
-	const char* szClientVer = "0.3.DL-R1";
-	if (pSettings && strstr(pSettings->Get().szVersion, "0.3.DL")) {
-		szClientVer = pSettings->Get().szVersion;
-	} else if (pSettings && pSettings->Get().szVersion[0] != '\0') {
-		// If settings explicitly forced another version, respect it, but default 0.3.DL builds to 4062
-		szClientVer = "0.3.DL-R1";
-	}
+	int iVersion = m_iClientVersion;
+	const char* szClientVer = m_szClientVersion.c_str();
 	uint8_t byteMod = 1;
 
 	bsSuccAuth.IgnoreBits(8);	// packetId

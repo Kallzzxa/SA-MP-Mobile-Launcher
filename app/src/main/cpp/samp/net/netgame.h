@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include "../vendor/raknet/RakClientInterface.h"
 #include "../vendor/raknet/RakNetworkFactory.h"
 #include "../vendor/raknet/PacketEnumerations.h"
@@ -80,6 +81,12 @@ public:
 	char	m_szHostOrIp[256 + 1];
 	int		m_iPort;
 	bool	m_bLanMode;
+
+	int			m_iClientVersion{4062};
+	std::string	m_szClientVersion{"0.3.DL-R1"};
+	bool		m_bVersionSwitched{false};
+
+	void RequestReconnect(int delayMs = 100);
 
 	struct NET_SETTINGS
 	{

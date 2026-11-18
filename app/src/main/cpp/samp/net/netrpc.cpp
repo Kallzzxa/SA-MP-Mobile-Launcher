@@ -519,6 +519,20 @@ void ConnectionRejected(RPCParameters *rpcParams)
 	switch (byteRejectReason)
 	{
 	case REJECT_REASON_BAD_VERSION:
+		if (pNetGame && !pNetGame->m_bVersionSwitched) {
+			pNetGame->m_bVersionSwitched = true;
+			if (pNetGame->m_iClientVersion == 4062) {
+				pNetGame->m_iClientVersion = 4057;
+				pNetGame->m_szClientVersion = "0.3.7";
+				if (pUI) pUI->chat()->addInfoMessage("Server is not 0.3.DL. Retrying connection as SA-MP 0.3.7...");
+			} else {
+				pNetGame->m_iClientVersion = 4062;
+				pNetGame->m_szClientVersion = "0.3.DL-R1";
+				if (pUI) pUI->chat()->addInfoMessage("Server is not 0.3.7. Retrying connection as SA-MP 0.3.DL-R1...");
+			}
+			pNetGame->RequestReconnect(100);
+			return;
+		}
 		if (pUI) pUI->chat()->addInfoMessage("CONNECTION REJECTED: Incorrect Version.");
 		break;
 
