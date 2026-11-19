@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <android/log.h>
 
-#define LOG_TAG "CSALoader_Loader"
+#define LOG_TAG "M-CSL"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -99,9 +99,9 @@ bool ScriptLoader::LoadScript(const std::string& filePath, bool isAutonomous) {
     std::string name = GetFilename(filePath);
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    // Avoid duplicate scripts
+    // Avoid duplicate scripts (path or name)
     for (const auto& s : m_scripts) {
-        if (s->GetPath() == filePath) {
+        if (s->GetPath() == filePath || s->GetName() == name) {
             LOGD("Script already loaded: %s", filePath.c_str());
             return true;
         }

@@ -9,7 +9,7 @@ import android.util.Log;
  * and the native CSALoader SCM engine (libcsaloader.so).
  */
 public final class CSALoaderBridge {
-    private static final String TAG = "CSALoaderBridge";
+    private static final String TAG = "M-CSL";
     private static boolean sLoaded = false;
 
     static {

@@ -10,8 +10,9 @@
 #include <jni.h>
 #include <android/log.h>
 #include <string>
+#include <sys/stat.h>
 
-#define LOG_TAG "CSALoader_Main"
+#define LOG_TAG "M-CSL"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -23,7 +24,7 @@ static std::string s_storagePath;
 bool Initialize(const char* storagePath) {
     if (s_bInitialized) return true;
 
-    LOGI("=== Initializing CSALoader (Custom Mobile SCM Engine) ===");
+    LOGI("=== Initializing M-CSL ===");
 
     if (storagePath && *storagePath) {
         s_storagePath = storagePath;
@@ -39,34 +40,39 @@ bool Initialize(const char* storagePath) {
     // 3. Initialize GTA Delegator
     GtaDelegator::Instance().Initialize(GameHook::Instance().GetLibGtaBase());
 
-    // 4. Auto-scan default script directories if storage path provided
+    // 4. Auto-scan script directories
+    // Primary path: /storage/emulated/0/M-CSL/scripts
+    mkdir("/storage/emulated/0/M-CSL", 0777);
+    mkdir("/storage/emulated/0/M-CSL/scripts", 0777);
+
+    int count = 0;
+    count += ScriptLoader::Instance().ScanDirectory("/storage/emulated/0/M-CSL/scripts");
+    count += ScriptLoader::Instance().ScanDirectory("/sdcard/M-CSL/scripts");
+
+    // Also fallback to app-specific storage if present
     if (!s_storagePath.empty()) {
         std::string scriptsDir = s_storagePath + "/scripts";
         std::string csaDir = s_storagePath + "/csa";
-        std::string cleoDir = s_storagePath + "/cleo";
-
-        int count = 0;
         count += ScriptLoader::Instance().ScanDirectory(scriptsDir);
         count += ScriptLoader::Instance().ScanDirectory(csaDir);
-        count += ScriptLoader::Instance().ScanDirectory(cleoDir);
-        LOGI("Total scripts auto-loaded from storage: %d", count);
     }
+    LOGI("Total scripts auto-loaded: %d", count);
 
     s_bInitialized = true;
-    LOGI("CSALoader initialized successfully.");
+    LOGI("M-CSL initialized successfully.");
     return true;
 }
 
 void Shutdown() {
     if (!s_bInitialized) return;
 
-    LOGI("Shutting down CSALoader...");
+    LOGI("Shutting down M-CSL...");
     ScriptLoader::Instance().Clear();
     OpcodeRegistry::Instance().Clear();
     GameHook::Instance().RemoveHooks();
 
     s_bInitialized = false;
-    LOGI("CSALoader shutdown complete.");
+    LOGI("M-CSL shutdown complete.");
 }
 
 void Process(uint32_t currentTick) {
