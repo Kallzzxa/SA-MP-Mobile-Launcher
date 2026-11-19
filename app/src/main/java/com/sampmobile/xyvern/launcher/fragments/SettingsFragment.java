@@ -41,7 +41,6 @@ public class SettingsFragment extends Fragment {
     SwitchCompat mModifySwitch;
     SwitchCompat mAMLSwitch;
     SwitchCompat mCefSwitch;
-    SwitchCompat mScriptLoaderSwitch;
     SwitchCompat mFPSSwitch;
     SeekBar mMessagesSeekBar;
     TextView mMessagesText;
@@ -74,7 +73,6 @@ public class SettingsFragment extends Fragment {
             .getSharedPreferences("com.sampmobile.xyvern", android.content.Context.MODE_PRIVATE)
             .getBoolean("aml_enabled", true));
         mCefSwitch = view.findViewById(R.id.cef_switch);
-        mScriptLoaderSwitch = view.findViewById(R.id.script_loader_switch);
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -165,21 +163,6 @@ public class SettingsFragment extends Fragment {
             public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
                 new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "CEF_ENABLED", b);
                 Toast.makeText(requireContext(), b ? "CEF WebView diaktifkan" : "CEF WebView dimatikan. Restart game untuk menerapkan.", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        mScriptLoaderSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-                new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "SCRIPT_LOADER", b);
-                try {
-                    if (mWini != null) {
-                        mWini.put("gui", "script_loader", b);
-                        mWini.store();
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
             }
         });
 
@@ -302,12 +285,6 @@ public class SettingsFragment extends Fragment {
                 .getSharedPreferences(com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
         boolean cefOn = !cefPrefs.contains("CEF_ENABLED") || cefPrefs.getBoolean("CEF_ENABLED", true);
         mCefSwitch.setChecked(cefOn);
-
-        android.content.SharedPreferences scriptPrefs = requireContext().getApplicationContext()
-                .getSharedPreferences(com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, 0);
-        boolean scriptLoaderOn = !scriptPrefs.contains("SCRIPT_LOADER") || scriptPrefs.getBoolean("SCRIPT_LOADER", true);
-        mScriptLoaderSwitch.setChecked(scriptLoaderOn);
-
         autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");

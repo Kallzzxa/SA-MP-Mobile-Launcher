@@ -82,11 +82,6 @@ public class MainActivity extends AppCompatActivity {
         File file = new File(getExternalFilesDir(null) + "/download/update.apk");
         if (file.exists()) file.delete();
 
-        File mcslDir = new File(android.os.Environment.getExternalStorageDirectory(), "M-CSL/scripts");
-        if (!mcslDir.exists()) {
-            mcslDir.mkdirs();
-        }
-
         clearModelCache();
 
         FragmentManager fm = getSupportFragmentManager();

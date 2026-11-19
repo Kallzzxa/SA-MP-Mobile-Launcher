@@ -23,7 +23,6 @@
 #include "vendor/str_obfuscator/str_obfuscator.hpp"
 
 #include "settings.h"
-#include "csaloader/CSALoader.h"
 
 #include "crashlytics.h"
 /*
@@ -266,10 +265,6 @@ void DoInitStuff()
 		}
 
 		bGameInited = true;
-
-		if (pSettings && pSettings->Get().bScriptLoader) {
-			CSALoader::Initialize(g_pszStorage);
-		}
 	}
 
 	if (!bNetworkInited && !bDebug)
@@ -370,10 +365,6 @@ void MainLoop()
 
 	if (pAudioStream) {
 		pAudioStream->Process();
-	}
-
-	if (pSettings && pSettings->Get().bScriptLoader) {
-		CSALoader::Process(GetTickCount());
 	}
 
 }

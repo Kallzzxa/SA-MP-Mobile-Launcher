@@ -180,15 +180,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             if (extFiles != null) {
                 File modsDir = new File(extFiles, "mods");
                 if (!modsDir.exists()) modsDir.mkdirs();
-                File scriptsDir = new File(extFiles, "scripts");
-                if (!scriptsDir.exists()) scriptsDir.mkdirs();
-                File csaDir = new File(extFiles, "csa");
-                if (!csaDir.exists()) csaDir.mkdirs();
-            }
-
-            File mcslDir = new File(android.os.Environment.getExternalStorageDirectory(), "M-CSL/scripts");
-            if (!mcslDir.exists()) {
-                mcslDir.mkdirs();
             }
 
             boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)

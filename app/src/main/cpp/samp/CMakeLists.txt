@@ -21,7 +21,6 @@ file(GLOB_RECURSE SOURCES
 # Add include directories
 include_directories(
         ${CMAKE_CURRENT_LIST_DIR}
-        ${CMAKE_CURRENT_LIST_DIR}/csaloader
         ${CMAKE_CURRENT_LIST_DIR}/util/
         ${CMAKE_CURRENT_LIST_DIR}/vendor/shadowhook
         ${CMAKE_CURRENT_LIST_DIR}/vendor/imgui
