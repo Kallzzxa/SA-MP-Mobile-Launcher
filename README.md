@@ -26,3 +26,7 @@ Komponen integrasi open.mp / SA-MP:
 * **Original Main Dev Project:** [JohnPeriaX/KotlinJava-DSL-SampMobile-2.10](https://github.com/JohnPeriaX/KotlinJava-DSL-SampMobile-2.10)
 * **Dedicated Branch:** Source code original 100% dari main dev tersimpan dan dapat diakses langsung pada branch [`main-dev`](https://github.com/rezzylrn/samp-mobile-optimized/tree/main-dev).
 
+
+## Contributors:
+- Kallzzxa [`Github`](https://github.com/Kallzzxa)
+- rezzlyn [`Github`](https://github.com/rezzylrn)
