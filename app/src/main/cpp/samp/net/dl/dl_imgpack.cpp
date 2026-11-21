@@ -195,7 +195,13 @@ bool PackImgV2(const std::vector<ImgEntry>& entries,
         }
     }
 
-    fclose(out);
+    // A failed flush means the file on disk is short even though every
+    // fwrite succeeded: buffered data never reached the file. Treat it as
+    // a pack failure so the temp file is removed instead of renamed.
+    if (fclose(out) != 0) {
+        ok = false;
+        if (outError.empty()) outError = "failed to flush archive";
+    }
 
     if (!ok) {
         remove(tmpPath.c_str());

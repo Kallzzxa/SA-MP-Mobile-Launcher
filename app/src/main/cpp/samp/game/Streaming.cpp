@@ -15,6 +15,7 @@
 #include "Camera.h"
 #include "Renderer.h"
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <vector>
 #include <iostream>
@@ -230,6 +231,9 @@ void CStreaming::InjectHooks() {
 }
 
 int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
+    if (!pFileName || !pFileName[0])
+        return -1;
+
     // find a free slot
     std::int32_t fileIndex = 0;
     for (; fileIndex < TOTAL_IMG_ARCHIVES; fileIndex++) {
@@ -245,9 +249,33 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
         return -1;
     }
 
-    // free slot found, load the IMG file
-    strcpy(ms_files[fileIndex].m_szName, pFileName);
-    ms_files[fileIndex].m_StreamHandle = CdStreamOpen(pFileName);
+    // The slot name is only 40 bytes, but an absolute Android path is far
+    // longer: store the basename so the copy stays in bounds. The stream is
+    // still opened with the full path below, so streaming is unaffected.
+    // (The old strcpy() here wrote past the 40-byte field into the next
+    // slots whenever a long path was registered.)
+    const char* storedName = pFileName;
+    if (std::strlen(storedName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        const char* slash = std::strrchr(pFileName, '/');
+        const char* backslash = std::strrchr(pFileName, '\\');
+        if (slash && (!backslash || slash > backslash))
+            storedName = slash + 1;
+        else if (backslash)
+            storedName = backslash + 1;
+    }
+
+    if (!storedName[0] ||
+        std::strlen(storedName) >= sizeof(ms_files[fileIndex].m_szName)) {
+        FLog("AddImageToList: archive name too long: %s", pFileName);
+        return -1;
+    }
+
+    // free slot found, load the IMG file (opened with the original full path)
+    const auto streamHandle = CdStreamOpen(pFileName);
+    std::strncpy(ms_files[fileIndex].m_szName, storedName,
+                 sizeof(ms_files[fileIndex].m_szName) - 1);
+    ms_files[fileIndex].m_szName[sizeof(ms_files[fileIndex].m_szName) - 1] = '\0';
+    ms_files[fileIndex].m_StreamHandle = streamHandle;
     ms_files[fileIndex].m_bNotPlayerImg = bNotPlayerImg;
     return fileIndex;
 }

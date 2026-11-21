@@ -1560,6 +1560,11 @@ void DL_ModelRequest(RPCParameters* rpcParams)
 	DLManager::Instance().OnModelRequest(rpcParams);
 }
 
+void DL_ModelsReset(RPCParameters* rpcParams)
+{
+	DLManager::Instance().OnModelsReset(rpcParams);
+}
+
 void DL_ModelFile(RPCParameters* rpcParams)
 {
 	int idx = DLManager::Instance().Next183DumpIndex();
@@ -1639,6 +1644,7 @@ void RegisterRPCs(RakClientInterface *pRakClient)
 
 	// 0.3.DL Artwork
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelRequest, DL_ModelRequest);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelsReset, DL_ModelsReset);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelFile, DL_ModelFile);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DownloadCompleted, DL_DownloadCompleted);
 }
@@ -1650,6 +1656,7 @@ void UnregisterRPCs(RakClientInterface *pRakClient)
 
 	// 0.3.DL Artwork
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelRequest);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelsReset);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelFile);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_DownloadCompleted);
 

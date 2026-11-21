@@ -274,6 +274,67 @@ void DLManager::Reset() {
 }
 
 // ---------------------------------------------------------------------------
+// RPC 180 (ModelsReset): the server's model list changed (e.g. gamemode
+// reload). Drop everything about the old list so the fresh manifest can
+// arrive and be downloaded from scratch. The connection (RakClient, server
+// address, cache path), the initialized state and the worker pool all stay
+// alive: this is NOT a teardown, so Reset() must never be called here.
+// In-flight workers keep their claimed file, but the generation bump makes
+// their commit step skip instead of marking a new-list task done/failed.
+// ---------------------------------------------------------------------------
+void DLManager::ResetModelList() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        ++m_modelGeneration;
+
+        m_models.clear();
+        m_tasks.clear();
+        m_knownKey.clear();
+        m_taskIndex.clear();
+        m_rpcOutbox.clear();
+        m_networkToVirtual.clear();
+        m_virtualToNetwork.clear();
+        m_nextVirtualId = DL_VIRT_MIN;
+        m_bVirtualIdExhausted = false;
+        m_registeredModels.clear();
+        m_bModelsRegistered = false;
+
+        m_bDownloadFinished = false;
+        m_bFinishRequested = false;
+        m_bFinishSent = false;
+        m_bSawAnyModel = false;
+        m_totalModels = 0;
+        m_downloadedModels = 0;
+        m_failedModels = 0;
+        m_speedKBps = 0.0f;
+        m_totalBytesRx = 0;
+        m_lastSpeedSampleTick = 0;
+        m_lastSpeedSampleBytes = 0;
+        // Fresh manifest window: the 6 s / 9 s no-manifest timers in
+        // ProcessTick run from here, so a reset followed by silence still
+        // sends RPC 184 instead of stranding the player.
+        m_connectTime = GetCurrentTick();
+        m_lastModelRequestTick = m_connectTime;
+        m_finishTime = 0;
+        m_bReportedNoManifest = false;
+        m_rpc183DumpCount = 0;
+        m_lastActivity.clear();
+    }
+    m_workCv.notify_all();
+    FLog("dl: model list reset by server (RPC 180)");
+    PushChat("Custom model list reset by server; re-downloading...");
+}
+
+// ---------------------------------------------------------------------------
+// RPC inbound: 180 ModelsReset (S->C) - no payload, just the signal.
+// ---------------------------------------------------------------------------
+void DLManager::OnModelsReset(RPCParameters* rpcParams) {
+    (void)rpcParams;  // RPC 180 carries no payload.
+    if (!m_bInitialized.load()) return;
+    ResetModelList();
+}
+
+// ---------------------------------------------------------------------------
 // Paths & cache validation
 // ---------------------------------------------------------------------------
 std::string DLManager::GetModelPath(uint32_t crc, bool isDff) const {
@@ -346,6 +407,64 @@ bool DLManager::IsModelRegistered(int16_t virtualId) const {
     return m_registeredModels.find(virtualId) != m_registeredModels.end();
 }
 
+namespace {
+
+// RenderWare chunk header: 12 bytes, type u32, size u32, version u32.
+// DFF files open with a clump chunk (0x10); TXD files with a texture
+// dictionary chunk (0x16). Reads only the header: a truncated download,
+// an HTML error page or a wrong-format file is rejected here, cheaply,
+// instead of crashing the engine's parser later.
+bool ReadRenderWareHeader(const std::string& path, uint32_t& type,
+                          uint32_t& chunkSize, uint32_t& version, long& fileSize) {
+    FILE* file = fopen(path.c_str(), "rb");
+    if (!file) return false;
+    if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return false; }
+    const long size = ftell(file);
+    if (size < 0) { fclose(file); return false; }
+    if (fseek(file, 0, SEEK_SET) != 0) { fclose(file); return false; }
+    unsigned char header[12];
+    const size_t got = fread(header, 1, sizeof(header), file);
+    fclose(file);
+    if (got != sizeof(header)) return false;
+    type = static_cast<uint32_t>(header[0]) | (static_cast<uint32_t>(header[1]) << 8) |
+           (static_cast<uint32_t>(header[2]) << 16) | (static_cast<uint32_t>(header[3]) << 24);
+    chunkSize = static_cast<uint32_t>(header[4]) | (static_cast<uint32_t>(header[5]) << 8) |
+                (static_cast<uint32_t>(header[6]) << 16) | (static_cast<uint32_t>(header[7]) << 24);
+    version = static_cast<uint32_t>(header[8]) | (static_cast<uint32_t>(header[9]) << 8) |
+              (static_cast<uint32_t>(header[10]) << 16) | (static_cast<uint32_t>(header[11]) << 24);
+    fileSize = size;
+    return true;
+}
+
+// Accepts the version words real RenderWare files carry. PC files encode
+// the library version as 0xMMmmBBbb (e.g. 0x34003 = RW 3.4 build 3), so the
+// major/minor part (version >> 8) is 0x0300-0x0600. Mobile native files
+// carry a platform tag in the top byte and 0xFFFF in the low 16 bits
+// (e.g. 0x1803FFFF, 0x1400FFFF). Anything else is not a RW file.
+bool IsKnownRenderWareVersion(uint32_t version) {
+    const uint32_t majorMinor = version >> 8;
+    if (majorMinor >= 0x0300u && majorMinor <= 0x0600u) return true;  // PC RW 3.x-6.x
+    if ((version & 0xFFFFu) == 0xFFFFu) return true;                  // mobile native
+    return false;
+}
+
+// Returns nullptr when the file looks like a usable stream, otherwise a
+// short reason string (English: this codebase logs in English).
+const char* ValidateRenderWareFile(const std::string& path, bool expectTxd) {
+    uint32_t type = 0, chunkSize = 0, version = 0;
+    long size = 0;
+    if (!ReadRenderWareHeader(path, type, chunkSize, version, size))
+        return "cannot be read";
+    if (size < 32) return "file too small";
+    if (expectTxd && type != 0x16u) return "not a texture dictionary";
+    if (!expectTxd && type != 0x10u) return "not a DFF clump";
+    if (!IsKnownRenderWareVersion(version)) return "unknown RenderWare version";
+    if (chunkSize > static_cast<uint32_t>(size)) return "header larger than file (truncated)";
+    return nullptr;
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
 // Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
@@ -370,6 +489,7 @@ bool DLManager::RegisterCustomModels() {
         std::string txdArcName;
     };
     std::vector<ModelFiles> toRegister;
+    int invalidFiles = 0;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -383,6 +503,24 @@ bool DLManager::RegisterCustomModels() {
             if (stat(dffPath.c_str(), &st) != 0) continue;
             if (stat(txdPath.c_str(), &st) != 0) continue;
 
+            // A CRC-correct file can still be junk (truncated download, an
+            // HTML error page the server sent instead of the model). Reject
+            // it here so the engine never has to parse it.
+            const char* dffProblem = ValidateRenderWareFile(dffPath, false);
+            if (dffProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d skipped, DFF %s: %s",
+                     (int)m.virtualModelId, dffPath.c_str(), dffProblem);
+                continue;
+            }
+            const char* txdProblem = ValidateRenderWareFile(txdPath, true);
+            if (txdProblem) {
+                ++invalidFiles;
+                FLog("dl: model %d skipped, TXD %s: %s",
+                     (int)m.virtualModelId, txdPath.c_str(), txdProblem);
+                continue;
+            }
+
             char dffName[32], txdName[32];
             snprintf(dffName, sizeof(dffName), "0x%08X.dff", m.dffChecksum);
             snprintf(txdName, sizeof(txdName), "0x%08X.txd", m.txdChecksum);
@@ -393,7 +531,15 @@ bool DLManager::RegisterCustomModels() {
     }
 
     if (toRegister.empty()) {
-        PushChat("No custom models to register.");
+        if (invalidFiles > 0) {
+            char warn[192];
+            snprintf(warn, sizeof(warn),
+                     "%d custom model files rejected (invalid format), see log.",
+                     invalidFiles);
+            PushChat(warn);
+        } else {
+            PushChat("No custom models to register.");
+        }
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -409,9 +555,14 @@ bool DLManager::RegisterCustomModels() {
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
+    // Several models often share one DFF/TXD by checksum: pack each archive
+    // name once, while every virtual model is still registered below.
+    std::unordered_set<std::string> archiveNames;
     for (const auto& mf : toRegister) {
-        entries.push_back({mf.dffPath, mf.dffArcName});
-        entries.push_back({mf.txdPath, mf.txdArcName});
+        if (archiveNames.insert(mf.dffArcName).second)
+            entries.push_back({mf.dffPath, mf.dffArcName});
+        if (archiveNames.insert(mf.txdArcName).second)
+            entries.push_back({mf.txdPath, mf.txdArcName});
     }
 
     std::string packError;
@@ -437,8 +588,20 @@ bool DLManager::RegisterCustomModels() {
     // Verify the IMG was actually registered in the returned slot.
     // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
     //  not a stale entry or an out-of-bounds index.)
+    // The slot stores at most 40 chars (see CStreaming::AddImageToList: a
+    // long path is stored as its basename), so compare the basename when
+    // the full path cannot fit, otherwise the full path.
+    const char* expectedImgName = imgPath.c_str();
+    if (imgPath.size() >= sizeof(CStreaming::ms_files[0].m_szName)) {
+        const char* slash = std::strrchr(expectedImgName, '/');
+        const char* backslash = std::strrchr(expectedImgName, '\\');
+        if (slash && (!backslash || slash > backslash))
+            expectedImgName = slash + 1;
+        else if (backslash)
+            expectedImgName = backslash + 1;
+    }
     if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, imgPath.c_str()) != 0) {
+        strcmp(CStreaming::ms_files[imgIndex].m_szName, expectedImgName) != 0) {
         PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
@@ -474,6 +637,8 @@ bool DLManager::RegisterCustomModels() {
 
             m_registeredModels.insert(mf.virtualId);
             ++registered;
+            FLog("dl: registered virtual model %d (type %d, dff %s, txd %s)",
+                 (int)mf.virtualId, (int)mf.type, dffBase, txdBase);
         }
         m_bModelsRegistered = true;
     }
@@ -579,6 +744,7 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
             t.crc = crc;
             t.size = size;
             t.isDff = isDff;
+            t.generation = m_modelGeneration;
             char hex[48];
             snprintf(hex, sizeof(hex), "0x%08X.%s", crc, isDff ? "dff" : "txd");
             t.hexName = hex;
@@ -681,6 +847,7 @@ void DLManager::WorkerLoop() {
         // 1. Claim the next unstarted file.
         uint32_t pickedCrc = 0;
         bool pickedIsDff = false;
+        uint32_t pickedGeneration = 0;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
@@ -688,6 +855,7 @@ void DLManager::WorkerLoop() {
                 t.started = true;
                 pickedCrc = t.crc;
                 pickedIsDff = t.isDff;
+                pickedGeneration = t.generation;
                 break;
             }
         }
@@ -786,6 +954,11 @@ void DLManager::WorkerLoop() {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto& t : m_tasks) {
                 if (t.crc != pickedCrc || t.isDff != pickedIsDff) continue;
+                // The model list was reset (RPC 180) while this file was
+                // being fetched: the matching task, if any, belongs to the
+                // new list, so this stale result must not mark it done or
+                // failed. The new list's own worker handles that task.
+                if (t.generation != pickedGeneration) continue;
                 if (fetchOk) {
                     t.done = true;
                     t.url.clear();

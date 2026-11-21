@@ -69,6 +69,7 @@ struct DLFileTask {
     bool     started{false};  // RPC 181/182 sent for this file
     bool     done{false};
     bool     failed{false};
+    uint32_t generation{0};   // model-list generation that created this task
     std::string lastError;    // last failure reason, surfaced to the UI
 
     // Skip-fetch fast path: if attempts>0 and url was already obtained we keep it.
@@ -81,11 +82,17 @@ public:
 
     void Initialize(const std::string& serverIp, int serverPort, const std::string& storagePath, RakClientInterface* pRakClient);
     void Reset();
+    // RPC 180 (ModelsReset): the server's model list changed. Clears only
+    // model/download state so a fresh manifest can arrive; the connection,
+    // cache path and worker pool are untouched. Unlike Reset(), this never
+    // nulls the RakClient or joins the workers.
+    void ResetModelList();
     void ProcessTick();
     void RenderImGui();
 
     // RPC Handlers (invoked on the RakNet UpdateNetworkLoop thread - never block)
     void OnModelRequest(RPCParameters* rpcParams);
+    void OnModelsReset(RPCParameters* rpcParams);
     void OnModelFile(RPCParameters* rpcParams);
     void OnDownloadCompleted(RPCParameters* rpcParams);
 
@@ -152,6 +159,9 @@ private:
 
     // Model registry
     std::vector<DLModelInfo> m_models;
+    // Bumped by ResetModelList(): a worker that claimed a task before the
+    // reset must not commit its result onto a task from the new list.
+    uint32_t m_modelGeneration{0};
     std::unordered_map<int32_t, int16_t> m_networkToVirtual;
     std::unordered_map<int16_t, int32_t> m_virtualToNetwork;
     int16_t m_nextVirtualId{DL_VIRT_MIN};
