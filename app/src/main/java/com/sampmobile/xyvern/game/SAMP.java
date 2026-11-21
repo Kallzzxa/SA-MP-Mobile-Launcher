@@ -75,21 +75,14 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 }
             }
         });
-        // CEF UI ikut disembunyikan saat menu pause / peta game terbuka
         if (mCefJavaManager != null) mCefJavaManager.setGamePaused(pause);
     }
 
-    // CefMobile: info koneksi dari native (pNetGame). Dipakai CefMobileClient
-    // untuk tahu server mana yang dihubungi + playerid lokal.
     private native String nativeGetCefMobileServer();
     private native int nativeGetCefMobileGameState();
     private native int nativeGetCefMobilePlayerId();
-
-    // omp-cef: daftarkan CefJavaManager ke native supaya CNetGame bisa
-    // memanggil startOmpCef/stopOmpCef saat connect/disconnect.
     private native void nativeSetOmpCefManager(CefJavaManager manager);
 
-    /** "host:port" server yang sedang dihubungi, atau null kalau belum connect. */
     public String getCefMobileServer() {
         try {
             return nativeGetCefMobileServer();
@@ -171,11 +164,9 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         runOnUiThread(() -> mAttachEdit.hide());
     }
 
-    // =========================================================================
-    // KHU VỰC SỬA LOGIC ONCREATE - GHI SETTINGS.INI TRỰC TIẾP VÀ KHỞI CHẠY ENGINE
-    // =========================================================================
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        com.sampmobile.xyvern.launcher.util.LogcatRecorder.start(this);
         Log.i(TAG, "**** onCreate");
         super.onCreate(savedInstanceState);
 
@@ -189,8 +180,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             if (extFiles != null) {
                 File modsDir = new File(extFiles, "mods");
                 if (!modsDir.exists()) modsDir.mkdirs();
-                File cleoDir = new File(extFiles, "cleo");
-                if (!cleoDir.exists()) cleoDir.mkdirs();
             }
 
             boolean amlEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
@@ -203,17 +192,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                     Log.i(TAG, "libAML.so optional module not present");
                 }
             }
-
-            boolean cleoEnabled = getSharedPreferences("com.sampmobile.xyvern", MODE_PRIVATE)
-                    .getBoolean("cleo_enabled", true);
-            if (cleoEnabled) {
-                try {
-                    System.loadLibrary("cleo");
-                    Log.i(TAG, "CLEO Android loaded");
-                } catch (UnsatisfiedLinkError e) {
-                    Log.i(TAG, "libcleo.so optional module not present");
-                }
-            }
         } catch (Exception error) {
             Log.e(TAG, "Error initializing mod loaders", error);
         }
@@ -224,12 +202,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mLoadingScreen = new LoadingScreen(this);
         instance = this;
 
-        // ============================================================
-        // CefMobile (UI web dari server, port 8778) — pengganti omp-cef lama.
-        // Bisa dimatikan di launcher Settings (CEF_ENABLED, default ON).
-        // Dibuat SEBELUM initializeSAMP(), supaya thread monitor CefMobile
-        // sudah jalan saat game connect ke server.
-        // ============================================================
         try {
             android.content.SharedPreferences cefPrefs = getSharedPreferences(
                     com.sampmobile.xyvern.launcher.util.SharedPreferenceCore.APP_PREFERENCES, MODE_PRIVATE);
@@ -250,7 +222,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             Log.e(TAG, "Failed to initialize CefMobile", e);
         }
 
-        // 1. Nhận thông tin IP & Port từ Intent
         String ip = getIntent().getStringExtra("ip");
         int port = getIntent().getIntExtra("port", 7777);
         if (ip == null || ip.isEmpty()) ip = "127.0.0.1";
@@ -406,8 +377,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             try { mCefMobileClient.stop(); } catch (Exception ignored) {}
             mCefMobileClient = null;
         }
-        // Mematikan paksa proses game saat keluar untuk menghindari crash "destroyed mutex" 
-        // yang sering terjadi di thread native saat activity dihancurkan.
         android.os.Process.killProcess(android.os.Process.myPid());
     }
 

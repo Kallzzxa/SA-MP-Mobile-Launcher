@@ -146,7 +146,7 @@ void ScrSetSpawnInfo(RPCParameters *rpcParams)
 		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
 
 		spawnInfo.byteTeam = byteTeam;
-		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
+		int actualSkin = DLIsCustomSkinId(dCustomSkinID) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
 		spawnInfo.iSkin = IsValidPedModel(actualSkin) ? actualSkin : iSkin;
 		spawnInfo.unk = unk;
 		spawnInfo.vecPos = vecPos;
@@ -305,7 +305,7 @@ void ScrCreateObject(RPCParameters* rpcParams)
 		char texturename[256];
 		uint8_t byteType;
 		uint8_t byteMaterialIndex;
-		uint16_t MaterialModel;
+		int16_t MaterialModel;
 		uint8_t byteLength;
 		uint32_t dwColor;
 
@@ -336,8 +336,9 @@ void ScrCreateObject(RPCParameters* rpcParams)
 
 			if (strlen(txdname) < 32 && strlen(texturename) < 32)
 			{
-				if (MaterialModel == 0xFFFF || MaterialModel > 20000)
-					MaterialModel = 0xFFFF;
+				// 0.3.DL: ID objek custom bernilai negatif (-1001..-30000)
+				if (MaterialModel > 20000)
+					MaterialModel = -1;
 
 				CObject* pObject = pObjectPool->GetAt(ObjectID);
 				if (pObject)
@@ -400,7 +401,7 @@ void ScrSetObjectMaterial(RPCParameters* rpcParams)
 	OBJECTID ObjectID;
 	uint8_t byteMaterialType;
 	uint8_t byteMaterialIndex;
-	uint16_t wModelID;
+	int16_t wModelID;
 	uint8_t byteLength;
 	char txdname[256], texname[256], fontname[256];
 	uint32_t dwColor;
@@ -431,6 +432,7 @@ void ScrSetObjectMaterial(RPCParameters* rpcParams)
 		bsData.Read(dwColor);
 		if (strlen(txdname) < 32 && strlen(texname) < 32)
 		{
+			if (wModelID > 20000) wModelID = -1;
 			if (pObject)
 				pObject->SetMaterial(wModelID, byteMaterialIndex, txdname, texname, dwColor);
 		}
@@ -521,19 +523,34 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
 	if (!pPlayerPool) return;
 
-	int iPlayerID;
-	int iModel;
+	PLAYERID iPlayerID = 0;
+	int iModel = 0;
 	uint32_t dCustomSkinID = 0;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(iPlayerID);
+
+	// In SA-MP & open.mp network protocol, playerid is UINT16 (48 bits = 16-bit id + 32-bit model, 80 bits = +32-bit customModel).
+	// If the payload is larger (e.g. 64 or 96 bits), playerid was encoded as 32-bit.
+	if (iBitLength <= 80 && iBitLength >= 48) {
+		bsData.Read(iPlayerID);
+	} else {
+		uint32_t dwPlayerID = 0;
+		bsData.Read(dwPlayerID);
+		iPlayerID = (PLAYERID)dwPlayerID;
+	}
+
 	bsData.Read(iModel);
 	if (bsData.GetNumberOfUnreadBits() >= 32) {
 		bsData.Read(dCustomSkinID);
 	}
 
 	int actualModel = iModel;
-	if (dCustomSkinID > 0) {
+	if (DLIsCustomSkinId(dCustomSkinID)) {
 		int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
+		if (IsValidPedModel(virtId)) {
+			actualModel = virtId;
+		}
+	} else if (iModel > 20000) {
+		int16_t virtId = DLManager::Instance().GetVirtualModelId(iModel);
 		if (IsValidPedModel(virtId)) {
 			actualModel = virtId;
 		}

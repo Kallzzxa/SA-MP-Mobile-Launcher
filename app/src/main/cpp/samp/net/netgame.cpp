@@ -107,6 +107,19 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
+	m_iClientVersion = 4062;
+	m_szClientVersion = "0.3.DL-R1";
+	m_bVersionSwitched = false;
+	if (pSettings) {
+		if (strstr(pSettings->Get().szVersion, "0.3.7")) {
+			m_iClientVersion = 4057;
+			m_szClientVersion = pSettings->Get().szVersion;
+		} else if (strstr(pSettings->Get().szVersion, "0.3.DL")) {
+			m_iClientVersion = 4062;
+			m_szClientVersion = pSettings->Get().szVersion;
+		}
+	}
+
     pJavaWrapper->HideLoadingScreen();
 
     const char* sampVer = SAMP_VERSION;
@@ -581,17 +594,22 @@ void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 	MicroIcon::Hide();
 }
 
+void CNetGame::RequestReconnect(int delayMs)
+{
+	if (m_pRakClient) {
+		m_pRakClient->Disconnect(delayMs);
+	}
+	m_dwLastConnectAttempt = 0;
+	SetGameState(GAMESTATE_WAIT_CONNECT);
+}
+
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
 	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
 	PLAYERID MyPlayerID;
 	unsigned int uiChallenge;
-	int iVersion = 4057;
-	if (pSettings && strstr(pSettings->Get().szVersion, "0.3.DL")) {
-		iVersion = 4062;
-	} else if (!pSettings && strstr(SAMP_VERSION, "0.3.DL")) {
-		iVersion = 4062;
-	}
+	int iVersion = m_iClientVersion;
+	const char* szClientVer = m_szClientVersion.c_str();
 	uint8_t byteMod = 1;
 
 	bsSuccAuth.IgnoreBits(8);	// packetId
@@ -608,10 +626,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 	uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
 	uint8_t byteAuthBSLen = strlen(AUTH_BS);
-	uint8_t byteClientVerLen = strlen(SAMP_VERSION);
-    if(pSettings)
-        byteClientVerLen = strlen(pSettings->Get().szVersion);
-
+	uint8_t byteClientVerLen = strlen(szClientVer);
 
 	RakNet::BitStream bsSend;
 	bsSend.Write(iVersion);
@@ -622,11 +637,12 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSend.Write(byteAuthBSLen);
 	bsSend.Write(AUTH_BS, byteAuthBSLen);
 	bsSend.Write(byteClientVerLen);
-	//bsSend.Write(SAMP_VERSION, byteClientVerLen);
-    if(pSettings)
-        bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
-    else
-        bsSend.Write(SAMP_VERSION, byteClientVerLen);
+	bsSend.Write(szClientVer, byteClientVerLen);
+
+	// SA-MP 0.3.DL handshake requirement: write uiChallenge at the end
+	if (iVersion == 4062) {
+		bsSend.Write(uiChallenge);
+	}
 
 	if (iVersion != 4062 && pUI) {
 		pUI->chat()->addDebugMessage(
@@ -637,9 +653,6 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-	// omp-cef port: coba channel UDP omp-cef paralel dengan CefMobile.
-	// Kalau server tidak punya plugin omp-cef, client timeout setelah
-	// 5x percobaan join dan CefMobile tetap jalan.
 	cef::ompStart(m_szHostOrIp, m_iPort, (int)MyPlayerID);
 	// voice
 	SpeakerList::Hide();

@@ -1,5 +1,6 @@
 #include "../main.h"
 #include "game.h"
+#include "textdraw.h"
 #include "../net/netgame.h"
 
 #include "RW/RenderWare.h"
@@ -354,7 +355,13 @@ void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* t
 			m_MaterialTexture[iMaterialIndex] = 0;
 		}
 
-		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTexture(texturename);
+		RwTexture* custom = nullptr;
+		if (iModel < -1)   // model custom 0.3.DL: ambil dari TXD modelnya
+			custom = FindCustomDlTextureByModel(iModel, texturename);
+		if (!custom)       // TXD custom bernama (NAMA.txd)
+			custom = FindTextureInNamedTxd(txdname, texturename);
+		if (custom) FLog("SetMaterial: tekstur custom %s ditemukan", texturename);
+		m_MaterialTexture[iMaterialIndex] = custom ? (uintptr_t)custom : (uintptr_t)LoadTexture(texturename);
 		m_dwMaterialColor[iMaterialIndex] = dwColor;
 		m_iMaterialType[iMaterialIndex] = MATERIAL_TYPE_MATERIAL;
 		m_bHasMaterial = true;

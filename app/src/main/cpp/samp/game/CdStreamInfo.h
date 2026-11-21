@@ -13,6 +13,7 @@ enum class eCdStreamStatus : int32 {
 
 void CdStreamInit(int32 streamCount);
 int32 CdStreamOpen(const char* lpFileName);
+void CdStreamClose(int32 streamId);
 eCdStreamStatus CdStreamSync(int32 streamId);
 eCdStreamStatus CdStreamGetStatus(int32 streamId);
 bool CdStreamRead(int32 streamId, void* lpBuffer, uint32 offsetAndHandle, int32 sectorCount);

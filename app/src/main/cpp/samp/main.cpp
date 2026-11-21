@@ -323,11 +323,7 @@ extern "C" {
 
 		pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
 	}
-	// ------------------------------------------------------------------ CefMobile
-	//
-	// Java (CefMobileClient) perlu tahu server mana yang dihubungi + playerid
-	// lokal + status koneksi. Semua diambil dari global pNetGame; null/-1 kalau
-	// belum ada koneksi, jadi Java tidak pernah crash di sini.
+
 	JNIEXPORT jstring JNICALL
 	Java_com_sampmobile_xyvern_game_SAMP_nativeGetCefMobileServer(JNIEnv* env, jobject thiz)
 	{

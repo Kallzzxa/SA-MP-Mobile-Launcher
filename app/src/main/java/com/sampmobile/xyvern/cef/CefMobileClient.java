@@ -281,9 +281,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
             files.add(mf);
         }
 
-        // File yang perlu di-download: belum ada di cache atau CRC-nya beda.
-        // Kalau versi cache sama, file diasumsikan tidak berubah — tapi tetap
-        // diverifikasi CRC-nya supaya file cache yang rusak ikut diperbaiki.
         ArrayList<ManifestFile> toDownload = new ArrayList<>();
         long totalBytes = 0;
         for (ManifestFile mf : files) {
@@ -316,7 +313,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
 
         writeCachedVersion(version);
 
-        // Siap terima perintah (kegagalan hello tidak fatal: poll berikutnya
         // juga me-refresh last-seen di server).
         try {
             httpGetJson(base + "/cef-mobile/hello/" + playerId, READ_TIMEOUT_MS);
@@ -413,7 +409,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
             Log.w(TAG, "onMobileEvent dropped (no session): " + event);
             return;
         }
-        // POST di thread sendiri: jangan blokir thread JavascriptInterface.
         final String ev = event == null ? "" : event;
         final String dt = data == null ? "" : data;
         Thread t = new Thread(() -> postEvent(server, playerId, ev, dt), "CefMobileEvent");
@@ -500,7 +495,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
                     out.write(buf, 0, n);
                     bytesRead += n;
                     // Lapor progress hanya saat persen berubah (atau tiap 256 KB
-                    // kalau size tidak diketahui) supaya UI thread tidak dibanjiri.
                     if (mf.size > 0) {
                         int pct = (int) Math.min(100, (bytesRead * 100) / mf.size);
                         if (pct != lastPct) {
@@ -520,7 +514,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
             if (mf.crc32 >= 0 && crc32Of(tmp) != mf.crc32) {
                 throw new Exception("crc mismatch for " + mf.name);
             }
-            // Tulis ke file temp lalu rename: file cache tidak pernah setengah.
             if (dest.exists() && !dest.delete()) {
                 throw new Exception("cannot replace " + mf.name);
             }
@@ -600,7 +593,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
     // ------------------------------------------------------------------ progress UI "Downloading Assets"
 
     // Dialog "Downloading Assets" (cef_mobile_download.xml): satu baris per
-    // file + overall bar. Semua update masuk lewat UI thread; kalau dialog
     // gagal dibuat, download tetap jalan tanpa UI (log saja).
     private void showProgressUi(final ArrayList<ManifestFile> toDownload, final long totalBytes) {
         mActivity.runOnUiThread(() -> {
@@ -643,7 +635,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
         });
     }
 
-    /** Refresh header "N% • i/M Files" + overall bar. Hanya dari UI thread. */
     private void updateOverallUi() {
         if (mProgressTotal == null || mProgressOverall == null || mProgressRows == null) return;
         long done = 0;
@@ -658,7 +649,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
         mProgressOverall.setProgress(pct);
     }
 
-    /** Progress satu file (dipanggil dari thread download; dipost ke UI thread). */
     private void postFileProgress(final int index, final long bytesRead) {
         mActivity.runOnUiThread(() -> {
             if (mProgressRows == null || index < 0 || index >= mProgressRows.size()) return;
@@ -673,7 +663,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
                 dr.status.setText(pct + "% (" + formatSize(bytesRead) + ")");
                 dr.status.setTextColor(Color.parseColor("#DC2626"));
             } else {
-                // Size tidak diketahui: tampilkan byte yang sudah masuk saja.
                 dr.status.setText(formatSize(bytesRead));
                 dr.status.setTextColor(Color.parseColor("#DC2626"));
             }
@@ -681,7 +670,6 @@ public class CefMobileClient implements CefJavaManager.MobileEventListener {
         });
     }
 
-    /** File selesai: bar hijau + status 100% (dipanggil dari thread download). */
     private void markFileDone(final int index) {
         mActivity.runOnUiThread(() -> {
             if (mProgressRows == null || index < 0 || index >= mProgressRows.size()) return;

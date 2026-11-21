@@ -368,11 +368,13 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 
 /* =============================================================================== */
 
-void (*AND_TouchEvent)(int type, int num, int posX, int posY);
+void (*AND_TouchEvent)(int type, int num, int posX, int posY) = nullptr;
+
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
-	// imgui
-	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
+	if (!AND_TouchEvent) {
+		AND_TouchEvent = (void(*)(int, int, int, int))(g_libGTASA + (VER_x32 ? 0x00269740 + 1 : 0x31EC0C));
+	}
 
 	if (pGame->IsGamePaused())
 		return AND_TouchEvent(type, num, posX, posY);
@@ -606,6 +608,23 @@ uint32_t CWorld__ProcessLineOfSight_hook(CVector* vecOrigin, CVector* vecEnd, CC
                         vecEnd->z = vecPosPlusOffset.z - vecOrigin->z + vecPosPlusOffset.z;
 					}
 				}
+			}
+		}
+
+		if (g_pCurrentFiredPed == pGame->FindPlayerPed())
+		{
+			CAMERA_AIM* aim = GameGetInternalAim();
+			if (aim && (aim->f1x != 0.0f || aim->f1y != 0.0f || aim->f1z != 0.0f))
+			{
+				float dx = vecEnd->x - vecOrigin->x;
+				float dy = vecEnd->y - vecOrigin->y;
+				float dz = vecEnd->z - vecOrigin->z;
+				float fRange = sqrtf(dx * dx + dy * dy + dz * dz);
+				if (fRange < 1.0f) fRange = 70.0f;
+
+				vecEnd->x = vecOrigin->x + aim->f1x * fRange;
+				vecEnd->y = vecOrigin->y + aim->f1y * fRange;
+				vecEnd->z = vecOrigin->z + aim->f1z * fRange;
 			}
 		}
 
@@ -1737,7 +1756,7 @@ void InstallHooks()
     //SetUpGLHooks();
     CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
-    CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+    AND_TouchEvent = (void(*)(int, int, int, int))(g_libGTASA + (VER_x32 ? 0x00269740 + 1 : 0x31EC0C));
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous

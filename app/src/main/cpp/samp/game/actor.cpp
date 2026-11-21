@@ -7,12 +7,16 @@ extern CGame* pGame;
 
 CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 {
-    if (!CStreaming::TryLoadModel(iSkin))
-        throw std::runtime_error("Model not loaded");
-
     if (!IsValidPedModel(iSkin))
     {
         iSkin = 0;
+    }
+
+    if (!CStreaming::TryLoadModel(iSkin))
+    {
+        iSkin = 0;
+        if (!CStreaming::TryLoadModel(0))
+            throw std::runtime_error("Model not loaded");
     }
 
     ScriptCommand(&create_char, 5, iSkin, fX, fY, fZ, &m_dwGTAId);

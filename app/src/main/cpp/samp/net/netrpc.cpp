@@ -5,6 +5,9 @@
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
 #include "dl/dlmanager.h"
+#include "../game/constants.h"
+#include "../game/Models/ModelInfo.h"
+#include "../vendor/raknet/GetTime.h"
 #include <cstdio>
 
 extern UI* pUI;
@@ -368,7 +371,7 @@ void RequestClass(RPCParameters *rpcParams)
 		bsData.Read((char*)iSpawnWeaponsAmmo, sizeof(iSpawnWeaponsAmmo));
 
 		SpawnInfo.byteTeam = byteTeam;
-		int actualSkin = (dCustomSkinID > 0) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
+		int actualSkin = DLIsCustomSkinId(dCustomSkinID) ? DLManager::Instance().GetVirtualModelId(dCustomSkinID) : iSkin;
 		SpawnInfo.iSkin = IsValidPedModel(actualSkin) ? actualSkin : iSkin;
 		SpawnInfo.unk = unk;
 		SpawnInfo.vecPos = vecPos;
@@ -516,6 +519,20 @@ void ConnectionRejected(RPCParameters *rpcParams)
 	switch (byteRejectReason)
 	{
 	case REJECT_REASON_BAD_VERSION:
+		if (pNetGame && !pNetGame->m_bVersionSwitched) {
+			pNetGame->m_bVersionSwitched = true;
+			if (pNetGame->m_iClientVersion == 4062) {
+				pNetGame->m_iClientVersion = 4057;
+				pNetGame->m_szClientVersion = "0.3.7";
+				if (pUI) pUI->chat()->addInfoMessage("Server is not 0.3.DL. Retrying connection as SA-MP 0.3.7...");
+			} else {
+				pNetGame->m_iClientVersion = 4062;
+				pNetGame->m_szClientVersion = "0.3.DL-R1";
+				if (pUI) pUI->chat()->addInfoMessage("Server is not 0.3.7. Retrying connection as SA-MP 0.3.DL-R1...");
+			}
+			pNetGame->RequestReconnect(100);
+			return;
+		}
 		if (pUI) pUI->chat()->addInfoMessage("CONNECTION REJECTED: Incorrect Version.");
 		break;
 
@@ -632,12 +649,15 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 	if (bsData.GetNumberOfUnreadBits() >= (47 * 8)) {
 		uint32_t dCustomSkinID = 0;
 		bsData.Read(dCustomSkinID);
-		if (dCustomSkinID > 0) {
+		if (DLIsCustomSkinId(dCustomSkinID)) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
 				iSkin = virtId;
 			}
 		}
+	}
+	if (!IsValidPedModel(iSkin)) {
+		iSkin = 0;
 	}
 	bsData.Read(vecPos.x);
 	bsData.Read(vecPos.y);
@@ -1418,7 +1438,7 @@ void ShowActor(RPCParameters* rpcParams)
 		bsData.Read(newActor.iSkin);
 		uint32_t dCustomSkinID = 0;
 		bsData.Read(dCustomSkinID);
-		if (dCustomSkinID > 0) {
+		if (DLIsCustomSkinId(dCustomSkinID)) {
 			int16_t virtId = DLManager::Instance().GetVirtualModelId(dCustomSkinID);
 			if (IsValidPedModel(virtId)) {
 				newActor.iSkin = virtId;
@@ -1434,10 +1454,10 @@ void ShowActor(RPCParameters* rpcParams)
 		bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
 	}
 
-	if (IsValidPedModel(newActor.iSkin))
-	{
-		pActorPool->New(&newActor);
+	if (!IsValidPedModel(newActor.iSkin)) {
+		newActor.iSkin = 0;
 	}
+	pActorPool->New(&newActor);
 }
 
 void HideActor(RPCParameters* rpcParams)
@@ -1560,9 +1580,9 @@ void DL_ModelRequest(RPCParameters* rpcParams)
 	DLManager::Instance().OnModelRequest(rpcParams);
 }
 
-void DL_ModelsReset(RPCParameters* rpcParams)
+void DL_ModelReset(RPCParameters* rpcParams)
 {
-	DLManager::Instance().OnModelsReset(rpcParams);
+	DLManager::Instance().OnModelReset(rpcParams);
 }
 
 void DL_ModelFile(RPCParameters* rpcParams)
@@ -1644,7 +1664,7 @@ void RegisterRPCs(RakClientInterface *pRakClient)
 
 	// 0.3.DL Artwork
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelRequest, DL_ModelRequest);
-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelsReset, DL_ModelsReset);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelReset, DL_ModelReset);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ModelFile, DL_ModelFile);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DownloadCompleted, DL_DownloadCompleted);
 }
@@ -1656,7 +1676,7 @@ void UnregisterRPCs(RakClientInterface *pRakClient)
 
 	// 0.3.DL Artwork
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelRequest);
-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelsReset);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelReset);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ModelFile);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_DownloadCompleted);
 

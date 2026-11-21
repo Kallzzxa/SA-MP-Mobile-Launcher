@@ -111,3 +111,6 @@ public:
     uint32_t m_dwHoverColor;
 };
 #pragma pack(pop)
+
+RwTexture* FindCustomDlTextureByModel(int32_t netId, const char* szTexture);
+RwTexture* FindTextureInNamedTxd(const char* szTxd, const char* szTexture);

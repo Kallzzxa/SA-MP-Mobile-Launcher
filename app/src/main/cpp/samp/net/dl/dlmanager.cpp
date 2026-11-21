@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <chrono>
 #include <mutex>
+#include <set>
 
 extern UI* pUI;
 
@@ -189,6 +190,7 @@ void DLManager::Initialize(const std::string& serverIp, int serverPort,
              cleanStorage.c_str(), serverIp.c_str(), serverPort);
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_storagePath = cleanStorage;
         m_cachePath = cacheDir;
     }
     MakeDirectoryTree(cacheDir);
@@ -241,12 +243,15 @@ void DLManager::Reset() {
     m_nextVirtualId = DL_VIRT_MIN;
     m_bVirtualIdExhausted = false;
     m_registeredModels.clear();
+    m_registeredSkins.clear();
+    m_registeredObjects.clear();
     m_bModelsRegistered = false;
     m_bInitialized = false;
     m_bDownloadFinished = false;
     m_bFinishRequested = false;
     m_bFinishSent = false;
     m_bSawAnyModel = false;
+    m_bManifestComplete = false;
     m_bShutdown = false;
     m_activeWorkers = 0;
     m_totalModels = 0;
@@ -265,6 +270,7 @@ void DLManager::Reset() {
 
     {
         std::lock_guard<std::mutex> cl(m_cachePathMutex);
+        m_storagePath.clear();
         m_cachePath.clear();
     }
     {
@@ -274,7 +280,7 @@ void DLManager::Reset() {
 }
 
 // ---------------------------------------------------------------------------
-// RPC 180 (ModelsReset): the server's model list changed (e.g. gamemode
+// RPC 180 (ModelReset): the server's model list changed (e.g. gamemode
 // reload). Drop everything about the old list so the fresh manifest can
 // arrive and be downloaded from scratch. The connection (RakClient, server
 // address, cache path), the initialized state and the worker pool all stay
@@ -297,7 +303,10 @@ void DLManager::ResetModelList() {
         m_nextVirtualId = DL_VIRT_MIN;
         m_bVirtualIdExhausted = false;
         m_registeredModels.clear();
+        m_registeredSkins.clear();
+        m_registeredObjects.clear();
         m_bModelsRegistered = false;
+        m_bManifestComplete = false;
 
         m_bDownloadFinished = false;
         m_bFinishRequested = false;
@@ -326,9 +335,9 @@ void DLManager::ResetModelList() {
 }
 
 // ---------------------------------------------------------------------------
-// RPC inbound: 180 ModelsReset (S->C) - no payload, just the signal.
+// RPC inbound: 180 ModelReset (S->C) - no payload, just the signal.
 // ---------------------------------------------------------------------------
-void DLManager::OnModelsReset(RPCParameters* rpcParams) {
+void DLManager::OnModelReset(RPCParameters* rpcParams) {
     (void)rpcParams;  // RPC 180 carries no payload.
     if (!m_bInitialized.load()) return;
     ResetModelList();
@@ -465,6 +474,32 @@ const char* ValidateRenderWareFile(const std::string& path, bool expectTxd) {
 
 } // namespace
 
+bool DLManager::IsSkinRegistered(int16_t virtualId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_registeredSkins.find(virtualId) != m_registeredSkins.end();
+}
+
+bool DLManager::IsObjectRegistered(int16_t virtualId) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_registeredObjects.find(virtualId) != m_registeredObjects.end();
+}
+
+bool DLManager::GetTxdPathForNetworkModel(int32_t networkId, std::string& outPath) {
+    uint32_t crc = 0;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const auto& m : m_models) {
+            if (m.newId == networkId) { crc = m.txdChecksum; found = true; break; }
+        }
+    }
+    if (!found) return false;
+    std::string path = GetModelPath(crc, false);
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0 || st.st_size <= 0) return false;
+    outPath = path;
+    return true;
+}
 // ---------------------------------------------------------------------------
 // Custom model registration (0.3.DL PR #3).
 // Packs downloaded DFF/TXD into a VER2 IMG, registers it with CStreaming,
@@ -546,27 +581,74 @@ bool DLManager::RegisterCustomModels() {
     }
 
     // Pack into IMG.
-    std::string cacheBase;
+    std::string cleanStorage;
     {
         std::lock_guard<std::mutex> lock(m_cachePathMutex);
-        cacheBase = m_cachePath;
+        cleanStorage = m_storagePath;
     }
-    std::string imgPath = cacheBase + "custom_dl.img";
+    if (cleanStorage.empty()) {
+        cleanStorage = g_pszStorage ? g_pszStorage : "";
+        if (!cleanStorage.empty() && cleanStorage.back() != '/') {
+            cleanStorage += "/";
+        }
+    }
+
+    // GTA SA CStreaming::AddImageToList / CdStreamOpen expects a relative path
+    // because OS_FileOpen internally prepends g_pszStorage, and ms_files[i].m_szName
+    // only has a 40-byte buffer. Using "SAMP/cache/custom_dl.img" fits safely within 40 bytes.
+    const std::string relImgPath = "SAMP/cache/custom_dl.img";
+    const std::string fullImgPath = cleanStorage + relImgPath;
 
     std::vector<DLImgPack::ImgEntry> entries;
     entries.reserve(toRegister.size() * 2);
-    // Several models often share one DFF/TXD by checksum: pack each archive
-    // name once, while every virtual model is still registered below.
-    std::unordered_set<std::string> archiveNames;
-    for (const auto& mf : toRegister) {
-        if (archiveNames.insert(mf.dffArcName).second)
-            entries.push_back({mf.dffPath, mf.dffArcName});
-        if (archiveNames.insert(mf.txdArcName).second)
-            entries.push_back({mf.txdPath, mf.txdArcName});
+    {
+        std::set<std::string> seen;
+        for (const auto& mf : toRegister) {
+            if (seen.insert(mf.dffArcName).second) entries.push_back({mf.dffPath, mf.dffArcName});
+            if (seen.insert(mf.txdArcName).second) entries.push_back({mf.txdPath, mf.txdArcName});
+        }
+    }
+
+    // Tanda tangan isi IMG (nama + ukuran tiap file). Bila sama dengan IMG yang
+    // sudah ada, tidak perlu menyalin ulang ratusan MB (penyebab game berat/freeze).
+    uint64_t sig = 1469598103934665603ULL;
+    auto mix = [&sig](const void* d, size_t n) {
+        const uint8_t* b = (const uint8_t*)d;
+        for (size_t i = 0; i < n; ++i) { sig ^= b[i]; sig *= 1099511628211ULL; }
+    };
+    for (const auto& e : entries) {
+        struct stat st2;
+        int64_t sz = (stat(e.srcPath.c_str(), &st2) == 0) ? (int64_t)st2.st_size : -1;
+        mix(e.arcName.data(), e.arcName.size());
+        mix(&sz, sizeof(sz));
+    }
+    std::string sigPath = fullImgPath + ".sig";
+    char sigText[32];
+    snprintf(sigText, sizeof(sigText), "%016llx", (unsigned long long)sig);
+    bool needPack = true;
+    {
+        struct stat sti;
+        FILE* sf = fopen(sigPath.c_str(), "rb");
+        if (sf) {
+            char got[32] = {0};
+            size_t n = fread(got, 1, 16, sf);
+            fclose(sf);
+            if (n == 16 && memcmp(got, sigText, 16) == 0 &&
+                stat(fullImgPath.c_str(), &sti) == 0 && sti.st_size > 0)
+                needPack = false;
+        }
     }
 
     std::string packError;
-    if (!DLImgPack::PackImgV2(entries, imgPath, packError)) {
+    bool packOk = true;
+    if (needPack) {
+        packOk = DLImgPack::PackImgV2(entries, fullImgPath, packError);
+        if (packOk) {
+            FILE* sf = fopen(sigPath.c_str(), "wb");
+            if (sf) { fwrite(sigText, 1, 16, sf); fclose(sf); }
+        }
+    }
+    if (!packOk) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Failed to pack custom IMG: %s",
                  packError.c_str());
@@ -576,9 +658,8 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
 
-    // Register IMG with the streaming system.
-    // Note: path format follows the game's CdStreamOpen expectations.
-    int imgIndex = CStreaming::AddImageToList(imgPath.c_str(), false);
+    // Register IMG with the streaming system using the relative path.
+    int imgIndex = CStreaming::AddImageToList(relImgPath.c_str(), false);
     if (imgIndex < 0) {
         PushChat("Failed to register custom IMG with streaming (no free IMG slot).");
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -586,23 +667,8 @@ bool DLManager::RegisterCustomModels() {
         return false;
     }
     // Verify the IMG was actually registered in the returned slot.
-    // (Defense in depth: ensures ms_files[imgIndex] really holds our IMG,
-    //  not a stale entry or an out-of-bounds index.)
-    // The slot stores at most 40 chars (see CStreaming::AddImageToList: a
-    // long path is stored as its basename), so compare the basename when
-    // the full path cannot fit, otherwise the full path.
-    const char* expectedImgName = imgPath.c_str();
-    if (imgPath.size() >= sizeof(CStreaming::ms_files[0].m_szName)) {
-        const char* slash = std::strrchr(expectedImgName, '/');
-        const char* backslash = std::strrchr(expectedImgName, '\\');
-        if (slash && (!backslash || slash > backslash))
-            expectedImgName = slash + 1;
-        else if (backslash)
-            expectedImgName = backslash + 1;
-    }
-    if (imgIndex < 0 || imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
-        strcmp(CStreaming::ms_files[imgIndex].m_szName, expectedImgName) != 0) {
-        PushChat("Custom IMG registration verification failed.");
+    if (imgIndex >= (int)TOTAL_IMG_ARCHIVES ||
+        strncmp(CStreaming::ms_files[imgIndex].m_szName, relImgPath.c_str(), sizeof(CStreaming::ms_files[imgIndex].m_szName)) != 0) {        PushChat("Custom IMG registration verification failed.");
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bModelsRegistered = true;
         return false;
@@ -614,11 +680,13 @@ bool DLManager::RegisterCustomModels() {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const auto& mf : toRegister) {
-            CBaseModelInfo* pInfo = nullptr;
-            if (mf.type == 1) { // Skin -> ped model
-                pInfo = CModelInfo::AddPedModel(mf.virtualId);
-            } else { // Object -> atomic model
-                pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+            CBaseModelInfo* pInfo = CModelInfo::GetModelInfo(mf.virtualId);
+            if (!pInfo) {
+                if (mf.type == 1) { // Skin -> ped model
+                    pInfo = CModelInfo::AddPedModel(mf.virtualId);
+                } else { // Object -> atomic model
+                    pInfo = CModelInfo::AddAtomicModel(mf.virtualId);
+                }
             }
             if (!pInfo) {
                 // Store is full (shouldn't happen with enlarged capacities,
@@ -636,6 +704,11 @@ bool DLManager::RegisterCustomModels() {
             pInfo->SetTexDictionary(txdBase, "custom_dl");
 
             m_registeredModels.insert(mf.virtualId);
+            if (mf.type == 1) {
+                m_registeredSkins.insert(mf.virtualId);
+            } else {
+                m_registeredObjects.insert(mf.virtualId);
+            }
             ++registered;
             FLog("dl: registered virtual model %d (type %d, dff %s, txd %s)",
                  (int)mf.virtualId, (int)mf.type, dffBase, txdBase);
@@ -752,10 +825,15 @@ void DLManager::OnModelRequest(RPCParameters* rpcParams) {
         };
         if (!info.dffCached) enqueue(info.dffChecksum, info.dffSize, true);
         if (!info.txdCached) enqueue(info.txdChecksum, info.txdSize, false);
+
+        if (info.count > 0 && m_models.size() >= static_cast<size_t>(info.count)) {
+            m_bManifestComplete = true;
+        }
     }
 
-    // Wake the pool immediately: idle slots pick this up without any batching delay.
-    m_workCv.notify_all();
+    if (m_bManifestComplete.load()) {
+        m_workCv.notify_all();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -770,7 +848,7 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     int byteLength = bitLength / 8;
 
     RakNet::BitStream bs(data, byteLength, false);
-    uint8_t  arg = 0;        // 6 = HTTP transport
+    uint8_t  arg = 0;        // 6 = HTTP transport, 5 = server error/reject
     uint8_t  fileType = 0;   // 1 = DFF, 2 = TXD
     uint32_t fileChecksum = 0;
     uint8_t  urlLen = 0;
@@ -778,20 +856,32 @@ void DLManager::OnModelFile(RPCParameters* rpcParams) {
     bs.Read(arg);
     bs.Read(fileType);
     bs.Read(fileChecksum);
-    bs.Read(urlLen);
-
-    // Only the HTTP-URL prefix is handled here; in-band RakNet chunking (arg=1)
-    // is a different transport and is out of scope.
-    if (arg != 6) return;
-    if (fileChecksum == 0) return;
 
     const bool isDff = (fileType == 1);
 
+    if (arg == 5) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& t : m_tasks) {
+            if (t.crc == fileChecksum && t.isDff == isDff) {
+                t.failed = true;
+                t.lastError = "server rejected (code 5)";
+                m_failedModels++;
+                break;
+            }
+        }
+        m_workCv.notify_all();
+        return;
+    }
+
+    // Only HTTP transport is supported here
+    if (arg != 6) return;
+    if (fileChecksum == 0) return;
+
+    bs.Read(urlLen);
+
     std::string url;
     if (urlLen > 0) {
-        // Bound the read by what actually arrived (audit A4): 4 (arg/type/crc) +
-        // 1 (urlLen) bytes of prefix precede the URL body.
-        const size_t available = (byteLength > 5) ? static_cast<size_t>(byteLength - 5) : 0u;
+        const size_t available = (byteLength > 6) ? static_cast<size_t>(byteLength - 6) : 0u;
         size_t toRead = std::min<size_t>({ urlLen, available, DL_MAX_URL_BYTES });
         if (toRead > 0) {
             char urlBuffer[512] = {0};
@@ -844,6 +934,12 @@ private:
 // ---------------------------------------------------------------------------
 void DLManager::WorkerLoop() {
     while (!m_bShutdown.load()) {
+        if (!m_bManifestComplete.load()) {
+            std::unique_lock<std::mutex> lock(m_workMutex);
+            m_workCv.wait_for(lock, std::chrono::milliseconds(100));
+            continue;
+        }
+
         // 1. Claim the next unstarted file.
         uint32_t pickedCrc = 0;
         bool pickedIsDff = false;
@@ -1395,7 +1491,7 @@ void DLManager::ProcessRpcOutbox() {
     }
     if (!client) return;
 
-    for (int guard = 0; guard < 32; ++guard) {
+    for (int guard = 0; guard < DL_MAX_CONCURRENT; ++guard) {
         std::pair<uint32_t, bool> item{0, false};
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -1409,11 +1505,6 @@ void DLManager::ProcessRpcOutbox() {
         int rpcId = item.second ? RPC_RequestDff : RPC_RequestTxd;
         client->RPC(&rpcId, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                     UNASSIGNED_NETWORK_ID, nullptr);
-
-        // Diagnostic per-RPC chat log removed (was commit b978e39): with 325+
-        // models it spams hundreds of "-> 181/182" lines that look like a retry
-        // loop but are normal initial traffic. The skip logic in WorkerLoop
-        // (needRpc = url.empty()) already prevents redundant re-sends.
     }
 }
 
@@ -1424,6 +1515,14 @@ void DLManager::ProcessTick() {
     ProcessRpcOutbox();
 
     const uint32_t now = GetCurrentTick();
+
+    if (m_bSawAnyModel && !m_bManifestComplete.load()) {
+        if ((m_totalModels.load() > 0 && m_models.size() >= static_cast<size_t>(m_totalModels.load())) ||
+            (m_lastModelRequestTick > 0 && now - m_lastModelRequestTick > 1500)) {
+            m_bManifestComplete = true;
+            m_workCv.notify_all();
+        }
+    }
 
     // Speed meter (KB/s), one sample per second.
     if (m_lastSpeedSampleTick == 0) {
@@ -1494,12 +1593,41 @@ void DLManager::GetProgressStats(size_t& queued, size_t& active, size_t& done, s
     }
 }
 
-void DLManager::RecomputeProgress() {
-    size_t queued = 0, active = 0, done = 0, failed = 0;
-    GetProgressStats(queued, active, done, failed);
-    if (m_totalModels.load() > 0) {
-        m_downloadedModels = static_cast<int>(done);
+void DLManager::GetModelProgressStats(size_t& completedModels, size_t& totalModels, size_t& skippedFiles) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    totalModels = m_totalModels.load() > 0 ? static_cast<size_t>(m_totalModels.load()) : m_models.size();
+    completedModels = 0;
+    skippedFiles = 0;
+
+    for (const auto& t : m_tasks) {
+        if (t.failed) {
+            ++skippedFiles;
+        }
     }
+
+    for (const auto& m : m_models) {
+        bool dffReady = m.dffCached;
+        bool txdReady = m.txdCached;
+        if (!dffReady || !txdReady) {
+            for (const auto& t : m_tasks) {
+                if (!dffReady && t.crc == m.dffChecksum && t.isDff && (t.done || t.failed)) {
+                    dffReady = true;
+                }
+                if (!txdReady && t.crc == m.txdChecksum && !t.isDff && (t.done || t.failed)) {
+                    txdReady = true;
+                }
+            }
+        }
+        if (dffReady && txdReady) {
+            ++completedModels;
+        }
+    }
+}
+
+void DLManager::RecomputeProgress() {
+    size_t completed = 0, total = 0, skipped = 0;
+    GetModelProgressStats(completed, total, skipped);
+    m_downloadedModels = static_cast<int>(completed);
 }
 
 void DLManager::RequestRetryFailed() {
@@ -1536,8 +1664,8 @@ void DLManager::SendFinishDownload() {
         m_bFinishSent = true;
     }
     if (!client) return;
-    // RPC 184 must carry a zero-length bitstream (no dummy bytes).
     RakNet::BitStream bs;
+    bs.Write(true);
     client->RPC(&RPC_FinishDownload, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false,
                 UNASSIGNED_NETWORK_ID, nullptr);
 }
@@ -1567,13 +1695,16 @@ void DLManager::RenderImGui() {
     size_t queued = 0, active = 0, done = 0, failed = 0;
     GetProgressStats(queued, active, done, failed);
 
-    const int      total    = m_totalModels.load();
+    size_t completedModels = 0, totalModels = 0, skippedFiles = 0;
+    GetModelProgressStats(completedModels, totalModels, skippedFiles);
+
+    const int      total    = static_cast<int>(totalModels);
     const bool     finished = m_bDownloadFinished.load();
     const uint32_t now      = GetCurrentTick();
 
     const bool waiting  = (total == 0) && !finished && (now - m_connectTime) < 6000;
     const bool showDone = (m_finishTime > 0) && (now - m_finishTime) < 4000;
-    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && done < (size_t)total));
+    const bool busy     = !finished && (active > 0 || queued > 0 || (total > 0 && completedModels < totalModels));
 
     // Visible while there is real work, while the manifest is still expected,
     // or for a beat after finishing. The /dl command pins it open.
@@ -1584,27 +1715,23 @@ void DLManager::RenderImGui() {
     bool showBar = false;
     float fraction = 0.0f;
 
-    // Progress counts settled work: downloaded + skipped. The bar must always
-    // be able to reach 100% — failures are skipped, never stuck.
-    const size_t settled = done + failed;
-
     if (failed > 0 && !busy && !finished) {
         snprintf(label, sizeof(label), "Model download: %zu failed (/dlr to retry)", failed);
     } else if (finished) {
-        if (failed > 0) {
-            snprintf(label, sizeof(label), "Models ready (%zu skipped)", failed);
+        if (skippedFiles > 0) {
+            snprintf(label, sizeof(label), "Models ready (%zu skipped)", skippedFiles);
         } else {
             snprintf(label, sizeof(label), "Models ready");
         }
         fraction = 1.0f;
         showBar = total > 0;
     } else if (total > 0) {
-        fraction = std::clamp(static_cast<float>(settled) / static_cast<float>(total), 0.0f, 1.0f);
-        if (failed > 0) {
+        fraction = std::clamp(static_cast<float>(completedModels) / static_cast<float>(total), 0.0f, 1.0f);
+        if (skippedFiles > 0) {
             snprintf(label, sizeof(label), "Downloading models %zu/%d (%zu skipped)",
-                     settled, total, failed);
+                     completedModels, total, skippedFiles);
         } else {
-            snprintf(label, sizeof(label), "Downloading models %zu/%d", done, total);
+            snprintf(label, sizeof(label), "Downloading models %zu/%d", completedModels, total);
         }
         showBar = true;
     } else {

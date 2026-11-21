@@ -158,7 +158,7 @@ extern int RPC_EnterEditObject;
 
 // SA-MP 0.3.DL Artwork / Custom Models RPC
 extern int RPC_ModelRequest;
-extern int RPC_ModelsReset;
+extern int RPC_ModelReset;
 extern int RPC_RequestDff;
 extern int RPC_RequestTxd;
 extern int RPC_ModelFile;

@@ -76,13 +76,16 @@ struct DLFileTask {
     bool     haveUrl() const { return !url.empty(); }
 };
 
+// ID skin custom 0.3.DL (AddCharModel) bernilai 20001..30000; selain itu bukan skin custom.
+inline bool DLIsCustomSkinId(uint32_t id) { return id >= 20001 && id <= 30000; }
+
 class DLManager {
 public:
     static DLManager& Instance();
 
     void Initialize(const std::string& serverIp, int serverPort, const std::string& storagePath, RakClientInterface* pRakClient);
     void Reset();
-    // RPC 180 (ModelsReset): the server's model list changed. Clears only
+    // RPC 180 (ModelReset): the server's model list changed. Clears only
     // model/download state so a fresh manifest can arrive; the connection,
     // cache path and worker pool are untouched. Unlike Reset(), this never
     // nulls the RakClient or joins the workers.
@@ -92,7 +95,7 @@ public:
 
     // RPC Handlers (invoked on the RakNet UpdateNetworkLoop thread - never block)
     void OnModelRequest(RPCParameters* rpcParams);
-    void OnModelsReset(RPCParameters* rpcParams);
+    void OnModelReset(RPCParameters* rpcParams);
     void OnModelFile(RPCParameters* rpcParams);
     void OnDownloadCompleted(RPCParameters* rpcParams);
 
@@ -115,6 +118,11 @@ public:
     // True if virtualId was successfully registered via RegisterCustomModels.
     // Used by the fallback guard so unregistered models fall back to base.
     bool IsModelRegistered(int16_t virtualId) const;
+    bool IsSkinRegistered(int16_t virtualId) const;
+    bool IsObjectRegistered(int16_t virtualId) const;
+    // Path file TXD (di cache) milik model custom dengan ID jaringan tertentu
+    // (mis. -2001 untuk sprite textdraw "mdl-2001:nama"). false bila belum diunduh.
+    bool GetTxdPathForNetworkModel(int32_t networkId, std::string& outPath);
 
     bool IsInitialized() const { return m_bInitialized.load(); }
     bool IsDownloadFinished() const { return m_bDownloadFinished.load(); }
@@ -123,6 +131,7 @@ public:
     int GetActiveWorkers() const { return m_activeWorkers.load(); }
     float GetCurrentSpeedKBps() const { return m_speedKBps.load(); }
     void GetProgressStats(size_t& queued, size_t& active, size_t& done, size_t& failed) const;
+    void GetModelProgressStats(size_t& completedModels, size_t& totalModels, size_t& skippedFiles) const;
 
     void SendFinishDownload();
     void ToggleOverlay();
@@ -151,6 +160,7 @@ private:
 
     std::string m_serverIp;
     int m_serverPort;
+    std::string m_storagePath;
     std::string m_cachePath;
     mutable std::mutex m_cachePathMutex;   // guards m_cachePath string read by workers
     RakClientInterface* m_pRakClient;      // game-thread owned; nulled on Reset
@@ -170,6 +180,8 @@ private:
     // Custom models successfully registered with the game engine
     // (via RegisterCustomModels). Guarded by m_mutex.
     std::unordered_set<int16_t> m_registeredModels;
+    std::unordered_set<int16_t> m_registeredSkins;
+    std::unordered_set<int16_t> m_registeredObjects;
     bool m_bModelsRegistered{false};
 
     // Download queue. Keyed by (crc,isDff) so DFF/TXD CRCs never alias.
@@ -184,6 +196,7 @@ private:
     // Set once we have actually transmitted RPC 184; used to re-arm if a late 179 arrives.
     bool m_bFinishSent{false};
     bool m_bSawAnyModel{false};      // any RPC 179 ever received this session
+    std::atomic<bool> m_bManifestComplete{false};
 
     // Worker pool
     std::mutex m_workMutex;

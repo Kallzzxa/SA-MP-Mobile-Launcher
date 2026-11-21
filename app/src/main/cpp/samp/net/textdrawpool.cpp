@@ -78,15 +78,11 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor)
         m_bSelectState = true;
         m_dwHoverColor = (((dwColor << 16) | dwColor & 0xFF00) << 8) | (((dwColor >> 16) | dwColor & 0xFF0000) >> 8);
         m_wClickedTextDrawID = 0xFFFF;
-        pGame->DisplayHUD(false);
-        pGame->FindPlayerPed()->TogglePlayerControllable(false);
     }
     else {
         m_bSelectState = false;
         m_dwHoverColor = 0;
         m_wClickedTextDrawID = 0xFFFF;
-        pGame->DisplayHUD(true);
-        pGame->FindPlayerPed()->TogglePlayerControllable(true);
 
         SendClick();
 

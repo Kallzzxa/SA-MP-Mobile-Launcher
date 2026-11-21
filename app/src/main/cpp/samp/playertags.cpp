@@ -53,8 +53,7 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 						vecPos.z = 0.0f;
 						pPlayerPed->GetBonePosition(8, &vecPos);
 
-						// Pengecekan Line of Sight (Anti-Wallhack)
-						// Kita buat lebih toleran agar tidak hilang saat di dalam kendaraan
+						// Line of sight check
 						dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
 
 						if (dwHitEntity && !pRemotePlayer->IsNPC())
