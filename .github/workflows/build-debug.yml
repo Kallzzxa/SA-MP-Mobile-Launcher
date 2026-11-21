@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,25 +36,23 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
 
-      # Artifact upload is blocked by the account's Actions storage quota,
-      # so try pixeldrain (primary) then tmpfiles.org (fallback, 60 min).
-      - name: Upload APK to file host
-        run: |
-          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
-          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
-          RESP=$(curl -s --max-time 300 -F "file=@$APK" https://pixeldrain.com/api/file) || RESP=""
-          echo "pixeldrain response: $RESP"
-          URL=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('https://pixeldrain.com/u/'+d['id'] if d.get('success') else '')" 2>/dev/null) || URL=""
-          if [ -z "$URL" ]; then
-            echo "pixeldrain failed, trying tmpfiles.org"
-            RESP2=$(curl -s --max-time 300 -F "file=@$APK" https://tmpfiles.org/api/v1/upload) || RESP2=""
-            echo "tmpfiles response: $RESP2"
-            URL=$(echo "$RESP2" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['url'])" 2>/dev/null) || URL=""
-          fi
-          if [ -z "$URL" ] || ! echo "$URL" | grep -q '^https://'; then
-            echo "All file hosts failed"
-            exit 1
-          fi
-          echo "DOWNLOAD_URL=$URL"
-          echo "### Debug APK download" >> $GITHUB_STEP_SUMMARY
-          echo "[$URL]($URL)" >> $GITHUB_STEP_SUMMARY
+      # Delivery: GitHub artifact + GitHub Release (proven working in
+      # main.yml, Nov 19). The old pixeldrain/tmpfiles step is retired:
+      # pixeldrain now requires API authentication for anonymous uploads and
+      # tmpfiles.org rejects the APK with 413 (115 MB > 100 MB limit).
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-build-${{ github.run_number }}
+          name: Debug Build ${{ github.run_number }}
+          files: |
+            app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: <redacted>
